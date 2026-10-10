@@ -120,3 +120,20 @@ def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
     @api.post(prefix + '/datasets/{collection_id}/question-set')
     def freeze_selection(collection_id: str, body: dict = Body(...)):
         return data_call(lambda: selected_input(collection_id, body, materialize=True))
+
+    from architecture_iq.studio.dataset_generation import attach_generation_result, get_generation_attachment
+
+    @api.get(prefix + '/generations/{run_id}/dataset-attachment')
+    def generation_attachment(run_id: str):
+        def operation():
+            api.state.jobs.definition(run_id)
+            return get_generation_attachment(datasets, run_id=run_id)
+        return data_call(operation)
+
+    @api.post(prefix + '/generations/{run_id}/dataset-attachment')
+    def retry_attachment(run_id: str, request: Request, body: dict = Body(...)):
+        def operation():
+            fields(body, {'target'}, {'target'})
+            return attach_generation_result(api.state.jobs, catalog, datasets, run_id=run_id,
+                target=body['target'], operation_id=request.headers.get('Idempotency-Key'))
+        return data_call(operation)

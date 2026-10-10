@@ -30,6 +30,9 @@ class DatasetStore:
                 CREATE TABLE IF NOT EXISTS collection_operations
                     (scope TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL,
                      result TEXT NOT NULL, PRIMARY KEY(scope, operation_id));
+                CREATE TABLE IF NOT EXISTS generation_attachments
+                    (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+                     operation_id TEXT NOT NULL, result TEXT NOT NULL, UNIQUE(run_id, operation_id));
             ''')
 
     def _operation(self, conn, scope, operation_id, request):
@@ -198,3 +201,58 @@ class DatasetStore:
                 for key in shared:
                     result[key].append(summary)
         return result
+
+    def attachment(self, run_id: str, *, operation_id: str | None = None, target: dict | None = None):
+        with closing(self.catalog._connect()) as conn:
+            if operation_id is not None:
+                return self._operation(conn, 'attachment:' + run_id, operation_id, {'target': target})
+            row = conn.execute('SELECT result FROM generation_attachments WHERE run_id=? ORDER BY sequence DESC LIMIT 1',
+                               (run_id,)).fetchone()
+            return json.loads(row['result']) if row else None
+
+    def attach(self, collection_id: str, *, expected_revision: str, keys: list[str], pairs: list[dict],
+               run_id: str, operation_id: str) -> dict:
+        return self.record_attachment(run_id, operation_id, {'collection_id': collection_id, 'revision': expected_revision},
+                                      keys=keys, pairs=pairs)
+
+    def record_attachment(self, run_id, operation_id, target, *, keys=None, pairs=None, status=None, message=None):
+        keys, pairs = keys or [], pairs or []
+        scope, request = 'attachment:' + run_id, {'target': target}
+        with closing(self.catalog._connect()) as conn, conn:
+            conn.execute('BEGIN IMMEDIATE')
+            prior = self._operation(conn, scope, operation_id, request)
+            if prior is not None:
+                return prior
+            result = {'target': target, 'question_keys': keys, 'pair_keys': [p['pair_key'] for p in pairs]}
+            if status is None:
+                current = self._get(conn, target['collection_id'])
+                if current['archived']:
+                    status, message = 'archived', '目标 Dataset 已归档，请选择其他题库'
+                elif current['revision'] != target['revision']:
+                    status, message = 'revision_conflict', '题库已更新，请确认目标版本后重新收录'
+                elif not keys:
+                    status, message = 'empty', '没有可收录的完整可用题目'
+                elif current['keys'] and bool(pairs) != (current['selection_mode'] == 'pairs'):
+                    status, message = 'unavailable', '生成模式与目标题库不一致，请选择空题库或相同模式的题库'
+                else:
+                    if pairs:
+                        combined = list({p['pair_key']: p for p in current['pairs'] + pairs}.values())
+                        members = {'selection_mode': 'pairs', 'pairs': combined,
+                                   'keys': [m['key'] for p in combined for m in p['members']]}
+                    else:
+                        members = {'selection_mode': 'single', 'pairs': [], 'keys': self._keys(current['keys'] + keys)}
+                    if all(current[k] == v for k, v in members.items()):
+                        saved = current
+                    else:
+                        body = {k: v for k, v in current.items() if k != 'revision'}
+                        body.update(members, parent_revision=current['revision'], created_at=_now())
+                        saved = self._save(conn, body)
+                    status = 'attached'
+                    result['result_revision'] = saved['revision']
+            result['status'] = status
+            if message:
+                result['message'] = message
+            self._receipt(conn, scope, operation_id, request, result)
+            conn.execute('INSERT INTO generation_attachments(run_id,operation_id,result) VALUES (?,?,?)',
+                         (run_id, operation_id, _json(result)))
+            return result

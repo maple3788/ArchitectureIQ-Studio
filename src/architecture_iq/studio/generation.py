@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 _INPUT_FIELDS = frozenset({"profile", "family", "seed", "family_options", "candidate_count",
                           "model_type_counts", "vary", "budget", "n_seeds", "num_questions",
-                          "num_choices", "question_type", "fixed_shared", "mode", "split", "intervention"})
+                          "num_choices", "question_type", "fixed_shared", "mode", "split", "intervention", "dataset_target"})
 _DERIVED_FIELDS = frozenset({"dataset_plan", "dataset_count", "questions_per_dataset",
                             "candidate_seed_runs", "total_samples_seen", "execution_device",
                             "profile_hash", "base_profile_hash", "pair_count", "requested_question_count",
@@ -279,6 +279,9 @@ def validate_generation(config: dict) -> dict:
                   "questions_per_dataset": per_dataset, "candidate_seed_runs": candidate_seed_runs,
                   "total_samples_seen": budget * candidate_seed_runs, "execution_device": "cpu",
                   "base_profile_hash": base.profile_hash, "profile_hash": profile.profile_hash}
+    if "dataset_target" in config:
+        from .dataset_generation import validate_target_ref
+        normalized["dataset_target"] = validate_target_ref(config["dataset_target"])
     if mode == "paired":
         from .pair_generation import freeze_pair_plan
         normalized["pair_plan"] = freeze_pair_plan(profile, family, normalized)
@@ -403,4 +406,6 @@ def execute_generation(store: JobStore, job_id: str, config: dict, catalog: Cata
     write_json_atomic(manifest_path, manifest)
     store.event(job_id, {"type": "generation_result", "outcome": outcome,
                          "generated_questions": len(completed), "requested_questions": normalized["num_questions"]})
+    from .dataset_generation import finish_generation_attachment
+    finish_generation_attachment(store, catalog, job_id, normalized, result)
     return result

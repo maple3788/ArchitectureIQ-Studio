@@ -66,3 +66,29 @@ def test_dataset_selection_preview_and_freeze_do_not_expose_feedback(tmp_path):
     assert frozen.status_code == 200 and frozen.json()['dataset_binding']['revision'] == a['revision']
     assert 'feedback' not in frozen.text
     assert client.post(base + '/question-set', json={**body, 'preview_hash': 'stale'}).status_code == 409
+
+
+def test_local_attachment_api_and_job_projection_use_persisted_results(tmp_path):
+    from test_studio_dataset_generation import staged_result
+    c, store, datasets, target, job, _, _ = staged_result(tmp_path)
+    client, _ = make_client(tmp_path)
+    url = PREFIX + f"/generations/{job['id']}/dataset-attachment"
+    response = client.post(url, json={'target': target}, headers={'Idempotency-Key': 'attach'})
+    assert response.status_code == 200 and response.json()['status'] == 'attached'
+    assert client.get(url).json() == response.json()
+    assert client.get(PREFIX + f"/runs/{job['id']}").json()['dataset_attachment'] == response.json()
+    assert client.post(PREFIX + '/generations', json=job['config']).status_code == 409
+    assert client.post(url, json={'target': target, 'keys': []}, headers={'Idempotency-Key': 'bad'}).status_code == 422
+
+
+def test_generation_preview_binds_target_and_detects_edits(tmp_path):
+    from test_studio_generation import config
+    client, _ = make_client(tmp_path)
+    a = create(client)
+    target = {k: a[k] for k in ('collection_id', 'revision')}
+    response = client.post(PREFIX + '/generations/preview', json=config(dataset_target=target))
+    assert response.status_code == 200 and response.json()['dataset_preview_hash']
+    changed = client.post(PREFIX + f"/datasets/{a['collection_id']}/revisions", json={
+        'expected_revision': a['revision'], 'changes': {'name': 'Changed'}}, headers={'Idempotency-Key': 'edit'})
+    assert changed.status_code == 200
+    assert client.post(PREFIX + '/generations/preview', json=config(dataset_target=target)).status_code == 409

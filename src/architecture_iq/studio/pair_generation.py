@@ -155,4 +155,6 @@ def execute_paired_generation(store, job_id: str, config: dict, profile, catalog
     store.event(job_id, {"type": "generation_result", "outcome": outcome,
                          "generated_pairs": len(pairs), "generated_questions": len(question_ids),
                          "requested_questions": config["requested_question_count"]})
+    from .dataset_generation import finish_generation_attachment
+    finish_generation_attachment(store, catalog, job_id, config, result)
     return result

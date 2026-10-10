@@ -76,6 +76,13 @@ def create_app(
     api.state.dataset_migration = migrate_legacy_datasets(catalog, datasets)
     register_dataset_routes(api, catalog=catalog, bank=QuestionBank(catalog), datasets=datasets, allowed_roots=sources)
 
+    def job_view(job):
+        result = public_job(job)
+        if job.get('kind') == 'generation':
+            from architecture_iq.studio.dataset_generation import get_generation_attachment
+            result['dataset_attachment'] = get_generation_attachment(datasets, run_id=job['id'])
+        return result
+
     @api.exception_handler(ValueError)
     async def value_error(_request, exc):
         return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -627,7 +634,7 @@ def create_app(
 
     @api.get(prefix + "/runs")
     def run_list():
-        values = [public_job(job) for job in jobs.list()] + archives()
+        values = [job_view(job) for job in jobs.list()] + archives()
         values.sort(key=lambda item: item["created_at"], reverse=True)
         return {"items": values, "total": len(values)}
 
@@ -639,7 +646,7 @@ def create_app(
                 raise KeyError(identifier)
             return matches[0]
         job = jobs.get(identifier)
-        result = public_job(job)
+        result = job_view(job)
         result["node_observations"] = node_observations(job, jobs.directory(identifier))
         return result
 
@@ -711,15 +718,25 @@ def create_app(
     @api.post(prefix + "/generations/preview")
     def generation_preview(body: dict = Body(...)):
         from architecture_iq.studio.generation import validate_generation
+        from architecture_iq.studio.dataset_generation import validate_generation_target
+        from .dataset_routes import data_call
 
-        return validate_generation(body)
+        def operation():
+            config = validate_generation(body)
+            fingerprint = validate_generation_target(config, datasets)
+            return {**config, 'dataset_preview_hash': fingerprint} if fingerprint else config
+        return data_call(operation)
 
     @api.post(prefix + "/generations")
     def generation(request: Request, body: dict = Body(...)):
         require_execution()
         from architecture_iq.studio.generation import validate_generation
+        from architecture_iq.studio.dataset_generation import validate_generation_target
 
-        config = validate_generation(body)
+        config = validate_generation({k: v for k, v in body.items() if k != 'dataset_preview_hash'})
+        fingerprint = validate_generation_target(config, datasets)
+        if fingerprint and body.get('dataset_preview_hash') != fingerprint:
+            raise HTTPException(409, '目标 Dataset 或生成配置已变化，请重新预检')
         job = jobs.create(
             "generation", config, idempotency_key=request.headers.get("Idempotency-Key")
         )
