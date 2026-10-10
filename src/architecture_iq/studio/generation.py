@@ -7,6 +7,8 @@ import random
 import re
 from typing import TYPE_CHECKING
 
+from .generation_forms import family_form_schema, validate_family_options
+
 from architecture_iq.candidates.generator import SAMPLEABLE_LOSS_IDS, valid_batch_sizes
 from architecture_iq.candidates.sets import generate_candidate_set, parse_varying_axes
 from architecture_iq.kb.store import write_json_atomic
@@ -81,6 +83,7 @@ def capabilities() -> dict:
                              "losses": _losses(profile, name),
                              "options": list(family.instance_option_names),
                              "config": profile.family_config(name),
+                             "form_schema": family_form_schema(profile, family),
                              "data_interventions": family.data_interventions()})
         profiles.append({"name": path.stem, "pools": deepcopy(profile.pools),
                          "budgets": profile.budget_values, "n_seeds": profile.n_seeds,
@@ -94,27 +97,7 @@ def capabilities() -> dict:
 
 
 def _family_options(profile: Profile, family, value) -> dict:
-    if not isinstance(value, dict):
-        raise ValueError("family_options must be an object")
-    unknown = set(value) - set(family.instance_option_names)
-    if unknown:
-        raise ValueError(f"{family.name} does not accept family_options {sorted(unknown)}")
-    cfg = profile.family_config(family.name)
-    options = deepcopy(value)
-    for key, item in options.items():
-        if key == "input_dim":
-            _integer(item, "family_options.input_dim", 1, 100000)
-            allowed = cfg.get("input_dims", [4])
-            if item not in allowed:
-                raise ValueError(f"input_dim must be one of {allowed}")
-        elif key == "rule_family":
-            allowed = cfg.get("rule_families", [])
-            if not isinstance(item, str) or item not in allowed:
-                raise ValueError(f"rule_family must be one of {allowed}")
-        else:
-            # New plugin options need an explicit UI validation contract.
-            raise ValueError(f"Studio validation does not yet support family option {key!r}")
-    return options
+    return validate_family_options(profile, family, value)
 
 
 def _finite_number(value, name: str, *, minimum: float = 0) -> None:
