@@ -692,12 +692,12 @@ class Catalog:
             summary.update(ready=False, evaluation_ready=False, kb_ready=False, rag_ready=False)
         return summary
 
-    def get_question(self, key: str, *, include_private: bool = False) -> dict:
+    def _load_frozen_record(self, key: str) -> dict:
+        """Verified server-only record, before the public projection is applied."""
         with closing(self._connect()) as conn:
             row = conn.execute("SELECT hash FROM questions WHERE key=?", (key,)).fetchone()
             if row is None:
                 raise KeyError(f"Unknown question revision: {key}")
-            aliases = conn.execute("SELECT source_id, origin, issues, blocked FROM aliases WHERE key=? ORDER BY source_id, origin", (key,)).fetchall()
         record = _read(self.root / "records" / (row["hash"] + ".json"), self.root)
         original = json.loads(_json(record))
         original["public"]["id"] = original["metadata"]["id"]
@@ -705,6 +705,12 @@ class Catalog:
         original["metadata"].pop("hash", None)
         if _hash(original) != row["hash"]:
             raise ValueError("Question record integrity check failed")
+        return record
+
+    def get_question(self, key: str, *, include_private: bool = False) -> dict:
+        record = self._load_frozen_record(key)
+        with closing(self._connect()) as conn:
+            aliases = conn.execute("SELECT source_id, origin, issues, blocked FROM aliases WHERE key=? ORDER BY source_id, origin", (key,)).fetchall()
         # Stored revisions from previous catalog versions remain immutable.
         # Apply the current public structural boundary on every read as well,
         # so older snapshots cannot bypass tightened import projections.
