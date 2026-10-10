@@ -1,0 +1,21 @@
+import {useRef,useState} from 'react';
+import {Database,Plus,ArrowUpRight,Search} from 'lucide-react';
+import {api} from './api';
+import {ErrorBox,Loading,useResource} from './ui';
+import {familyLabel} from './displayNames';
+import {datasetRef,type DatasetRef,type DatasetRevision,type DatasetSummary,type Page} from './dataTypes';
+export function DatasetLibrary({version,onOpen}:{version:number;onOpen:(ref:DatasetRef)=>void}){
+ const [search,setSearch]=useState(''),[archived,setArchived]=useState(false),[offset,setOffset]=useState(0),[create,setCreate]=useState(false);
+ const [name,setName]=useState(''),[description,setDescription]=useState(''),[mode,setMode]=useState('single'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
+ const data=useResource<Page<DatasetSummary>>('/datasets?'+new URLSearchParams({search,archived:String(archived),offset:String(offset),limit:'24'}),version+retry);
+ const operation=useRef<{signature:string;key:string}|undefined>(undefined);
+ const save=async()=>{const signature=JSON.stringify({name,description,mode});if(operation.current?.signature!==signature)operation.current={signature,key:crypto.randomUUID()};setBusy(true);setError('');try{const d=await api<DatasetRevision>('/datasets',{name,description,...(mode==='pairs'?{pair_keys:[]}:{keys:[]})},undefined,{'Idempotency-Key':operation.current.key});onOpen(datasetRef(d));}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+ return <section><div className="data-heading"><div><p className="data-eyebrow">DATA / COLLECTIONS</p><h1>我的 Datasets</h1><p>按研究目的组织题目，构建属于你的实验材料。</p></div><button className="primary" onClick={()=>setCreate(true)}><Plus size={17}/>新建 Dataset</button></div>
+ <div className="data-toolbar"><label className="data-search"><Search size={17}/><input aria-label="搜索 Dataset" placeholder="搜索题库名称或用途" value={search} onChange={e=>{setSearch(e.target.value);setOffset(0);}}/></label><label className="data-inline-check"><input type="checkbox" checked={archived} onChange={e=>{setArchived(e.target.checked);setOffset(0);}}/>查看已归档</label></div>
+ <ErrorBox error={data.error}/>{data.error&&<button onClick={()=>setRetry(v=>v+1)}>重新读取 Datasets</button>}{data.loading&&<Loading/>}
+ <div className="dataset-grid">{data.data?.items.map(d=><article className="dataset-card" key={d.collection_id}><div className="dataset-card-top"><Database size={23}/><span>{d.selection_mode==='pairs'?'配对题库':'题目集合'}</span></div><button className="data-title-button" aria-label={`打开 Dataset ${d.name}`} onClick={()=>onOpen(datasetRef(d))}><h2>{d.name}</h2><ArrowUpRight size={18}/></button><p>{d.description||'添加描述，记录这个题库的研究用途。'}</p><div className="dataset-card-bottom"><b>{d.count}<small> 道题</small></b><span>{d.families.slice(0,2).map(familyLabel).join(' · ')||'等待添加题目'}</span></div></article>)}</div>
+ {data.data?.total===0&&<div className="data-empty"><Database size={32}/><h2>{archived?'暂无归档题库':'从第一个 Dataset 开始'}</h2><p>题目可以属于多个 Dataset，总题库会统一保留和去重。</p></div>}
+ {data.data&&data.data.total>24&&<div className="data-pagination"><button disabled={!offset} onClick={()=>setOffset(v=>Math.max(0,v-24))}>上一页</button><span>{offset+1}–{Math.min(offset+24,data.data.total)} / {data.data.total}</span><button disabled={offset+24>=data.data.total} onClick={()=>setOffset(v=>v+24)}>下一页</button></div>}
+ {create&&<div className="data-dialog-backdrop"><form className="data-dialog" role="dialog" aria-modal="true" aria-label="新建 Dataset" onSubmit={e=>{e.preventDefault();void save();}} onKeyDown={e=>{if(e.key==='Escape'&&!busy)setCreate(false);}}><p className="data-eyebrow">NEW DATASET</p><h2>给研究材料一个名字</h2><label>Dataset 名称<input autoFocus value={name} onChange={e=>setName(e.target.value)} required/></label><label>研究用途<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="例如：比较不同优化器在回归任务上的表现"/></label><label>题目模式<select value={mode} onChange={e=>setMode(e.target.value)}><option value="single">普通题目</option><option value="pairs">完整题对</option></select></label><ErrorBox error={error}/><div className="data-actions"><button type="button" disabled={busy} onClick={()=>setCreate(false)}>取消</button><button className="primary" disabled={busy||!name.trim()} type="submit">创建题库</button></div></form></div>}
+ </section>;
+}

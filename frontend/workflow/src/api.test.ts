@@ -51,3 +51,7 @@ describe("Studio transport", () => {
     await expect(api("/bootstrap")).rejects.toThrow("非 JSON");
   });
 });
+it('keeps structured conflict details and exposes readable messages',async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({detail:{code:'dataset_revision_conflict',message:'changed',current_revision:'r2'}}),{status:409}));
+ await expect(api('/datasets/ds/revisions',{})).rejects.toMatchObject({message:'changed',status:409,details:{current_revision:'r2'}});
+});

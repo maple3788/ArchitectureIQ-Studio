@@ -16,3 +16,9 @@ it('question shortcut opens RAG with exact version key and leaves workflow stora
  expect(await screen.findByRole('heading',{name:'RAG 作答'})).toBeTruthy();expect(screen.getAllByText('q1@rev').length).toBeGreaterThan(0);
  expect(location.hash).toBe('#rag');expect(localStorage.getItem('workflow-draft-test')).toBe('preserve');localStorage.removeItem('workflow-draft-test');
 });
+it('opens Data by default while preserving existing named routes',async()=>{
+ location.hash='';
+ vi.stubGlobal('fetch',async(path:string)=>new Response(JSON.stringify(path.endsWith('/bootstrap')?{service:{execution_enabled:false,host:'local'},stats:{},capabilities:{}}:{items:[],total:0})));
+ render(<App/>);
+ expect(await screen.findByRole('heading',{name:'我的 Datasets'})).toBeTruthy();
+});

@@ -1,0 +1,47 @@
+import {useEffect,useRef,useState} from 'react';
+import {ArrowLeft,Search,Upload,Settings2,Plus,BookOpen} from 'lucide-react';
+import {api,ApiError,uploadSource} from './api';
+import {ErrorBox,Loading,useResource} from './ui';
+import {familyLabel} from './displayNames';
+import {GlobalQuestionBank} from './GlobalQuestionBank';
+import {datasetRef,type DatasetRef,type DatasetRevision,type DataQuestion,type Page,type QuestionFilters} from './dataTypes';
+export function DatasetBrowser({refValue,version,onBack,onChanged,onRead,onBuild,filters:initialFilters={},offset:initialOffset=0,onLocation}:{
+ refValue:DatasetRef;version:number;onBack:()=>void;onChanged:(ref:DatasetRef)=>void;onRead?:(key:string)=>void;onBuild?:()=>void;
+ filters?:QuestionFilters;offset?:number;onLocation?:(filters:QuestionFilters,offset:number)=>void;
+}) {
+ const resource=useResource<DatasetRevision>(`/datasets/${refValue.collection_id}?revision=${refValue.revision}`,version);
+ const [base,setBase]=useState<DatasetRevision>(),[chosen,setChosen]=useState<string[]>([]),[name,setName]=useState(''),[description,setDescription]=useState('');
+ const [editing,setEditing]=useState(false),[settings,setSettings]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[conflict,setConflict]=useState(false);
+ const [sourceId,setSourceId]=useState<string>(),[filters,setFilters]=useState(initialFilters),[offset,setOffset]=useState(initialOffset),[retry,setRetry]=useState(0);
+ const submission=useRef<{signature:string;key:string}|undefined>(undefined);
+ useEffect(()=>{if(resource.data&&!base){setBase(resource.data);setChosen(resource.data.keys);setName(resource.data.name);setDescription(resource.data.description);}},[resource.data,base]);
+ const members=useResource<Page<DataQuestion>>(base?`/datasets/${base.collection_id}/questions?`+new URLSearchParams({revision:base.revision,...filters,offset:String(offset),limit:'25'}):null,version+retry);
+ const navigate=(next:QuestionFilters,page=0)=>{setFilters(next);setOffset(page);onLocation?.(next,page);};
+ const write=async(body:unknown,suffix='revisions')=>{
+  if(!base)return;setBusy(true);setError('');setConflict(false);
+  const signature=JSON.stringify({id:base.collection_id,suffix,body});
+  if(submission.current?.signature!==signature)submission.current={signature,key:crypto.randomUUID()};
+  try{const updated=await api<DatasetRevision>(`/datasets/${base.collection_id}/${suffix}`,body,undefined,{'Idempotency-Key':submission.current.key});setBase(updated);setChosen(updated.keys);setName(updated.name);setDescription(updated.description);setEditing(false);setSettings(false);setSourceId(undefined);onChanged(datasetRef(updated));return updated;}
+  catch(e){if(e instanceof ApiError&&e.status===409){setConflict(true);setError('题库已在其他窗口更新');}else setError((e as Error).message);}
+  finally{setBusy(false);}
+ };
+ const rebase=async()=>{if(!base)return;setBusy(true);try{const latest=await api<DatasetRevision>(`/datasets/${base.collection_id}`);const removed=new Set(base.keys.filter(k=>!chosen.includes(k)));const added=chosen.filter(k=>!base.keys.includes(k));setChosen([...latest.keys.filter(k=>!removed.has(k)),...added.filter(k=>!latest.keys.includes(k))]);if(name===base.name)setName(latest.name);if(description===base.description)setDescription(latest.description);setBase(latest);onChanged(datasetRef(latest));setConflict(false);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+ const importFile=async(file:File)=>{if(!base)return;setBusy(true);try{const report=await uploadSource(file);setSourceId(report.source_id);await write({expected_revision:base.revision,source_id:report.source_id},'imports');}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+ const saveSelection=()=>{if(!base)return;const changes=base.selection_mode==='pairs'?{pair_keys:base.pairs.filter(p=>p.members.every(m=>chosen.includes(m.key))).map(p=>p.pair_key)}:{keys:chosen};void write({expected_revision:base.revision,changes});};
+ return <section>
+  <button className="data-back" onClick={onBack}><ArrowLeft size={16}/>所有 Datasets</button><ErrorBox error={resource.error}/>
+  {!base?(resource.loading?<Loading/>:null):<>
+   <div className="data-heading"><div><p className="data-eyebrow">DATASET / {base.selection_mode==='pairs'?'PAIRED QUESTIONS':'QUESTIONS'}</p><h1>{base.name}</h1><p>{base.description||'在这里整理、阅读和构建研究题目。'}</p><div className="data-question-meta"><span>{base.keys.length} 道题目</span><span>{base.archived?'已归档':'固定版本 · '+base.revision.slice(0,8)}</span></div></div><div className="data-actions">{onBuild&&!base.archived&&<button className="primary" onClick={onBuild}><Plus size={16}/>构建题目</button>}<button onClick={()=>setSettings(v=>!v)}><Settings2 size={16}/>管理题库</button></div></div>
+   <ErrorBox error={error}/>{conflict&&<button disabled={busy} onClick={()=>void rebase()}>保留我的选择并载入新版本</button>}
+   {settings&&<section className="data-editor"><label>Dataset 名称<input value={name} onChange={e=>setName(e.target.value)} disabled={base.archived}/></label><label>研究用途<textarea value={description} onChange={e=>setDescription(e.target.value)} disabled={base.archived}/></label><div className="data-actions">{!base.archived&&<button disabled={busy} onClick={()=>void write({expected_revision:base.revision,changes:{name,description}})}>保存信息</button>}<button disabled={busy} onClick={async()=>{const result=await write({expected_revision:base.revision,changes:{archived:!base.archived}});if(result)onBack();}}>{base.archived?'恢复题库':'归档题库'}</button></div><small>归档和移除成员都保留原题、其他 Dataset 与历史运行。</small></section>}
+   <div className="data-toolbar"><label className="data-search"><Search size={17}/><input aria-label="搜索 Dataset 题目" placeholder="搜索这个 Dataset" value={filters.search||''} onChange={e=>navigate({...filters,search:e.target.value})}/></label>{!base.archived&&<div className="data-actions">{base.selection_mode==='single'&&<button onClick={()=>setEditing(true)}>从总题库选入</button>}<button onClick={()=>setEditing(v=>!v)}>整理成员</button>{base.selection_mode==='single'&&<label className="data-file-button"><Upload size={16}/>导入题包<input type="file" accept=".json,application/json" aria-label="导入题包" disabled={busy} onChange={e=>{if(e.target.files?.[0])void importFile(e.target.files[0]);e.target.value='';}}/></label>}</div>}</div>
+   {sourceId&&<div className="data-editor"><p>题包已导入总题库，尚未加入此 Dataset。</p><button disabled={busy} onClick={()=>void write({expected_revision:base.revision,source_id:sourceId},'imports')}>将已导入题包加入当前版本</button></div>}
+   {editing?<section className="data-editor"><div className="data-toolbar"><div><h2>整理题目</h2><p>当前选择 {chosen.length} 道，跨页选择会保留。</p></div><div className="data-actions"><button onClick={()=>{setChosen(base.keys);setEditing(false);}}>取消</button><button className="primary" disabled={busy||conflict} onClick={saveSelection}>保存题目选择</button></div></div>{base.selection_mode==='single'?<GlobalQuestionBank version={version} selected={chosen} onSelect={setChosen}/>:base.pairs.map(p=><label className="data-pair-choice" key={p.pair_key}><input type="checkbox" aria-label={`题对 ${p.pair_key.slice(0,8)}`} checked={p.members.every(m=>chosen.includes(m.key))} onChange={e=>setChosen(e.target.checked?[...chosen,...p.members.map(m=>m.key)].filter((k,i,a)=>a.indexOf(k)===i):chosen.filter(k=>!p.members.some(m=>m.key===k)))}/><span>完整题对 · {p.pair_key.slice(0,8)}<small>{p.members.map(m=>m.role).join(' ↔ ')}</small></span></label>)}</section>:<>
+    <ErrorBox error={members.error}/>{members.error&&<button onClick={()=>setRetry(v=>v+1)}>重试读取题目</button>}{members.loading&&<Loading/>}
+    {members.data?.items.map((q,i)=><article className="data-question" key={q.key}><span className="data-question-number">{String(offset+i+1).padStart(2,'0')}</span><div className="data-question-body"><div className="data-question-meta"><span>{familyLabel(q.family)}</span><span>{q.choices} 个候选</span>{!q.ready&&<span>资料待补充</span>}</div>{onRead?<button className="data-title-button" aria-label={`阅读 ${q.id}`} onClick={()=>onRead(q.key)}>{q.prompt||q.id}</button>:<h3>{q.prompt||q.id}</h3>}<small>{q.model_types.join(' · ')} · {q.id}</small></div>{onRead&&<BookOpen size={19}/>}</article>)}
+    {members.data?.total===0&&<div className="data-empty"><BookOpen size={30}/><h2>{filters.search?'没有找到匹配题目':'这个 Dataset 还没有题目'}</h2><p>从总题库选入、导入题包，或构建新的题目。</p></div>}
+    <div className="data-pagination"><button disabled={!offset} onClick={()=>navigate(filters,Math.max(0,offset-25))}>上一页</button><span>第 {Math.floor(offset/25)+1} 页</span><button disabled={!members.data||offset+25>=members.data.total} onClick={()=>navigate(filters,offset+25)}>下一页</button></div>
+   </>}
+  </>}
+ </section>;
+}

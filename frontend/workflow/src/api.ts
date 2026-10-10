@@ -3,6 +3,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly details?: unknown,
   ) {
     super(message);
   }
@@ -33,8 +34,9 @@ export async function api<T = any>(
   if (!response.ok) {
     const detail = data?.detail ?? data;
     throw new ApiError(
-      typeof detail === "string" ? detail : JSON.stringify(detail),
+      typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail),
       response.status,
+      detail,
     );
   }
   return data as T;

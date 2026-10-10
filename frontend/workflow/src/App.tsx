@@ -1,4 +1,5 @@
 import {Rag} from './Rag';
+import {DataWorkspace} from './DataWorkspace';
 import { useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -29,6 +30,7 @@ import { KB } from "./KB";
 import { ErrorBox, useResource } from "./ui";
 import type { Bootstrap } from "./types";
 const navigation = [
+  {id:"data",name:"Data · 题库",en:"Datasets & questions",icon:Database},
   {id:"rag",name:"RAG 作答",en:"Question-aware retrieval",icon:BookOpen},
   { id: "questions", name: "题库", en: "Question catalog", icon: Database },
   { id: "workflow", name: "工作流", en: "Workflow canvas", icon: FlowIcon },
@@ -45,7 +47,7 @@ const navigation = [
 export default function App() {
   const [page, setPage] = useState(() => {
     const id = location.hash.slice(1);
-    return navigation.some((n) => n.id === id) ? id : "workflow";
+    return navigation.some((n) => n.id === id) ? id : "data";
   });
   const [version, setVersion] = useState(0);
   const bootstrap = useResource<Bootstrap>("/bootstrap", version);
@@ -102,10 +104,10 @@ export default function App() {
       <aside className={`sidebar ${sidebar ? "visible" : ""}`}>
         <a
           className="brand"
-          href="#workflow"
+          href="#data"
           onClick={(e) => {
             e.preventDefault();
-            navigate("workflow");
+            navigate("data");
           }}
         >
           <span className="brand-mark">
@@ -232,7 +234,9 @@ export default function App() {
                 : undefined
             }
           />
-          {page === "questions" ? (
+          {page === "data" ? (
+            data && <DataWorkspace version={version} act={act} bootstrap={data} onRag={key=>{setRagQuestion(key);navigate("rag");}} onRun={onRun}/>
+          ) : page === "questions" ? (
             <Questions version={version} act={act} onSet={onSet} onRag={key=>{setRagQuestion(key);navigate("rag");}} />
           ) : page === "rag" ? (
             <Rag version={version} act={act} models={data?.models || []} executionEnabled={!!data?.service.execution_enabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>

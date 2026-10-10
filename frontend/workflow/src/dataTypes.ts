@@ -1,0 +1,16 @@
+import type {Question,Json} from './types';
+export type DatasetRef={collection_id:string;revision:string};
+export type PairManifest=Json & {pair_key:string;members:Array<{key:string;role:string}>};
+export type DatasetRevision=DatasetRef & {parent_revision:string|null;name:string;description:string;archived:boolean;selection_mode:'single'|'pairs';keys:string[];pairs:PairManifest[];created_at:string};
+export type DatasetSummary=DatasetRef & {name:string;description:string;archived:boolean;selection_mode:'single'|'pairs';count:number;pair_count:number;families:string[];updated_at:string};
+export type DataQuestion=Question & {prompt?:string;split?:string;hash?:string};
+export type BankItem={equivalence_id:string;representative_key:string;keys:string[];summary:DataQuestion;sources:Json[];datasets:DatasetSummary[]};
+export type Page<T>={items:T[];total:number;offset:number;limit:number};
+export type QuestionFilters={search?:string;family?:string;type?:string;split?:'discovery'|'development'|'final'};
+export type Selection={keys?:string[];pair_keys?:string[];filters?:QuestionFilters;limit?:number;seed?:number};
+export type DatasetBinding=DatasetRef & {selection:Selection;keys:string[];hashes:string[];pair_keys:string[]};
+export type SelectionPreview={binding:DatasetBinding;preview_hash:string;can_apply:boolean;blockers:Array<{key:string;code:string;message:string}>;questions:Json[];count:number;pair_count:number};
+export type DatasetAttachment={status:'attached'|'revision_conflict'|'archived'|'empty'|'unavailable';target:DatasetRef;result_revision?:string;question_keys:string[];pair_keys:string[];message?:string};
+export type BrowseLocation={view:'datasets'}|{view:'bank';filters:QuestionFilters;offset:number}|{view:'dataset';ref:DatasetRef;filters:QuestionFilters;offset:number};
+export type DataLocation=BrowseLocation|{view:'question';key:string;returnTo:BrowseLocation}|{view:'builder';target?:DatasetRef;returnTo:BrowseLocation};
+export const datasetRef=(value:DatasetRef):DatasetRef=>({collection_id:value.collection_id,revision:value.revision});
