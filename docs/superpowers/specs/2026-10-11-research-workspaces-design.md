@@ -95,7 +95,7 @@ Dataset 可以收纳尚未完整或暂不适用的题目；运行预览按照具
 
 ## Harness
 
-“结构化规则 KB 迭代”模板的补充设计见 [规则发现与迭代 Harness 设计](2026-10-11-rule-refinement-harness-design.md)。该文当前为待审阅提案，细化程序执行规则、反例修订与新题挑战；不改变本文已有方法、独立评测和历史版本的边界。
+“结构化规则 KB 迭代”模板的补充设计见 [规则发现与迭代 Harness 设计](2026-10-11-rule-refinement-harness-design.md)。该设计已确认，实施计划见 [Harness 闭环实施计划](../plans/2026-10-11-rule-refinement-harness.md)，细化程序执行规则、反例修订与新题挑战；不改变本文已有方法、独立评测和历史版本的边界。
 
 ### 编辑体验
 
