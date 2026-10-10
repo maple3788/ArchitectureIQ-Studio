@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QuestionReader } from "./QuestionReader";
 
@@ -122,4 +122,22 @@ it("preserves layer patterns, language model axes and explicit zero values in mi
   expect(screen.getByText("注意力头数").closest("tr")!.textContent).toContain("4");
   expect(screen.getByText("权重衰减").closest("tr")!.querySelector("td")!.textContent).toBe("0");
   expect(screen.getByText("动量").closest("tr")!.querySelector("td")!.textContent).toBe("0");
+});
+
+it('selects and compares candidates locally, supports keyboard movement and resets for a new exact question',()=>{
+ const network=vi.fn();vi.stubGlobal('fetch',network);
+ const third=choice('C','tanh',2048);
+ const value={...record,detail:{...record.detail,choices:[...record.detail.choices,third]}};
+ const {rerender}=render(<QuestionReader record={value} interactive questionKey="q@v1"/>);
+ fireEvent.click(screen.getByRole('radio',{name:'候选 A'}));
+ fireEvent.keyDown(screen.getByRole('radio',{name:'候选 A'}),{key:'ArrowRight'});
+ expect((screen.getByRole('radio',{name:'候选 B'}) as HTMLInputElement).checked).toBe(true);
+ fireEvent.click(screen.getByRole('checkbox',{name:'对比候选 A'}));fireEvent.click(screen.getByRole('checkbox',{name:'对比候选 C'}));
+ const comparison=screen.getByRole('table',{name:'候选差异'});
+ expect(within(comparison).queryByRole('columnheader',{name:'候选 B'})).toBeNull();
+ expect(comparison.textContent).toContain('tanh');expect(network).not.toHaveBeenCalled();
+ expect(document.body.textContent).not.toMatch(/SECRET-WINNER|SECRET-METRIC|WRONG-SOURCE/);
+ rerender(<QuestionReader record={value} interactive questionKey="q@v2"/>);
+ expect(screen.getAllByRole('radio').some(input=>(input as HTMLInputElement).checked)).toBe(false);
+ vi.unstubAllGlobals();
 });

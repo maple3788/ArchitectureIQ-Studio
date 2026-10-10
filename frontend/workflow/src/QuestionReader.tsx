@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -126,7 +126,10 @@ function viewGroups(view: Json): Record<string, Json> {
   return {model,optimizer,loss,budget};
 }
 
-export function QuestionReader({record}: {record:Json}) {
+export function QuestionReader({record,interactive=false,questionKey}: {record:Json;interactive?:boolean;questionKey?:string}) {
+  const [selected,setSelected]=useState<string>();
+  const [compared,setCompared]=useState<string[]>([]);
+  useEffect(()=>{setSelected(undefined);setCompared([]);setTab("structured");},[questionKey]);
   const [tab,setTab] = useState("structured");
   const readerId = useId();
   const detail = object(record.detail), pub = object(record.public), metadata = object(record.metadata);
@@ -139,7 +142,7 @@ export function QuestionReader({record}: {record:Json}) {
     const fallback = viewGroups(object(item.view));
     const groups = Object.fromEntries(sections.map(section=>[section.key,
       Object.keys(spec).length ? object(spec[section.key]) : fallback[section.key as keyof typeof fallback]]));
-    return {letter:String(item.letter ?? source.letter ?? index+1), files, spec, groups,
+    return {identity:String(item.id ?? item.candidateId ?? source.candidateId ?? spec.candidate_id ?? ""),letter:String(item.letter ?? source.letter ?? index+1), files, spec, groups,
       full:Object.keys(spec).length ? spec : object(item.view)};
   });
   const dataset = object(detail.dataset), datasetFiles = object(dataset.files);
@@ -153,7 +156,8 @@ export function QuestionReader({record}: {record:Json}) {
   const narrative = datasetText(prompt);
   const profile = metadata.profile ?? choices.find(c=>c.spec.profile)?.spec.profile;
   const facts = dataKeys.filter(key=>present(params[key]));
-  const rows = comparisonRows(choices);
+  const comparing=interactive&&compared.length===2?choices.filter(c=>compared.includes(c.identity)):choices;
+  const rows = comparisonRows(comparing);
   const differences = rows.filter(row=>row.different), common = rows.filter(row=>!row.different);
   const title = [family ? families[family] || text(family) : "训练方案对比", metadata.type ? types[metadata.type] || text(metadata.type) : undefined].filter(Boolean).join(" · ");
   const dataFacts = facts.length ? <dl className="question-reader-facts">{facts.map(key=><div key={key} className={key==="expression" ? "question-reader-expression" : ""}><dt>{labels[key] || key}</dt><dd>{text(params[key])}</dd></div>)}</dl>
@@ -182,9 +186,17 @@ export function QuestionReader({record}: {record:Json}) {
           <span>{choices.length} 个候选</span>{profile && <span>Profile {text(profile)}</span>}
         </div>
       </header>
+      {interactive&&<fieldset className="question-reader-options"><legend>选择候选方案</legend><p>点击选项记录当前判断；选择两个候选可集中比较差异。</p><div className="question-reader-option-grid" role="radiogroup" aria-label="候选方案">
+        {choices.map((choice,index)=><div className={`question-reader-option ${selected===choice.identity&&choice.identity?'is-selected':''}`} key={choice.identity||index}>
+          <label><input id={`${readerId}-option-${index}`} type="radio" name={`${readerId}-answer`} aria-label={`候选 ${choice.letter}`} disabled={!choice.identity} checked={!!choice.identity&&selected===choice.identity} onChange={()=>setSelected(choice.identity)} onKeyDown={e=>{
+            if(['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'].includes(e.key)){e.preventDefault();const step=['ArrowRight','ArrowDown'].includes(e.key)?1:-1;const next=(index+step+choices.length)%choices.length;if(choices[next].identity){setSelected(choices[next].identity);document.getElementById(`${readerId}-option-${next}`)?.focus();}}
+          }}/><strong>候选 {choice.letter}</strong><span>{text(choice.groups.model.type??choice.groups.optimizer.type??'已记录方案')}</span></label>
+          <label className="question-reader-compare-check"><input type="checkbox" aria-label={`对比候选 ${choice.letter}`} checked={compared.includes(choice.identity)} disabled={!choice.identity||(compared.length===2&&!compared.includes(choice.identity))} onChange={e=>setCompared(e.target.checked?[...compared,choice.identity]:compared.filter(id=>id!==choice.identity))}/>加入对比</label>
+        </div>)}
+      </div></fieldset>}
       <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">高亮行表示候选间存在差异</span></div>
-        {differences.length ? <ComparisonTable choices={choices} rows={differences} label="候选差异"/> : <p className="question-reader-note">{choices.length ? "已记录的主要设置没有差异；请展开完整配置并核对原始题面。" : "候选配置未记录，请查阅原始 Prompt。"}</p>}
-        {!!common.length && <details className="question-reader-disclosure question-reader-common"><summary>共同设置</summary><ComparisonTable choices={choices} rows={common} label="共同设置"/></details>}
+        {differences.length ? <ComparisonTable choices={comparing} rows={differences} label="候选差异"/> : <p className="question-reader-note">{choices.length ? "已记录的主要设置没有差异；请展开完整配置并核对原始题面。" : "候选配置未记录，请查阅原始 Prompt。"}</p>}
+        {!!common.length && <details className="question-reader-disclosure question-reader-common"><summary>共同设置</summary><ComparisonTable choices={comparing} rows={common} label="共同设置"/></details>}
         <p className="question-reader-note">预算按候选分别列出：总训练样本量 = 训练步数 × 每批样本数，单位为数据样本或窗口。未记录的字段不会补齐；逐层开关按模型中的层顺序排列。</p>
       </section>
       <section className="question-reader-section"><h3>数据与条件</h3>
