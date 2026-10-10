@@ -533,3 +533,16 @@ it("single mode replaces the earlier choice and freezes exactly one real key",as
  fireEvent.click(screen.getByRole('button',{name:'应用所选题目'}));
  await waitFor(()=>expect(calls.find(c=>c.path==='/api/studio/question-sets'&&c.body)?.body.keys).toEqual(['q2@rev']));
 });
+
+it('RAG accepts non-discovery public questions without GT and does not create a set',async()=>{
+ const calls:string[]=[];const onSelectQuestion=vi.fn();
+ vi.stubGlobal('fetch',async(path:string)=>{
+  calls.push(path);
+  if(path.includes('/questions?'))return response({items:[{...q(1),split:'final',ready:false,rag_ready:true}],total:1});
+  return response({metadata:{key:'q1@rev',rag_ready:true},public:{id:'q1',family:'regression',prompt:'公开问题',choices:[{letter:'A',id:'a',view:{}},{letter:'B',id:'b',view:{}}]}});
+ });
+ render(<QuestionPicker version={0} act={async fn=>fn()} purpose="rag" single onSelectQuestion={onSelectQuestion} onClose={()=>{}}/>);
+ fireEvent.click(await screen.findByLabelText('选择 q1'));fireEvent.click(screen.getByRole('button',{name:'应用所选题目'}));
+ await waitFor(()=>expect(onSelectQuestion).toHaveBeenCalledWith('q1@rev'));
+ expect(calls.some(p=>p.includes('split='))).toBe(false);expect(calls.some(p=>p.includes('/question-sets'))).toBe(false);
+});

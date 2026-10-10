@@ -15,6 +15,7 @@ export type Question = {
   pair_id?: string;
   lineage_id?: string;
   ready: boolean;
+  rag_ready?: boolean;
   issues: any[];
   source_count: number;
 };

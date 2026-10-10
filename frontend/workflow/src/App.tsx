@@ -1,3 +1,4 @@
+import {Rag} from './Rag';
 import { useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -28,6 +29,7 @@ import { KB } from "./KB";
 import { ErrorBox, useResource } from "./ui";
 import type { Bootstrap } from "./types";
 const navigation = [
+  {id:"rag",name:"RAG 作答",en:"Question-aware retrieval",icon:BookOpen},
   { id: "questions", name: "题库", en: "Question catalog", icon: Database },
   { id: "workflow", name: "工作流", en: "Workflow canvas", icon: FlowIcon },
   { id: "models", name: "模型", en: "Model registry", icon: Layers3 },
@@ -51,6 +53,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
   const [sidebar, setSidebar] = useState(false);
+  const [ragQuestion,setRagQuestion]=useState<string>();
   const [setId, setSetId] = useState<string>();
   const [runId, setRunId] = useState<string>();
   const [workflowRunId, setWorkflowRunId] = useState<string>();
@@ -230,7 +233,9 @@ export default function App() {
             }
           />
           {page === "questions" ? (
-            <Questions version={version} act={act} onSet={onSet} />
+            <Questions version={version} act={act} onSet={onSet} onRag={key=>{setRagQuestion(key);navigate("rag");}} />
+          ) : page === "rag" ? (
+            <Rag version={version} act={act} models={data?.models || []} executionEnabled={!!data?.service.execution_enabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
           ) : page === "workflow" ? (
             <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act}>
               <Workflow

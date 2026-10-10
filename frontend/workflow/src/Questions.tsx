@@ -36,10 +36,12 @@ export function Questions({
   version,
   act,
   onSet,
+  onRag,
 }: {
   version: number;
   act: Action;
   onSet: (id: string) => void;
+  onRag?: (key:string)=>void;
 }) {
   const [filters, setFilters] = useState({
     search: "",
@@ -338,7 +340,7 @@ export function Questions({
         </div>
       </Card>
       {detail && (
-        <QuestionDetail key={detail} id={detail} version={version} onClose={() => setDetail(undefined)} />
+        <QuestionDetail onRag={onRag} key={detail} id={detail} version={version} onClose={() => setDetail(undefined)} />
       )}
       {saveOpen && (
         <Drawer
@@ -501,7 +503,7 @@ export function Questions({
     </>
   );
 }
-function QuestionDetail({ id, version, onClose }: { id: string; version: number; onClose: () => void }) {
+function QuestionDetail({ id, version, onClose, onRag }: { id: string; version: number; onClose: () => void; onRag?: (key:string)=>void }) {
   const { data, error, loading } = useResource<Json>(
     "/questions/" + encodeURIComponent(id),
     version,
@@ -517,7 +519,7 @@ function QuestionDetail({ id, version, onClose }: { id: string; version: number;
       {loading ? (
         <Loading />
       ) : (
-        data ? <QuestionReader key={id} record={data}/> : null
+        data ? <>{onRag && <button className="primary" disabled={data.metadata?.rag_ready === false} onClick={()=>onRag(id)}>用 RAG 匹配 KB 作答</button>}<QuestionReader key={id} record={data}/></> : null
       )}
     </Drawer>
     </div>

@@ -1,3 +1,4 @@
+import {publicRagReady} from './ragTypes';
 import { questionLabel, familyLabel } from "./displayNames";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -31,9 +32,10 @@ type PickerQuestion = Question & {
 };
 function selectionIssueFor(
   question: Partial<PickerQuestion> | undefined,
-  purpose: "research" | "evaluation",
+  purpose: "research" | "evaluation" | "rag",
   phase: "development" | "final",
 ) {
+  if (purpose === "rag") return question?.rag_ready === false ? "题目公开输入不可用" : "";
   if (purpose === "evaluation") {
     if (!question?.split) return "此题未记录评测分区，暂不能选用";
     if (question.split !== phase)
@@ -63,21 +65,23 @@ export function QuestionPicker({
   phase = "final",
   single = false,
   onApply,
+  onSelectQuestion,
   onClose,
 }: {
   version: number;
   act: Action;
   questionSetId?: string;
-  purpose?: "research" | "evaluation";
+  purpose?: "research" | "evaluation" | "rag";
   phase?: "development" | "final";
   single?: boolean;
-  onApply: (set: QuestionSet) => void;
+  onApply?: (set: QuestionSet) => void;
+  onSelectQuestion?: (key:string) => void;
   onClose: () => void;
 }) {
   const selectionIssue = (q?: Partial<PickerQuestion>) =>
     selectionIssueFor(q, purpose, phase);
   const title =
-    purpose === "evaluation" ? "选择独立评测题目" : "选择工作流题目";
+    purpose === "rag" ? "选择 RAG 题目" : purpose === "evaluation" ? "选择独立评测题目" : "选择工作流题目";
   const dialog = useRef<HTMLElement>(null);
   const detailPanel = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLButtonElement | null>(null);
@@ -109,7 +113,7 @@ export function QuestionPicker({
   );
   const query = new URLSearchParams({
     ...filters,
-    ...(purpose === "evaluation" ? { split: phase } : single ? {split:"discovery"} : {}),
+    ...(purpose === "evaluation" ? { split: phase } : single && purpose !== "rag" ? {split:"discovery"} : {}),
     offset: String(offset),
     limit: String(PAGE_SIZE),
   });
@@ -135,7 +139,7 @@ export function QuestionPicker({
     observedIssues[key] ||
     "";
   const selectableRows = rows.filter((q) => !issueFor(q.key));
-  const toggleSelection=(current:string[],keys:string[],checked:boolean)=>single?(checked?keys.slice(0,1):current.filter(k=>!keys.includes(k))):toggleKeys(current,keys,checked);
+  const toggleSelection=(current:string[],keys:string[],checked:boolean)=>(single || purpose === "rag")?(checked?keys.slice(0,1):current.filter(k=>!keys.includes(k))):toggleKeys(current,keys,checked);
   const excludedSelected = selected.filter((key) => !!issueFor(key));
   const change = (key: keyof typeof filters, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -298,6 +302,16 @@ export function QuestionPicker({
     if (!ready || !selected.length || saving || excludedSelected.length) return;
     setSaving(true);
     setError("");
+    if (purpose === "rag") {
+      try {
+        const key = selected[0];
+        const record = await api<Json>("/questions/" + encodeURIComponent(key));
+        if (record.metadata?.rag_ready === false || !publicRagReady(record)) throw Error("题目公开输入不可用");
+        if (mounted.current) onSelectQuestion?.(key);
+      } catch (e) { if (mounted.current) setError((e as Error).message); }
+      finally { if (mounted.current) setSaving(false); }
+      return;
+    }
     try {
       const result = await act(async () => {
         try {
@@ -312,7 +326,7 @@ export function QuestionPicker({
           throw e;
         }
       }, "题目选择已冻结保存");
-      if (result && mounted.current) onApply(result);
+      if (result && mounted.current) onApply?.(result);
     } catch (e) {
       if (mounted.current) setError((e as Error).message);
     } finally {
@@ -536,7 +550,7 @@ export function QuestionPicker({
                     <input
                       type="checkbox"
                       aria-label="选择当前页"
-                      disabled={single || !ready || saving || !selectableRows.length}
+                      disabled={single || purpose === "rag" || !ready || saving || !selectableRows.length}
                       checked={
                         !!selectableRows.length &&
                         selectableRows.every((q) => selected.includes(q.key))
@@ -763,14 +777,14 @@ export function QuestionPicker({
               清空选择
             </button>
           </div>
-          <Field label="题集名称">
+          {purpose !== "rag" && <Field label="题集名称">
             <input
               value={setName}
               disabled={!ready || saving}
               placeholder="可选，应用时自动命名"
               onChange={(e) => setSetName(e.target.value)}
             />
-          </Field>
+          </Field>}
           {excludedSelected.length > 0 && (
             <div className="question-picker-excluded-selection" role="alert">
               <p>
