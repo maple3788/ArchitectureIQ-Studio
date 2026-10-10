@@ -801,3 +801,10 @@ it('refreshes question-set metadata when another browser selects a newly created
  expect(await screen.findByText('另一浏览器新建的三题研究集')).toBeTruthy();
  expect(screen.getByText('3 题 · 按冻结顺序研究')).toBeTruthy();
 });
+it('opens Dataset selection from the current workflow without replacing the old picker',async()=>{
+ setup();
+ fireEvent.click(await screen.findByRole('button',{name:'从 Dataset 选择'}));
+ expect(await screen.findByRole('dialog',{name:'选择 Dataset 输入'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'关闭 Dataset 选择'}));
+ expect(screen.queryByRole('dialog',{name:'选择 Dataset 输入'})).toBeNull();
+});

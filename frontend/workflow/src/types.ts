@@ -20,6 +20,7 @@ export type Question = {
   source_count: number;
 };
 export type QuestionSet = {
+  dataset_binding?: import("./dataTypes").DatasetBinding;
   selection_mode?: "single" | "pairs";
   pair_keys?: string[];
   pairs?: any[];

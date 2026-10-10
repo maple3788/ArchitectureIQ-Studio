@@ -43,6 +43,7 @@ import {
 import { api, ApiError, items } from "./api";
 import { formatTimestamp } from "./time";
 import { RolePrompt } from "./RolePrompt";
+import {DatasetInputPicker} from "./DatasetInputPicker";
 import { QuestionPicker } from "./QuestionPicker";
 import { PairPicker } from "./PairPicker";
 import { WorkflowStages } from "./WorkflowStages";
@@ -306,6 +307,7 @@ export function Workflow({
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [datasetPickerOpen,setDatasetPickerOpen]=useState(false);
   const [pickerMode, setPickerMode] = useState<"single" | "pairs">("single");
   const [pickerPurpose, setPickerPurpose] = useState<"research" | "evaluation">(
     "research",
@@ -864,6 +866,7 @@ export function Workflow({
       </section>}
       <ErrorBox error={error || defaults.error} />
       {!showBasic&&!liveRun.run&&<div className="basic-entry"><p>保留当前高级草稿，也可以从一道题开始学习。</p><button onClick={()=>void switchMethod('basic_learning')}>单题学习</button></div>}
+      {!liveRun.run&&<div className="dataset-workflow-entry"><span>从命名 Dataset 固定实验输入</span><button onClick={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}}>从 Dataset 选择</button>{!showBasic&&<button onClick={()=>{setPickerPurpose('evaluation');setDatasetPickerOpen(true);}}>从 Dataset 选择评测题</button>}</div>}
       {showBasic?<><BasicLearning workflow={workflow} models={items(models.data)} researchSet={chosenSet} onResearch={()=>{setFreshBasic(false);openPicker('research','single');}} onSetting={setSetting} onPrompt={(id,prompt)=>setWorkflow(updatePrompt(workflow,id,prompt))} rolePrompts={rolePrompts} version={version} run={liveRun.run} syncError={liveRun.syncState?.error} act={liveRun.act}/>
         {!liveRun.run&&<details className="basic-advanced"><summary>高级方法与草稿管理</summary><Field label="切换学习方法"><select aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}><option value="basic_learning">单题学习</option>{(methods.data?.items??[]).filter(m=>m.id!=='basic_learning').map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}</select></Field><div className="basic-advanced-tools"><button onClick={()=>void save()}>保存版本</button><button onClick={exportJson}>导出 JSON</button><label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label><button onClick={()=>setHistoryOpen(true)}>历史版本</button>{advancedBackup&&<button onClick={()=>{setFreshBasic(false);setWorkflow(advancedBackup);setNotice('已恢复切换前的高级草稿。');}}>恢复原高级草稿</button>}</div></details>}
       </>:<WorkflowStages
@@ -1498,6 +1501,7 @@ export function Workflow({
           恢复默认
         </button>
       </div>
+      {datasetPickerOpen&&<DatasetInputPicker purpose={pickerPurpose} phase={taskPhase} methodId={workflow.settings.method_id} selectionMode={workflow.settings.learning_protocol?.startsWith('paired')?'pairs':'single'} single={workflow.settings.method_id==='basic_learning'&&pickerPurpose==='research'} onApply={set=>{(pickerPurpose==='evaluation'?applyTaskQuestions:applyQuestions)(set);setDatasetPickerOpen(false);}} onClose={()=>setDatasetPickerOpen(false)}/>}
       {pickerOpen && pickerMode === "pairs" && (
         <PairPicker version={version} act={act} purpose={pickerPurpose} phase={taskPhase}
           questionSetId={(pickerPurpose === "evaluation" ? chosenTaskSet : chosenSet)?.selection_mode === "pairs"

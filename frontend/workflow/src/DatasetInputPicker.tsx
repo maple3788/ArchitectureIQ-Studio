@@ -1,0 +1,31 @@
+import {useState} from 'react';
+import {api} from './api';
+import {ErrorBox,Field,Loading,useResource} from './ui';
+import {datasetRef,type DatasetRef,type DatasetSummary,type DatasetRevision,type DataQuestion,type Page,type Selection,type SelectionPreview} from './dataTypes';
+import type {QuestionSet} from './types';
+import './data-workspace.css';
+export function DatasetInputPicker({purpose,phase,methodId,selectionMode,single,onApply,onClose}:{purpose:'research'|'evaluation';phase?:'development'|'final';methodId?:string;selectionMode:'single'|'pairs';single:boolean;onApply:(set:QuestionSet)=>void;onClose:()=>void}){
+ const [selected,setSelected]=useState<DatasetRef>(),[search,setSearch]=useState(''),[offset,setOffset]=useState(0),[selection,setSelection]=useState<Selection>({}),[preview,setPreview]=useState<SelectionPreview>();
+ const [limit,setLimit]=useState(''),[seed,setSeed]=useState('7'),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const datasets=useResource<Page<DatasetSummary>>('/datasets?limit=1000');
+ const resource=useResource<DatasetRevision>(selected?`/datasets/${selected.collection_id}?revision=${selected.revision}`:null);
+ const dataset=resource.data?.collection_id===selected?.collection_id?resource.data:undefined;
+ const members=useResource<Page<DataQuestion>>(selected?`/datasets/${selected.collection_id}/questions?`+new URLSearchParams({revision:selected.revision,search,offset:String(offset),limit:'25'}):null);
+ const update=(value:Selection)=>{setSelection(value);setPreview(undefined);setError('');};
+ const body=(value:Selection)=>({revision:selected!.revision,selection:value,purpose,...(methodId?{method_id:methodId}:{}),...(purpose==='evaluation'?{phase:phase||'final'}:{})});
+ const preflight=async(value=selection)=>{if(!selected)return;setBusy(true);setError('');setPreview(undefined);try{setPreview(await api<SelectionPreview>(`/datasets/${selected.collection_id}/selection-preview`,body(value)));}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+ const apply=async()=>{if(!selected||!preview?.can_apply)return;setBusy(true);setError('');try{const result=await api<QuestionSet>(`/datasets/${selected.collection_id}/question-set`,{...body(selection),preview_hash:preview.preview_hash});setPreview(undefined);onApply(result);}catch(e){setError((e as Error).message);setPreview(undefined);}finally{setBusy(false);}};
+ const toggle=(key:string,checked:boolean)=>{const field=selectionMode==='pairs'?'pair_keys':'keys';const keys=selection[field]||[];update({[field]:checked?(single?[key]:[...keys,key]):keys.filter(k=>k!==key)});};
+ return <div className="data-dialog-backdrop"><section className="data-dialog dataset-input-dialog" role="dialog" aria-modal="true" aria-label="选择 Dataset 输入" onKeyDown={e=>{if(e.key==='Escape'&&!busy)onClose();}}>
+ <div className="data-toolbar"><div><p className="data-eyebrow">FROZEN DATASET INPUT</p><h2>{purpose==='evaluation'?'选择独立评测材料':'选择研究材料'}</h2></div><button aria-label="关闭 Dataset 选择" disabled={busy} onClick={onClose}>关闭</button></div>
+ <ErrorBox error={error||datasets.error||resource.error||members.error}/>
+ {datasets.loading?<Loading/>:<Field label="选择 Dataset"><select disabled={busy} value={selected?.collection_id||''} onChange={e=>{const d=datasets.data?.items.find(item=>item.collection_id===e.target.value);setSelected(d?datasetRef(d):undefined);update({});setOffset(0);setSearch('');}}><option value="">请选择题库</option>{datasets.data?.items.filter(d=>d.selection_mode===selectionMode).map(d=><option key={d.collection_id} value={d.collection_id}>{d.name} · {d.count} 道题</option>)}</select></Field>}
+ {dataset&&<><p className="muted">使用固定版本 {dataset.revision.slice(0,8)}；后续编辑题库不会改变本次输入。</p><div className="data-toolbar"><input aria-label="筛选 Dataset 输入" placeholder="筛选公开题面" disabled={busy} value={search} onChange={e=>{setSearch(e.target.value);setOffset(0);setPreview(undefined);}}/><button disabled={busy} onClick={()=>{update({});void preflight({});}}>使用整个 Dataset</button></div>
+ <div className="dataset-input-members">{selectionMode==='pairs'?dataset.pairs.map(pair=><label className="data-pair-choice" key={pair.pair_key}><input type="checkbox" disabled={busy} aria-label={`题对 ${pair.pair_key.slice(0,8)}`} checked={selection.pair_keys?.includes(pair.pair_key)||false} onChange={e=>toggle(pair.pair_key,e.target.checked)}/><span>完整题对 · {pair.pair_key.slice(0,8)}<small>{pair.members.map(m=>m.role).join(' ↔ ')}</small></span></label>):members.data?.items.map(q=><label className="data-pair-choice" key={q.key}><input type="checkbox" aria-label={q.id} disabled={busy} checked={selection.keys?.includes(q.key)||false} onChange={e=>toggle(q.key,e.target.checked)}/><span>{q.prompt||q.id}<small>{q.id} · {q.split||'分区未记录'}{!q.ready?' · 资料待补充':''}</small></span></label>)}</div>
+ {selectionMode==='single'&&<div className="data-pagination"><button disabled={busy||!offset} onClick={()=>setOffset(v=>Math.max(0,v-25))}>上一页</button><span>{members.data?.total??0} 道题</span><button disabled={busy||!members.data||offset+25>=members.data.total} onClick={()=>setOffset(v=>v+25)}>下一页</button></div>}
+ <details className="data-sampling"><summary>按筛选或固定种子抽样</summary><div className="form-grid"><Field label={selectionMode==='pairs'?'抽样题对数':'抽样题目数'}><input type="number" min={1} disabled={busy} value={limit} onChange={e=>{setLimit(e.target.value);setPreview(undefined);}} placeholder="留空使用全部筛选结果"/></Field><Field label="抽样 seed"><input type="number" disabled={busy} value={seed} onChange={e=>{setSeed(e.target.value);setPreview(undefined);}}/></Field></div><button disabled={busy} onClick={()=>{const value:Selection={filters:{search},...(limit?{limit:Number(limit),seed:Number(seed)}:{})};update(value);void preflight(value);}}>按筛选预览</button></details>
+ {preview&&<section className="data-input-preview"><p>实际输入：{preview.count} 道题{preview.pair_count?` / ${preview.pair_count} 个完整题对`:''}</p>{preview.blockers.map((b,i)=><p role="alert" key={i}>{b.message}{b.key&&<small> · {b.key}</small>}</p>)}</section>}
+ <div className="data-actions"><button disabled={busy} onClick={()=>void preflight()}>预览选择</button><button className="primary" disabled={busy||!preview?.can_apply} onClick={()=>void apply()}>应用到工作流</button></div>
+ </>}
+ </section></div>;
+}
