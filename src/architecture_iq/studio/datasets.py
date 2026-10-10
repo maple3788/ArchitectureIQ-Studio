@@ -96,7 +96,7 @@ class DatasetStore:
                 seen.add(identity)
         return selected
 
-    def _members(self, keys=None, pair_keys=None):
+    def _members(self, keys=None, pair_keys=None, *, frozen_pairs=()):
         if keys is not None and pair_keys is not None:
             raise ValueError('keys and pair_keys are mutually exclusive')
         if pair_keys is None:
@@ -104,8 +104,11 @@ class DatasetStore:
         if not isinstance(pair_keys, list) or any(not isinstance(k, str) for k in pair_keys):
             raise ValueError('pair_keys must be an ordered list')
         pairs, members = [], []
+        retained = {p['pair_key']: p for p in frozen_pairs}
         for key in dict.fromkeys(pair_keys):
-            pair = self.catalog.get_question_pair(key)
+            # Existing membership refers to the verified immutable Dataset body.
+            # Newly imported aliases must not reinterpret that exact pair.
+            pair = retained[key] if key in retained else self.catalog.get_question_pair(key)
             if len(pair['members']) != 2 or {m['role'] for m in pair['members']} != {'original', 'counterfactual'}:
                 raise ValueError('Dataset requires complete, unambiguous question pairs')
             pairs.append(pair)
@@ -156,7 +159,7 @@ class DatasetStore:
             if 'keys' in changes or 'pair_keys' in changes:
                 if any(changes[k] is None for k in ('keys', 'pair_keys') if k in changes):
                     raise ValueError('Member lists cannot be null')
-                body.update(self._members(changes.get('keys'), changes.get('pair_keys')))
+                body.update(self._members(changes.get('keys'), changes.get('pair_keys'), frozen_pairs=current['pairs']))
             body['archived'] = changes.get('archived', current['archived'])
             if all(body[k] == current[k] for k in body):
                 result = current

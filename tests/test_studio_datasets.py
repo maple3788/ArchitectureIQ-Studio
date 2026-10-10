@@ -106,3 +106,9 @@ def test_pair_revision_survives_later_catalog_pair_ambiguity(tmp_path):
     assert s.get(a['collection_id'])['pairs'] == [pair]
     assert len(a['keys']) == 2
     assert 'correct_letter' not in json.dumps(a)
+    edited = s.revise(a['collection_id'], expected_revision=a['revision'],
+                      changes={'name': 'Retained pair', 'pair_keys': [pair['pair_key']]}, operation_id='retain')
+    assert edited['pairs'] == a['pairs'] and edited['keys'] == a['keys']
+    assert s.get(a['collection_id'], a['revision']) == a
+    with pytest.raises(KeyError):
+        s.create(name='New ambiguous pair', pair_keys=[pair['pair_key']], operation_id='ambiguous')

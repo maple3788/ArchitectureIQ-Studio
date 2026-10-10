@@ -34,6 +34,12 @@ def query_fields(request, allowed):
         raise ValueError('Unknown Dataset query fields')
 
 
+def text_fields(body, names):
+    if any(not isinstance(body[name], str) or not body[name].strip() for name in names):
+        raise ValueError('Dataset references must be nonempty strings')
+    return body
+
+
 def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
     prefix = '/api/studio'
     api.state.datasets, api.state.question_bank = datasets, bank
@@ -61,7 +67,8 @@ def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
     @api.post(prefix + '/datasets/{collection_id}/revisions')
     def revise_dataset(collection_id: str, request: Request, body: dict = Body(...)):
         return data_call(lambda: datasets.revise(collection_id,
-            **fields(body, {'expected_revision', 'changes'}, {'expected_revision', 'changes'}),
+            **text_fields(fields(body, {'expected_revision', 'changes'}, {'expected_revision', 'changes'}),
+                          ('expected_revision',)),
             operation_id=request.headers.get('Idempotency-Key')))
 
     @api.get(prefix + '/datasets/{collection_id}/questions')
@@ -90,6 +97,7 @@ def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
     def attach_source(collection_id: str, request: Request, body: dict = Body(...)):
         def operation():
             fields(body, {'expected_revision', 'source_id'}, {'expected_revision', 'source_id'})
+            text_fields(body, ('expected_revision', 'source_id'))
             source = next((s for s in catalog.list_sources() if s['id'] == body['source_id']), None)
             if source is None:
                 raise KeyError('Unknown source')

@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from test_studio_api import make_client
 from test_studio_catalog import baked, bakefile
@@ -10,6 +11,20 @@ def create(client, name='A', **extra):
     response = client.post(PREFIX + '/datasets', json={'name': name, **extra}, headers={'Idempotency-Key': name})
     assert response.status_code == 200, response.text
     return response.json()
+
+
+@pytest.mark.parametrize('revision', [[], {}, None, 1, '', True])
+def test_import_rejects_malformed_revision_without_mutating_dataset(tmp_path, revision):
+    client, source = make_client(tmp_path)
+    path = bakefile(source / 'in.json', [baked()])
+    imported = client.post(PREFIX + '/sources/import', json={'path': str(path)}).json()
+    dataset = create(client)
+    base = PREFIX + f"/datasets/{dataset['collection_id']}"
+    response = client.post(base + '/imports', json={
+        'source_id': imported['source_id'], 'expected_revision': revision}, headers={'Idempotency-Key': 'bad'})
+    assert response.status_code == 422, response.text
+    assert response.json()['detail']['code'] == 'invalid_dataset_request'
+    assert client.get(base).json() == dataset
 
 
 def test_dataset_api_is_available_locally_and_returns_structured_conflict(tmp_path):

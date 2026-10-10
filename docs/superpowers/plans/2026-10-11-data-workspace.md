@@ -94,7 +94,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 - `equivalence_id(record: dict, *, question_key: str) -> str`：严格策略 `exact_question_v1`；不完整或无法证明等价的记录退回精确 revision 身份。
 - `QuestionBank(catalog: Catalog).refresh() -> dict` 与 `.list_questions(*, filters: dict | None = None, offset: int = 0, limit: int = 25) -> dict`；本任务 datasets 暂为空，Task 3 按成员关系补齐。
 
-- [ ] **Step 1: 写失败测试。** 复用 `test_studio_catalog.baked/bakefile`；以下是跨显示 ID 的完整等价案例：
+- [x] **Step 1: 写失败测试。** 复用 `test_studio_catalog.baked/bakefile`；以下是跨显示 ID 的完整等价案例：
 
 ```python
 def test_different_display_ids_share_exact_content_without_rewriting_records(tmp_path):
@@ -110,10 +110,10 @@ def test_different_display_ids_share_exact_content_without_rewriting_records(tmp
 
 同时增加参数化测试，分别改变候选顺序、候选 ID、dataset/lineage/pair/split、代码、配置和私有反馈，断言 total=2；相似 Prompt 不合并。测试同 ID 新内容保留版本、损坏文件可见但不可选、坏来源不能由等价组变为可用，以及跨分页总量无重复。
 
-- [ ] **Step 2: 确认测试失败。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_question_bank.py -q`，预期新模块/接口缺失，不能把依赖安装失败当作红灯。
-- [ ] **Step 3: 实现接口。** 从已校验记录复制私有等价投影，只移除 `public.id`、`metadata.id/key/hash` 和已知导入管理字段；保留所有语义字段。派生可用性不参与指纹，逐请求从原记录重新核验。未知审计结构无法安全归一时保守分开，禁止递归删除所有 `id` 或 `path`。缓存表位于 Catalog SQLite，带策略版本、原 key/hash 与索引状态；新增记录重建索引，返回代表记录前再次核验，损坏源作为结构化问题保留。代表记录在匹配筛选的有效成员中按 key 稳定选择，不改变 Dataset 中已选精确 key。
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_question_bank.py tests/test_studio_catalog.py -q`，预期全部通过；旧公共投影与固定题集 hash 行为不变。
-- [ ] **Step 5: 提交。** `git add src/architecture_iq/studio/question_equivalence.py src/architecture_iq/studio/question_bank.py src/architecture_iq/studio/catalog.py tests/test_studio_question_bank.py`；`git commit -m "feat: index exact question equivalence for Data"`。
+- [x] **Step 2: 确认测试失败。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_question_bank.py -q`，预期新模块/接口缺失，不能把依赖安装失败当作红灯。
+- [x] **Step 3: 实现接口。** 从已校验记录复制私有等价投影，只移除 `public.id`、`metadata.id/key/hash` 和已知导入管理字段；保留所有语义字段。派生可用性不参与指纹，逐请求从原记录重新核验。未知审计结构无法安全归一时保守分开，禁止递归删除所有 `id` 或 `path`。缓存表位于 Catalog SQLite，带策略版本、原 key/hash 与索引状态；新增记录重建索引，返回代表记录前再次核验，损坏源作为结构化问题保留。代表记录在匹配筛选的有效成员中按 key 稳定选择，不改变 Dataset 中已选精确 key。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_question_bank.py tests/test_studio_catalog.py -q`，预期全部通过；旧公共投影与固定题集 hash 行为不变。
+- [x] **Step 5: 提交。** `git add src/architecture_iq/studio/question_equivalence.py src/architecture_iq/studio/question_bank.py src/architecture_iq/studio/catalog.py tests/test_studio_question_bank.py`；`git commit -m "feat: index exact question equivalence for Data"`。
 
 ## Task 2: 可编辑 Dataset 和不可变修订
 
@@ -127,7 +127,7 @@ def test_different_display_ids_share_exact_content_without_rewriting_records(tmp
 - `.revise(collection_id: str, *, expected_revision: str, changes: dict, operation_id: str) -> dict`，changes 仅接受 name、description、archived、keys、pair_keys；成员修改采用完整有序替换，keys 与 pair_keys 互斥。提交 keys 切换为 single，提交 pair_keys 切换为 pairs，未提交成员字段则保留模式；空 pair_keys 允许建立空题对集合。
 - `.memberships(keys: list[str]) -> dict[str, list[dict]]`；`DatasetConflict` 提供 current_revision，`DatasetArchived` 表示目标不可修改。
 
-- [ ] **Step 1: 写失败测试。** 新集合可空、包含未 ready 记录、跨集合共享题目；用完整公开 fixture 做以下断言：
+- [x] **Step 1: 写失败测试。** 新集合可空、包含未 ready 记录、跨集合共享题目；用完整公开 fixture 做以下断言：
 
 ```python
 def test_shared_membership_and_duplicate_operation_do_not_copy_questions(tmp_path):
@@ -144,10 +144,10 @@ def test_shared_membership_and_duplicate_operation_do_not_copy_questions(tmp_pat
 
 追加 `test_stale_revision_preserves_both_memberships`、`test_remove_and_archive_preserve_old_revision_and_question`、`test_operation_id_reuse_with_different_body_conflicts`、`test_pair_revision_survives_later_catalog_pair_ambiguity`；断言旧修订字节/JSON 不变、同操作重试只生成一个修订、冲突不改变当前版本。成员分页覆盖混合 family、损坏成员与保存顺序；集合类型筛选匹配包含该类型的集合。测试模式切换完整替换成员、不能留下旧 pairs。
 
-- [ ] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_datasets.py -q`，预期缺少 DatasetStore。
-- [ ] **Step 3: 实现事务。** 稳定 ID 使用 `ds_` 加随机 UUID；revision 对身份、父修订和完整内容计算 hash。内容、当前指针和操作结果在同一 `BEGIN IMMEDIATE` 事务提交，归档也产生修订。等价成员按首个明确选择去重，不切换其来源 key。Dataset 保存题对时从 Catalog 核验并复制完整 pair_manifest；以后通过精确成员重新核验，不依赖全目录重新猜测配对。名称去空白后必填，未知题目拒绝；不以 ready 状态限制集合成员。
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_datasets.py tests/test_studio_question_bank.py tests/test_studio_pairs.py -q`，预期 PASS，包含两个独立 Store 实例竞争相同基准修订的测试。
-- [ ] **Step 5: 提交。** `git add src/architecture_iq/studio/datasets.py tests/test_studio_datasets.py`；`git commit -m "feat: add versioned Dataset collections"`。
+- [x] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_datasets.py -q`，预期缺少 DatasetStore。
+- [x] **Step 3: 实现事务。** 稳定 ID 使用 `ds_` 加随机 UUID；revision 对身份、父修订和完整内容计算 hash。内容、当前指针和操作结果在同一 `BEGIN IMMEDIATE` 事务提交，归档也产生修订。等价成员按首个明确选择去重，不切换其来源 key。Dataset 保存题对时从 Catalog 核验并复制完整 pair_manifest；以后通过精确成员重新核验，不依赖全目录重新猜测配对。名称去空白后必填，未知题目拒绝；不以 ready 状态限制集合成员。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_datasets.py tests/test_studio_question_bank.py tests/test_studio_pairs.py -q`，预期 PASS，包含两个独立 Store 实例竞争相同基准修订的测试。
+- [x] **Step 5: 提交。** `git add src/architecture_iq/studio/datasets.py tests/test_studio_datasets.py`；`git commit -m "feat: add versioned Dataset collections"`。
 
 ## Task 3: Data API、导入和旧资源迁移
 
@@ -159,7 +159,7 @@ def test_shared_membership_and_duplicate_operation_do_not_copy_questions(tmp_pat
 - `GET/POST /datasets`、`GET /datasets/{id}?revision=...`、`GET /datasets/{id}/questions?revision=...`、`POST /datasets/{id}/revisions`、`GET /question-bank`；成员与总题库支持 QuestionFilters 和分页，Dataset 列表支持 search/family/archived。写请求使用 Idempotency-Key，修订携带 expected_revision。
 - `POST /datasets/{id}/imports` 接收 `{expected_revision, source_id}`，只加入已登记来源报告中的精确 key；上传/路径导入继续走已有受限 source API，再执行成员收录。
 
-- [ ] **Step 1: 写失败 API 测试。** 复用 `test_studio_api.make_client`：
+- [x] **Step 1: 写失败 API 测试。** 复用 `test_studio_api.make_client`：
 
 ```python
 def test_dataset_api_is_available_locally_and_returns_structured_conflict(tmp_path):
@@ -177,10 +177,10 @@ def test_dataset_api_is_available_locally_and_returns_structured_conflict(tmp_pa
 
 增加响应序列化不含 GT sentinel、旧 `/questions` 计数不受等价分组改变、`/question-bank` 汇总全部成员 Dataset、来源导入重试不重复收录、路径越界仍拒绝的测试。迁移测试连续运行两次，断言相同集合身份、旧 records/sets 字节不变；缺失题目记录报告错误并保持原资源可查。
 
-- [ ] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_api.py tests/test_studio_dataset_migration.py -q`，预期新路由 404 或新迁移接口缺失。
-- [ ] **Step 3: 实现路由和迁移。** API 保留结构化 404/409/422，默认分页值来自共享约定。按现有 `register_rag_routes` 模式注册，避免继续扩充 app.py 内联业务。迁移仅首次登记 origin；已有用户编辑的 Dataset 不被后续启动覆盖。新来源导入失败或目标冲突时保留来源和用户选择，不能回滚已登记题目或静默截断成员。
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_api.py tests/test_studio_dataset_migration.py tests/test_studio_api.py -q`，预期 PASS，真实执行保持关闭。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: expose Dataset management and legacy resource migration"`。
+- [x] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_api.py tests/test_studio_dataset_migration.py -q`，预期新路由 404 或新迁移接口缺失。
+- [x] **Step 3: 实现路由和迁移。** API 保留结构化 404/409/422，默认分页值来自共享约定。按现有 `register_rag_routes` 模式注册，避免继续扩充 app.py 内联业务。迁移仅首次登记 origin；已有用户编辑的 Dataset 不被后续启动覆盖。新来源导入失败或目标冲突时保留来源和用户选择，不能回滚已登记题目或静默截断成员。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_api.py tests/test_studio_dataset_migration.py tests/test_studio_api.py -q`，预期 PASS，真实执行保持关闭。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: expose Dataset management and legacy resource migration"`。
 
 ## Task 4: Dataset 选择预览和旧工作流输入适配
 
@@ -192,7 +192,7 @@ def test_dataset_api_is_available_locally_and_returns_structured_conflict(tmp_pa
 - `POST /datasets/{id}/selection-preview`、`POST /datasets/{id}/question-set` 接受上述明确字段；public 用途只提供预览，不创建要求反馈的旧题集。
 - `Catalog.create_question_set(name, keys, *, dataset_binding: dict | None = None)`；新增 `create_bound_pair_set(name: str, pairs: list[dict], *, dataset_binding: dict) -> dict`，核验冻结 pair_manifest 精确成员后组装旧格式。pairs 只能由 DatasetInputs 从服务端修订提供，不从 API 请求接收。复用 `_question_set_body`、`_store_question_set` 及现有配对验证，不创建第二套反馈封存格式。绑定在新快照 hash 计算前加入，旧调用默认输出不变。
 
-- [ ] **Step 1: 写失败测试。** `test_public_only_question_previews_without_gt` 断言 purpose=public、rag_ready 题的 can_apply=true 且无 feedback；`test_basic_dataset_does_not_silently_select_first_question` 使用两道完整题：
+- [x] **Step 1: 写失败测试。** `test_public_only_question_previews_without_gt` 断言 purpose=public、rag_ready 题的 can_apply=true 且无 feedback；`test_basic_dataset_does_not_silently_select_first_question` 使用两道完整题：
 
 ```python
 preview = inputs.preview(ref, {}, purpose="research", method_id="basic_learning")
@@ -204,10 +204,10 @@ assert catalog.list_question_sets() == []
 
 同一测试文件按 Task 2 接口创建 catalog/datasets/ref/inputs；两题 fixture 使用不同训练实例，避免被严格等价去重。另测确定性抽样、显式顺序、空列表与整套选择的区别、完整题对、evaluation phase、源健康变化使 preview_hash 失效、旧 Dataset 修订不随当前版本变化，以及 materialize 后新编辑不改变已保存题集。未知/不可用成员不能静默消失。
 
-- [ ] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_inputs.py -q`，预期接口缺失。
-- [ ] **Step 3: 实现选择与冻结。** 固定集合 revision 后进行筛选/抽样，保留明确精确 key；检查用途、方法和 phase，复用现有公开 readiness 与研究/配对校验。预览 hash 包含选择、顺序、题目 hash、用途和可用性依据。materialize 重新校验同一输入后才创建题集；不修改 workflow 草稿。历史 pair_manifest 按精确成员重算核验，不能被后来导入的同 pair_id 新版本替换。
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_inputs.py tests/test_studio_dataset_api.py tests/test_studio_catalog.py tests/test_studio_pairs.py tests/test_studio_task_inputs.py -q`，预期 PASS。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: freeze Dataset selections for existing research methods"`。
+- [x] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_inputs.py -q`，预期接口缺失。
+- [x] **Step 3: 实现选择与冻结。** 固定集合 revision 后进行筛选/抽样，保留明确精确 key；检查用途、方法和 phase，复用现有公开 readiness 与研究/配对校验。预览 hash 包含选择、顺序、题目 hash、用途和可用性依据。materialize 重新校验同一输入后才创建题集；不修改 workflow 草稿。历史 pair_manifest 按精确成员重算核验，不能被后来导入的同 pair_id 新版本替换。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_inputs.py tests/test_studio_dataset_api.py tests/test_studio_catalog.py tests/test_studio_pairs.py tests/test_studio_task_inputs.py -q`，预期 PASS。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: freeze Dataset selections for existing research methods"`。
 
 ## Task 5: 真实生成能力的分块表单 schema
 
@@ -218,7 +218,7 @@ assert catalog.list_question_sets() == []
 - `validate_family_options(profile, family, options: dict) -> dict`：与 schema 使用同一枚举/约束来源，替代 `_family_options` 内重复分支；旧合法输入与归一化结果一致。
 - `capabilities().profiles[].families[].form_schema` 新增上述值；现有 options/config/data_interventions 保留。
 
-- [ ] **Step 1: 写失败测试。** 对当前注册的全部 profile/family 逐一断言 editable_fields 的字段名等于真实 instance_option_names；input_dim、rule_family 枚举来自 profile。断言 univariate、spiral、bigram 的普通可编辑 family options 为空；只读采样条件不会变为请求参数。
+- [x] **Step 1: 写失败测试。** 对当前注册的全部 profile/family 逐一断言 editable_fields 的字段名等于真实 instance_option_names；input_dim、rule_family 枚举来自 profile。断言 univariate、spiral、bigram 的普通可编辑 family options 为空；只读采样条件不会变为请求参数。
 
 ```python
 def test_univariate_exposes_read_only_rules_and_rejects_fake_noise_option():
@@ -232,10 +232,10 @@ def test_univariate_exposes_read_only_rules_and_rejects_fake_noise_option():
 
 `config` 复用 `test_studio_generation.config`。题对表单验证现有 domain 区间和 alpha `[0,100]`，后端仍调用 family-owned intervention validator。
 
-- [ ] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_generation_forms.py -q`，预期 form_schema 缺失。
-- [ ] **Step 3: 实现 schema。** Studio 层包装现有能力，不修改 bundled family 引擎。沿用 candidate_count 2..20、n_seeds 1..10、num_questions 1..100、candidate-seed runs ≤200 及 profile budgets；自动采样值与显式设置区分，不编造默认值。无可编辑参数的块展示只读说明。
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_generation_forms.py tests/test_studio_generation.py tests/test_studio_pair_generation.py -q`，预期 PASS，GT 使用已有 mock。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: describe canonical generation fields for Data forms"`。
+- [x] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_generation_forms.py -q`，预期 form_schema 缺失。
+- [x] **Step 3: 实现 schema。** Studio 层包装现有能力，不修改 bundled family 引擎。沿用 candidate_count 2..20、n_seeds 1..10、num_questions 1..100、candidate-seed runs ≤200 及 profile budgets；自动采样值与显式设置区分，不编造默认值。无可编辑参数的块展示只读说明。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_generation_forms.py tests/test_studio_generation.py tests/test_studio_pair_generation.py -q`，预期 PASS，GT 使用已有 mock。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: describe canonical generation fields for Data forms"`。
 
 ## Task 6: 生成结果加入 Dataset 与独立收录恢复
 
@@ -250,7 +250,7 @@ def test_univariate_exposes_read_only_rules_and_rejects_fake_noise_option():
 - `DatasetStore.attach(collection_id: str, *, expected_revision: str, keys: list[str], pairs: list[dict], run_id: str, operation_id: str) -> dict` 以运行/操作 ID 记录 DatasetAttachment；成功的成员追加与收据在同一事务。失败结果也有持久化收据但不改变集合；相同 ID 不同正文返回冲突。
 - `GET /generations/{run_id}/dataset-attachment`、`POST /generations/{run_id}/dataset-attachment`；POST 仅接受 target 和 Idempotency-Key，不接受题目正文或客户端题目清单，不调用 worker launch。
 
-- [ ] **Step 1: 写失败测试。** 复用现有 generation/pair_generation fixture 和 GT mock；测试目标进入预览 hash、修改目标使提交失效；成功/部分成功导入用 `import_report.entries[].key` 收录，不按原始 ID 查最新题。最关键的恢复断言：
+- [x] **Step 1: 写失败测试。** 复用现有 generation/pair_generation fixture 和 GT mock；测试目标进入预览 hash、修改目标使提交失效；成功/部分成功导入用 `import_report.entries[].key` 收录，不按原始 ID 查最新题。最关键的恢复断言：
 
 ```python
 first = attach_generation_result(store, catalog, datasets, run_id=run_id,
@@ -264,13 +264,13 @@ assert canonical_calls == calls_before_attachment
 
 在测试内按 Task 2 建立目标，以现有 mocked generator 生成持久化 manifest，并将 generation/GT 重入函数替换成 `pytest.fail`。增加“导入后收录前崩溃”“事务已提交但响应丢失”“目标被修改或归档”“完整题对且两侧可用”“零成功题”“来源 blocked”“同 ID 新版本”场景。
 
-- [ ] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_generation.py -q`，预期新接口缺失。
-- [ ] **Step 3: 实现两阶段持久化。** 两条生成路径先沿原逻辑写入带 import_report 的 generation_manifest，再尝试 Dataset 收录。用精确成功 key，允许 added/duplicate/conflict 状态但拒绝 error/blocked；配对按完整 manifest 收录。实现上述 DatasetStore.attach，既有成员顺序保持。dataset_preview_hash 由 API 提取，不能泄入冻结生成配置；dataset_target 明确加入归一化输出，且无 target 的旧配置不新增空字段。
+- [x] **Step 2: 确认红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_generation.py -q`，预期新接口缺失。
+- [x] **Step 3: 实现两阶段持久化。** 两条生成路径先沿原逻辑写入带 import_report 的 generation_manifest，再尝试 Dataset 收录。用精确成功 key，允许 added/duplicate/conflict 状态但拒绝 error/blocked；配对按完整 manifest 收录。实现上述 DatasetStore.attach，既有成员顺序保持。dataset_preview_hash 由 API 提取，不能泄入冻结生成配置；dataset_target 明确加入归一化输出，且无 target 的旧配置不新增空字段。
 
 收录失败不改写生成完成事实，也不抛成要求重跑 GT 的失败。收录状态单独持久化并记录事件，公开 job 查询可读取最新 attachment 投影；重试不改旧 job definition、source fingerprint 或原生成 manifest。中断后从已验证的 job-local manifest 读取既有结果，manifest 不完整则返回 unavailable，不执行生成恢复。相同操作重试取事务内原结果；新目标必须使用新操作 ID。
 
-- [ ] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_generation.py tests/test_studio_dataset_api.py tests/test_studio_generation.py tests/test_studio_pair_generation.py -q`，预期 PASS；显式断言本地收录可用但生成提交仍被执行主机检查拦住。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: attach generated questions to versioned Datasets"`。
+- [x] **Step 4: 验证。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_studio_dataset_generation.py tests/test_studio_dataset_api.py tests/test_studio_generation.py tests/test_studio_pair_generation.py -q`，预期 PASS；显式断言本地收录可用但生成提交仍被执行主机检查拦住。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: attach generated questions to versioned Datasets"`。
 
 ## Task 7: Dataset 首页、成员管理与总题库
 
@@ -282,7 +282,7 @@ assert canonical_calls == calls_before_attachment
 - `DataWorkspace({version:number, act:Action, bootstrap:Bootstrap, onRag:(key:string)=>void, onRun:(id:string)=>void})` 负责 Data 内导航；Action 复用 Questions.tsx，Bootstrap 复用 types.ts。子组件接收 DatasetRef、精确 key 和回调。
 - `BrowseLocation` 是 `{view:"datasets"}`、`{view:"bank",filters:QuestionFilters,offset:number}`、`{view:"dataset",ref:DatasetRef,filters:QuestionFilters,offset:number}` 的判别联合；`DataLocation = BrowseLocation | {view:"question",key:string,returnTo:BrowseLocation} | {view:"builder",target?:DatasetRef,returnTo:BrowseLocation}`。读题与构题视图由 Task 8、9 交付后接入。
 
-- [ ] **Step 1: 写失败组件测试。** 使用 fetch mock 和真实用户事件：
+- [x] **Step 1: 写失败组件测试。** 使用 fetch mock 和真实用户事件：
 
 ```tsx
 it('keeps membership choices after a revision conflict', async () => {
@@ -296,10 +296,10 @@ it('keeps membership choices after a revision conflict', async () => {
 
 测试文件内定义 `dataWorkspaceProps` 和 `openDatasetAndSelectQuestion`，用 dataTestFixtures 的 Dataset/BankItem 与冲突响应实现，不依赖生产私有状态。另测跨集合共享计数、移除只影响当前集合、未 ready 题仍可浏览、分组由服务端决定、空状态、分页选择、重连失败与旧 route 兼容。
 
-- [ ] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/DataWorkspace.test.tsx src/GlobalQuestionBank.test.tsx src/api.test.ts src/App.test.tsx`，预期新组件/API details 能力缺失。
-- [ ] **Step 3: 实现界面。** 首次打开默认 Data；已有合法 hash 优先，展示位置可保存 sessionStorage，不存题目正文或修改旧草稿。保留 #questions/#generation/#workflow/#rag/#runs/#kb/#models 路由。Dataset 使用内容摘要与少量上下文操作，成员编辑独立于研究 QuestionPicker。Data 顶部提供 Dataset/总题库导航；import 使用现有上传后再绑定的流程，冲突保留选择和已导入 source_id。
-- [ ] **Step 4: 验证。** 重跑 Step 2，预期 PASS；`npm --prefix frontend/workflow run build`，预期 TypeScript/Vite 成功。尚未交付的 reader/builder 子视图不得放置失效入口。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: add Dataset-first Data workspace"`。
+- [x] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/DataWorkspace.test.tsx src/GlobalQuestionBank.test.tsx src/api.test.ts src/App.test.tsx`，预期新组件/API details 能力缺失。
+- [x] **Step 3: 实现界面。** 首次打开默认 Data；已有合法 hash 优先，展示位置可保存 sessionStorage，不存题目正文或修改旧草稿。保留 #questions/#generation/#workflow/#rag/#runs/#kb/#models 路由。Dataset 使用内容摘要与少量上下文操作，成员编辑独立于研究 QuestionPicker。Data 顶部提供 Dataset/总题库导航；import 使用现有上传后再绑定的流程，冲突保留选择和已导入 source_id。
+- [x] **Step 4: 验证。** 重跑 Step 2，预期 PASS；`npm --prefix frontend/workflow run build`，预期 TypeScript/Vite 成功。尚未交付的 reader/builder 子视图不得放置失效入口。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: add Dataset-first Data workspace"`。
 
 ## Task 8: 完整题目阅读与候选对比
 
@@ -309,7 +309,7 @@ it('keeps membership choices after a revision conflict', async () => {
 - `QuestionReader({record, interactive?: boolean, questionKey?: string})`；旧 `record` 单参数使用方式保持有效。Reader 不发网络请求。
 - `QuestionReadingPage({questionKey:string, context:BrowseLocation, onBack:()=>void, onQuestion:(key:string)=>void, onAddToDataset:(key:string)=>void, onRag:(key:string)=>void})` 拉取精确题目版本；前后题沿当前集合修订和筛选顺序，不用字母或数组下标跨题关联候选。
 
-- [ ] **Step 1: 写失败测试。** 扩展已有 public spec、不同预算和 private sentinel fixture：
+- [x] **Step 1: 写失败测试。** 扩展已有 public spec、不同预算和 private sentinel fixture：
 
 ```tsx
 it('selects a candidate without submitting an answer', () => {
@@ -323,10 +323,10 @@ it('selects a candidate without submitting an answer', () => {
 
 测试中设置 fetch mock；record 复用本文件既有 fixture。另测键盘操作、选择两候选比较有效公开身份、换 exact key 后重置状态、保留集合筛选与位置、未知字段/缺失数据不补值，旧嵌入式 Reader 仍可读。
 
-- [ ] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/QuestionReader.test.tsx src/QuestionReadingPage.test.tsx`，预期候选交互缺失。
-- [ ] **Step 3: 实现布局和交互。** 题干、数据规则与候选为主体；选择状态与对比选择分别管理。差异高亮、共同设置折叠、原始 Prompt/代码按需展开；无评分提交入口。为完整阅读页提供返回、前后题、加入 Dataset 和已有 RAG 快捷操作。
-- [ ] **Step 4: 验证。** 重跑 Step 2 并运行 `npm --prefix frontend/workflow test -- src/QuestionPicker.test.tsx src/Questions.test.tsx src/Rag.test.tsx`，预期 PASS。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: add interactive question reading and comparison"`。
+- [x] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/QuestionReader.test.tsx src/QuestionReadingPage.test.tsx`，预期候选交互缺失。
+- [x] **Step 3: 实现布局和交互。** 题干、数据规则与候选为主体；选择状态与对比选择分别管理。差异高亮、共同设置折叠、原始 Prompt/代码按需展开；无评分提交入口。为完整阅读页提供返回、前后题、加入 Dataset 和已有 RAG 快捷操作。
+- [x] **Step 4: 验证。** 重跑 Step 2 并运行 `npm --prefix frontend/workflow test -- src/QuestionPicker.test.tsx src/Questions.test.tsx src/Rag.test.tsx`，预期 PASS。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: add interactive question reading and comparison"`。
 
 ## Task 9: Dataset 内分块构题与真实生成状态
 
@@ -337,7 +337,7 @@ it('selects a candidate without submitting an answer', () => {
 - `buildGenerationRequest(form, capabilities, target?: DatasetRef) -> GenerationRequest` 与 `generationSignature(request) -> string` 定义在 generationForm.ts；仅序列化 schema 允许且被用户显式设置的参数。
 - `GenerationBlocks({schema, value, onChange})` 渲染字段；现有预检、稳定 Idempotency-Key 和目标 binding 组成一个状态机。
 
-- [ ] **Step 1: 写失败测试。** 复用 Generation 的 fetch mock，追加 schema fixture：无 options family 显示只读说明，切换 family 清除失效参数；配置/目标 revision 变化使预检无效；题对预检显示完整成本。
+- [x] **Step 1: 写失败测试。** 复用 Generation 的 fetch mock，追加 schema fixture：无 options family 显示只读说明，切换 family 清除失效参数；配置/目标 revision 变化使预检无效；题对预检显示完整成本。
 
 ```tsx
 // fixture 已返回持久化 revision_conflict attachment；点击只重试收录。
@@ -348,10 +348,10 @@ expect(requestedPaths.filter(p => p === '/api/studio/generations')).toHaveLength
 
 在 `shows attachment conflict without regenerating questions` 测试中完整建立 fixture、render 和 requestedPaths；另测空/部分结果、归档目标、预览不展示伪造题目、每次新预览产生新提交 key 而同次重试沿用原 key。
 
-- [ ] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/QuestionBuilder.test.tsx src/Generation.test.tsx`，预期新组件/状态缺失。
-- [ ] **Step 3: 实现分块编辑。** 按数据类型与规则、候选、比较因素、预算、规模与目标分块；折叠后显示摘要。右侧只预览构题规格和题面结构。Generation.tsx 作为旧入口包装与历史展示，复用 builder。以服务器 run/attachment 状态显示真实进度和收录结果，onRun 只表示已提交，不能即时增加 Dataset 题数。
-- [ ] **Step 4: 验证。** 重跑 Step 2 并执行 `npm --prefix frontend/workflow run build`，预期 PASS/构建成功。
-- [ ] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: build questions in Dataset context"`。
+- [x] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/QuestionBuilder.test.tsx src/Generation.test.tsx`，预期新组件/状态缺失。
+- [x] **Step 3: 实现分块编辑。** 按数据类型与规则、候选、比较因素、预算、规模与目标分块；折叠后显示摘要。右侧只预览构题规格和题面结构。Generation.tsx 作为旧入口包装与历史展示，复用 builder。以服务器 run/attachment 状态显示真实进度和收录结果，onRun 只表示已提交，不能即时增加 Dataset 题数。
+- [x] **Step 4: 验证。** 重跑 Step 2 并执行 `npm --prefix frontend/workflow run build`，预期 PASS/构建成功。
+- [x] **Step 5: 提交。** 仅暂存本任务文件；`git commit -m "feat: build questions in Dataset context"`。
 
 ## Task 10: Dataset 接入既有 Harness、全阶段回归与使用说明
 
@@ -361,7 +361,7 @@ expect(requestedPaths.filter(p => p === '/api/studio/generations')).toHaveLength
 - `DatasetInputPicker({purpose:"research"|"evaluation", phase?, methodId, selectionMode, single, onApply:(set:QuestionSet)=>void, onClose})`：调用 Task 4 的服务端选择预览/题集适配，成功后才回调。
 - `QuestionSet.dataset_binding?: DatasetBinding`；Workflow 的 `applyQuestions/applyTaskQuestions` 接收仍是原 QuestionSet，不在 UI 内改写私有快照或跳过方法校验。
 
-- [ ] **Step 1: 写失败集成测试。** 用两个题 Dataset 验证 Basic 错误，明确选一题后成功；配对和 evaluation phase 完整传到 API。测试保存失败保持原输入和选择，成功后预览失效。旧 QuestionPicker 的 research/evaluation/rag 模式完全保留，RAG 仍不创建 question_set。
+- [x] **Step 1: 写失败集成测试。** 用两个题 Dataset 验证 Basic 错误，明确选一题后成功；配对和 evaluation phase 完整传到 API。测试保存失败保持原输入和选择，成功后预览失效。旧 QuestionPicker 的 research/evaluation/rag 模式完全保留，RAG 仍不创建 question_set。
 
 ```tsx
 // setup 将选择预览 fixture 设为 basic_requires_one_question。
@@ -372,13 +372,13 @@ expect(onApply).not.toHaveBeenCalled();
 
 将该断言放入完整 `rejects multi-question Dataset without truncation` 测试，fixtures 来自 dataTestFixtures；另测旧 hash 路由、共享草稿恢复，以及集合后续修改不替换已应用题集。
 
-- [ ] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/DatasetInputPicker.test.tsx src/Workflow.test.tsx src/App.test.tsx`，预期新选择入口缺失。
-- [ ] **Step 3: 接入与文档。** 在现有工作流提供“从 Dataset 选择”入口，调用已有 apply 函数；避免使用 App.onSet 误当工作流绑定（它只设置 Runs 输入）。更新 Data 使用说明、修订/去重口径与生成冲突恢复。文档只描述本阶段已交付能力，明确后续可组合 Harness 仍按后续计划实施。
-- [ ] **Step 4: 阶段验证。** 核对 root/import provenance 后运行 `PYTHONPATH=src .venv/bin/python -m pytest -q`、`npm --prefix frontend/workflow test`、`npm --prefix frontend/workflow run build`；预期全部通过。针对失败定位修复，不以缩小测试集代替回归。
+- [x] **Step 2: 确认红灯。** `npm --prefix frontend/workflow test -- src/DatasetInputPicker.test.tsx src/Workflow.test.tsx src/App.test.tsx`，预期新选择入口缺失。
+- [x] **Step 3: 接入与文档。** 在现有工作流提供“从 Dataset 选择”入口，调用已有 apply 函数；避免使用 App.onSet 误当工作流绑定（它只设置 Runs 输入）。更新 Data 使用说明、修订/去重口径与生成冲突恢复。文档只描述本阶段已交付能力，明确后续可组合 Harness 仍按后续计划实施。
+- [x] **Step 4: 阶段验证。** 核对 root/import provenance 后运行 `PYTHONPATH=src .venv/bin/python -m pytest -q`、`npm --prefix frontend/workflow test`、`npm --prefix frontend/workflow run build`；预期全部通过。针对失败定位修复，不以缩小测试集代替回归。
 
 本地浏览器验证 Dataset 创建/共享/去重、读题键盘操作、构题预检、冲突保留、旧工作流输入和窄屏。遵守实际浏览器工具访问限制；若不允许访问本地页面，不换工具绕过，报告视觉验证未完成。所有实时调用保持禁用；需要真实 GT 冒烟时仅在授权服务器按单独明确范围执行。
 
-- [ ] **Step 5: 提交与交付检查。** 仅暂存本任务文件；`git commit -m "feat: connect Dataset selections to research workflows"`。执行一次覆盖全分支的独立代码审查；修复实际问题并重跑受影响检查。报告已完成的 Data 路径、测试结果、视觉验证状态和下一阶段入口；不宣称 Harness v2 或 KB 适用题目已实现。
+- [x] **Step 5: 提交与交付检查。** 仅暂存本任务文件；`git commit -m "feat: connect Dataset selections to research workflows"`。执行一次覆盖全分支的独立代码审查；修复实际问题并重跑受影响检查。报告已完成的 Data 路径、测试结果、视觉验证状态和下一阶段入口；不宣称 Harness v2 或 KB 适用题目已实现。
 
 ## 计划自查与执行顺序
 
@@ -387,4 +387,4 @@ expect(onApply).not.toHaveBeenCalled();
 - Review Focus 的五类问题均在对应任务中有具体断言和回归命令。
 - 顺序为 1→2→3→4→5→6→7→8→9→10；每项完成测试与提交后进入下一项。调研可并行，计划的实现与最终审查按已选执行方式进行。
 - 新的真实图执行、KB 逻辑管理及覆盖匹配是第二/第三阶段，不属于本阶段完成声明。它们分别另写实施计划，使用已批准的总体规格。
-- 本文仅为实施计划；本轮未运行产品测试或修改产品代码。计划评审通过后再执行上述步骤。
+- 本阶段十项实现已完成；最终回归为 793 项后端测试、255 项前端测试及生产构建全部通过。独立审查发现的页面刷新、迁移隔离、历史题对保留、模式变化冲突和 API 参数校验问题已补回归并修复。浏览器访问受限，视觉与窄屏验证未完成；本地未执行真实模型或 GT。

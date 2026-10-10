@@ -1,6 +1,6 @@
 import {Rag} from './Rag';
 import {DataWorkspace} from './DataWorkspace';
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -51,6 +51,10 @@ export default function App() {
   });
   const [version, setVersion] = useState(0);
   const bootstrap = useResource<Bootstrap>("/bootstrap", version);
+  const [lastBootstrap, setLastBootstrap] = useState<Bootstrap>();
+  useEffect(() => {
+    if (bootstrap.data) setLastBootstrap(bootstrap.data);
+  }, [bootstrap.data]);
   const [toast, setToast] = useState<{ message: string; error?: boolean }>();
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
@@ -98,7 +102,8 @@ export default function App() {
     setToast({ message: "题集已保存，可在测试运行中选择并执行。" });
   };
   const current = navigation.find((n) => n.id === page)!;
-  const data = bootstrap.data;
+  const data = bootstrap.data || lastBootstrap;
+  const executionEnabled = !!bootstrap.data?.service.execution_enabled;
   return (
     <div className="app">
       <aside className={`sidebar ${sidebar ? "visible" : ""}`}>
@@ -158,10 +163,10 @@ export default function App() {
             </p>
           </div>
           <div className="server-chip">
-            <span className={`server-dot ${data ? "connected" : ""}`} />
+            <span className={`server-dot ${bootstrap.data ? "connected" : ""}`} />
             <div>
               <b>
-                {data
+                {bootstrap.data
                   ? "Studio API 已连接"
                   : bootstrap.loading
                     ? "连接服务器…"
@@ -204,9 +209,9 @@ export default function App() {
           <div>
             <span className="execution-chip">
               <span
-                className={`status-dot ${data?.service.execution_enabled ? "ok" : ""}`}
+                className={`status-dot ${executionEnabled ? "ok" : ""}`}
               />
-              {data?.service.execution_enabled
+              {executionEnabled
                 ? "服务器执行已启用"
                 : "只读 / 预览模式"}
             </span>
@@ -235,18 +240,18 @@ export default function App() {
             }
           />
           {page === "data" ? (
-            data && <DataWorkspace version={version} act={act} bootstrap={data} onRag={key=>{setRagQuestion(key);navigate("rag");}} onRun={onRun}/>
+            data && <DataWorkspace version={version} act={act} bootstrap={{...data,service:{...data.service,execution_enabled:executionEnabled}}} onRag={key=>{setRagQuestion(key);navigate("rag");}} onRun={onRun}/>
           ) : page === "questions" ? (
             <Questions version={version} act={act} onSet={onSet} onRag={key=>{setRagQuestion(key);navigate("rag");}} />
           ) : page === "rag" ? (
-            <Rag version={version} act={act} models={data?.models || []} executionEnabled={!!data?.service.execution_enabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
+            <Rag version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
           ) : page === "workflow" ? (
             <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act}>
               <Workflow
                 rolePrompts={data?.role_prompts}
                 version={version}
                 act={act}
-                executionEnabled={!!data?.service.execution_enabled}
+                executionEnabled={executionEnabled}
                 onRun={onWorkflowRun}
                 onModels={()=>navigate("models")}
               />
@@ -258,14 +263,14 @@ export default function App() {
               capabilities={data?.capabilities}
               version={version}
               act={act}
-              executionEnabled={!!data?.service.execution_enabled}
+              executionEnabled={executionEnabled}
               onRun={onRun}
             />
           ) : page === "runs" ? (
             <Runs
               version={version}
               act={act}
-              executionEnabled={!!data?.service.execution_enabled}
+              executionEnabled={executionEnabled}
               initialSet={setId}
               selectedRun={runId}
               onRun={onRun}

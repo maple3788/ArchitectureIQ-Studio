@@ -4,6 +4,33 @@ import {DataWorkspace} from './DataWorkspace';
 import {datasetFixture,summaryFixture,bankFixtures,dataProps,page} from './dataTestFixtures';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
+it('preserves pending single-question choices when a concurrent generation changes the Dataset mode',async()=>{
+ const empty={...datasetFixture,keys:[]};
+ const latest={...empty,revision:'r2',selection_mode:'pairs',keys:['orig@v1','cf@v1'],pairs:[{pair_key:'paired',members:[{key:'orig@v1',role:'original'},{key:'cf@v1',role:'counterfactual'}]}]};
+ let writes=0;
+ vi.stubGlobal('fetch',async(input:string,init?:RequestInit)=>{
+  const url=new URL(input,'http://studio');
+  if(url.pathname.endsWith('/revisions')){writes++;return new Response(JSON.stringify({detail:{code:'dataset_revision_conflict',message:'changed'}}),{status:409});}
+  const value=url.pathname.endsWith('/datasets')?page([{...summaryFixture,count:0}]):url.pathname.endsWith('/question-bank')?page(bankFixtures):url.pathname.endsWith('/questions')?page([]):url.searchParams.has('revision')?empty:latest;
+  return new Response(JSON.stringify(value));
+ });
+ render(<DataWorkspace {...dataProps}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'打开 Dataset A'}));
+ fireEvent.click(await screen.findByRole('button',{name:'从总题库选入'}));
+ fireEvent.click(await screen.findByRole('checkbox',{name:'Q2'}));
+ fireEvent.click(screen.getByRole('button',{name:'保存题目选择'}));
+ fireEvent.click(await screen.findByRole('button',{name:'保留我的选择并载入新版本'}));
+ await screen.findByText(/题库模式已更改/);
+ expect((screen.getByRole('checkbox',{name:'Q2'}) as HTMLInputElement).checked).toBe(true);
+ expect((screen.getByRole('button',{name:'保存题目选择'}) as HTMLButtonElement).disabled).toBe(true);
+ expect(writes).toBe(1);
+ fireEvent.click(screen.getByRole('button',{name:'取消'}));
+ fireEvent.click(screen.getByRole('button',{name:'保留我的选择并载入新版本'}));
+ await waitFor(()=>expect(screen.queryByText(/题库模式已更改/)).toBeNull());
+ fireEvent.click(screen.getByRole('button',{name:'整理成员'}));
+ expect(await screen.findByRole('checkbox',{name:'题对 paired'})).toBeTruthy();
+});
+
 it('keeps membership choices after a revision conflict and rebases without dropping concurrent additions',async()=>{
  let writes:any[]=[];
  vi.stubGlobal('fetch',async(input:string,init?:RequestInit)=>{
