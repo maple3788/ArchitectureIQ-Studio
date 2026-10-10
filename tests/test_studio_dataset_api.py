@@ -51,3 +51,18 @@ def test_bank_membership_and_import_retries_preserve_original_question_counts(tm
     selected = client.get(PREFIX + f"/datasets/{a['collection_id']}").json()
     members = client.get(PREFIX + f"/datasets/{a['collection_id']}/questions", params={'revision': selected['revision']}).json()
     assert members['total'] == 1
+
+
+def test_dataset_selection_preview_and_freeze_do_not_expose_feedback(tmp_path):
+    client, source = make_client(tmp_path)
+    path = bakefile(source / 'in.json', [baked()])
+    imported = client.post(PREFIX + '/sources/import', json={'path': str(path)}).json()
+    a = create(client, keys=[imported['entries'][0]['key']])
+    base = PREFIX + f"/datasets/{a['collection_id']}"
+    body = {'revision': a['revision'], 'purpose': 'research', 'method_id': 'basic_learning'}
+    preview = client.post(base + '/selection-preview', json=body)
+    assert preview.status_code == 200 and preview.json()['can_apply']
+    frozen = client.post(base + '/question-set', json={**body, 'preview_hash': preview.json()['preview_hash']})
+    assert frozen.status_code == 200 and frozen.json()['dataset_binding']['revision'] == a['revision']
+    assert 'feedback' not in frozen.text
+    assert client.post(base + '/question-set', json={**body, 'preview_hash': 'stale'}).status_code == 409

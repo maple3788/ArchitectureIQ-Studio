@@ -100,3 +100,23 @@ def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
             return datasets.revise(collection_id, expected_revision=body['expected_revision'],
                 changes={'keys': current['keys'] + keys}, operation_id=request.headers.get('Idempotency-Key'))
         return data_call(operation)
+
+    from architecture_iq.studio.dataset_inputs import DatasetInputs
+    inputs = DatasetInputs(catalog, datasets)
+
+    def selected_input(collection_id, body, *, materialize=False):
+        allowed = {'revision', 'selection', 'purpose', 'method_id', 'phase'} | ({'preview_hash'} if materialize else set())
+        fields(body, allowed, {'revision', 'purpose'} | ({'preview_hash'} if materialize else set()))
+        ref = {'collection_id': collection_id, 'revision': body['revision']}
+        kwargs = {k: body[k] for k in ('purpose', 'method_id', 'phase') if k in body}
+        if materialize:
+            return inputs.materialize(ref, body.get('selection', {}), preview_hash=body['preview_hash'], **kwargs)
+        return inputs.preview(ref, body.get('selection', {}), **kwargs)
+
+    @api.post(prefix + '/datasets/{collection_id}/selection-preview')
+    def selection_preview(collection_id: str, body: dict = Body(...)):
+        return data_call(lambda: selected_input(collection_id, body))
+
+    @api.post(prefix + '/datasets/{collection_id}/question-set')
+    def freeze_selection(collection_id: str, body: dict = Body(...)):
+        return data_call(lambda: selected_input(collection_id, body, materialize=True))

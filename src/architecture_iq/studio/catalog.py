@@ -858,10 +858,34 @@ class Catalog:
                          (identifier, body["name"], digest, body["created_at"], len(body["keys"])))
         return identifier
 
-    def create_question_set(self, name: str, keys: list[str]) -> dict:
+    def _bound_question_set_body(self, name, keys, dataset_binding, pairs=None):
         body = self._question_set_body(name, keys)
+        if dataset_binding is not None:
+            if dataset_binding['keys'] != keys or dataset_binding['hashes'] != body['hashes']:
+                raise ValueError('Dataset binding does not match frozen questions')
+            body['dataset_binding'] = dataset_binding
+        if pairs is not None:
+            checked = [pair_manifest([self.get_question(m['key']) for m in p['members']]) for p in pairs]
+            if any(not p['ready'] or p['pair_key'] != original['pair_key'] for p, original in zip(checked, pairs)):
+                raise ValueError('Frozen pair identity or availability changed')
+            if [m['key'] for p in checked for m in p['members']] != keys:
+                raise ValueError('Pair members do not match Dataset selection')
+            body.update(selection_mode='pairs', pairs=checked, pair_keys=[p['pair_key'] for p in checked],
+                        pair_count=len(checked), count=len(keys))
+        return body
+
+    def create_question_set(self, name: str, keys: list[str], *, dataset_binding: dict | None = None) -> dict:
         with closing(self._connect()) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
+            body = self._bound_question_set_body(name, keys, dataset_binding)
+            identifier = self._store_question_set(body, conn)
+        return self.get_question_set(identifier)
+
+    def create_bound_pair_set(self, name: str, pairs: list[dict], *, dataset_binding: dict) -> dict:
+        keys = [m['key'] for p in pairs for m in p['members']]
+        with closing(self._connect()) as conn, conn:
+            conn.execute('BEGIN IMMEDIATE')
+            body = self._bound_question_set_body(name, keys, dataset_binding, pairs)
             identifier = self._store_question_set(body, conn)
         return self.get_question_set(identifier)
 
