@@ -81,3 +81,46 @@ def test_no_match_cannot_create_rag_job(tmp_path, monkeypatch):
     case['inventory']['items'] = []
     assert start(case).status_code == 409
     assert not case['jobs'].list()
+
+
+def test_preview_start_fake_worker_history_and_sse_agree(tmp_path, monkeypatch):
+    from pathlib import Path
+    from rag_fixtures import rag_client
+    from architecture_iq.studio.execution import worker
+    from architecture_iq.studio.workflow import default_workflow
+    case = case_for_api(tmp_path, monkeypatch, True)
+    source = Path(case['inventory']['items'][0]['source'])
+    before, workflow = source.read_bytes(), copy.deepcopy(default_workflow())
+    p = preview(case).json()
+    response = start(case, p)
+    assert response.status_code == 200, response.text
+    run = response.json()
+    case['config'] = case['jobs'].definition(run['id'])['config']
+    monkeypatch.setattr('architecture_iq.studio.execution.create_client', rag_client(case))
+    worker(case['state_root'], run['id'])
+    detail = case['client'].get('/api/studio/runs/' + run['id']).json()
+    assert detail['status'] == 'complete'
+    assert detail['result']['retrieval'] == p['retrieval']
+    assert detail['result']['used_sources'] == p['retrieval']['provenance']
+    stream = case['client'].get('/api/studio/runs/' + run['id'] + '/stream?after=0')
+    assert 'event: chunk' in stream.text and '选择理由' in stream.text and 'event: terminal' in stream.text
+    assert len(case['calls']) == 1
+    assert source.read_bytes() == before and default_workflow() == workflow
+    assert 'correct_letter' not in json.dumps([p, detail, stream.text])
+
+
+def test_credential_rotation_invalidates_preview_without_launch(tmp_path, monkeypatch):
+    from test_studio_api_models import api_profile
+    case = case_for_api(tmp_path, monkeypatch, True)
+    case['models'].save(api_profile(), api_key='first-key')
+    case['selection']['model_id'] = 'cloud'
+    p = preview(case).json()
+    case['models'].save(api_profile(), api_key='second-key')
+    assert start(case, p).status_code == 409
+    assert not case['jobs'].list() and not case['launches']
+
+
+def test_unknown_catalog_references_are_not_found(tmp_path, monkeypatch):
+    case = case_for_api(tmp_path, monkeypatch)
+    assert preview(case, {**case['selection'], 'question_key': 'unknown'}).status_code == 404
+    assert preview(case, {**case['selection'], 'model_id': 'unknown'}).status_code == 404

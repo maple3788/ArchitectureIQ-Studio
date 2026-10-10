@@ -3,6 +3,7 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import App from './App';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();location.hash='';});
 it('question shortcut opens RAG with exact version key and leaves workflow storage intact',async()=>{
+ const storage=new Map<string,string>();vi.stubGlobal('localStorage',{setItem:(key:string,value:string)=>storage.set(key,value),getItem:(key:string)=>storage.get(key)||null,removeItem:(key:string)=>storage.delete(key)});
  location.hash='questions';localStorage.setItem('workflow-draft-test','preserve');
  vi.stubGlobal('fetch',async(path:string)=>{
   const value=path.endsWith('/bootstrap')?{service:{execution_enabled:false,host:'local'},stats:{questions:1},models:[]}:

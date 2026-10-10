@@ -121,3 +121,14 @@ it("uses a total evaluation token budget and requires a successful current previ
   });
   expect(submit.disabled).toBe(true);
 });
+
+it('filters RAG history and reopens details without submitting a job',async()=>{
+ const calls:any[]=[];
+ const run:any={id:'rag-one',kind:'rag',status:'complete',created_at:1,config:{name:'RAG 作答',question_key:'q1@rev',question:{prompt:'公开问题'},models:[{id:'glm',name:'GLM'}],retrieval:{selected_kb:{name:'知识库',version:'v'},provenance:[]}},result:{answer:{ranking:['A','B'],rationale:'历史解释',citations:[]},used_sources:[],unknown_citations:[]},records:[]};
+ vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{calls.push(init?.method||'GET');return new Response(JSON.stringify(path==='/api/studio/runs'?{items:[run],total:1}:path.endsWith('/rag-one')?run:{items:[],total:0}));});
+ render(<Runs version={0} act={async fn=>fn()} executionEnabled={false} onRun={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('运行类型筛选'),{target:{value:'rag'}});
+ fireEvent.click(await screen.findByRole('button',{name:'查看运行 rag-one'}));expect(await screen.findByText('历史解释')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'关闭详情'}));fireEvent.click(screen.getByRole('button',{name:'查看运行 rag-one'}));await screen.findByText('历史解释');
+ expect(calls.every(method=>method==='GET')).toBe(true);
+});

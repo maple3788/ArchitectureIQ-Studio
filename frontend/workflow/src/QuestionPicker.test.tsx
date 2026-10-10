@@ -546,3 +546,12 @@ it('RAG accepts non-discovery public questions without GT and does not create a 
  await waitFor(()=>expect(onSelectQuestion).toHaveBeenCalledWith('q1@rev'));
  expect(calls.some(p=>p.includes('split='))).toBe(false);expect(calls.some(p=>p.includes('/question-sets'))).toBe(false);
 });
+
+it('RAG validates old metadata from public detail before returning a question key',async()=>{
+ const onSelectQuestion=vi.fn();let valid=false;
+ vi.stubGlobal('fetch',async(path:string)=>path.includes('/questions?')?response({items:[{...q(1),ready:false,split:'development'}],total:1}):response({metadata:{key:'q1@rev'},public:{id:'q1',family:'regression',prompt:'public',choices:valid?[{letter:'A',id:'a',view:{}},{letter:'B',id:'b',view:{}}]:[]}}));
+ render(<QuestionPicker version={0} act={async fn=>fn()} purpose="rag" single onSelectQuestion={onSelectQuestion} onClose={()=>{}}/>);
+ fireEvent.click(await screen.findByLabelText('选择 q1'));fireEvent.click(screen.getByRole('button',{name:'应用所选题目'}));
+ await screen.findByText('题目公开输入不可用');expect(onSelectQuestion).not.toHaveBeenCalled();valid=true;
+ fireEvent.click(screen.getByRole('button',{name:'应用所选题目'}));await waitFor(()=>expect(onSelectQuestion).toHaveBeenCalledWith('q1@rev'));
+});

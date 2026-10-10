@@ -1,3 +1,4 @@
+import {RagRunView} from './RagRunView';
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -298,6 +299,7 @@ export function Runs({
             <option value="evaluation">模型评测</option>
             <option value="workflow">KB 研究</option>
             <option value="generation">题目生成</option>
+            <option value="rag">RAG 作答</option>
           </select>
         }
       >
@@ -338,7 +340,7 @@ export function Runs({
                             ? "题目生成"
                             : r.kind === "evaluation"
                               ? "模型评测"
-                              : r.kind}
+                              : r.kind === "rag" ? "RAG 作答" : r.kind}
                       </td>
                       <td>
                         <Status value={runStateLabels[r.status] || r.status} />
@@ -428,7 +430,7 @@ export function RunDetail({
           <>
             <div className="run-detail-head">
               <Status value={runStateLabels[data.status] || data.status} />
-              <span>{{workflow:"KB 研究",evaluation:"模型评测",generation:"题目生成"}[data.kind] || data.kind}</span>
+              <span>{{workflow:"KB 研究",evaluation:"模型评测",generation:"题目生成",rag:"RAG 作答"}[data.kind] || data.kind}</span>
               <small title="创建时间">{formatTimestamp(data.created_at)}</small>
               <RunControls run={data} act={act} />
               {data.kind === "workflow" && onWorkflowRun && <button className="run-workflow-link" onClick={()=>onWorkflowRun(id)}>在工作流图中查看 <ArrowRight size={14}/></button>}
@@ -441,7 +443,7 @@ export function RunDetail({
             />
             {tab === "概览" ? (
               <>
-                {data.kind === "workflow" ? <RunWorkflowView run={data} syncError={error} /> : <Card title="运行进度">
+                {data.kind === "rag" ? <RagRunView run={data}/> : data.kind === "workflow" ? <RunWorkflowView run={data} syncError={error} /> : <Card title="运行进度">
                   <p>{runStateLabels[data.status] || data.status}</p>
                   {runProgress(data).completed !== undefined && <p>已处理 {runProgress(data).completed}{runProgress(data).total ? ` / ${runProgress(data).total}` : ""}</p>}
                   <details><summary>完整进度记录</summary><JsonView value={data.progress} /></details>
@@ -451,7 +453,7 @@ export function RunDetail({
                     <JsonView value={data.error} />
                   </Card>
                 )}
-                <Card title="结果摘要">
+                {data.kind !== "rag" && <Card title="结果摘要">
                   <ResultSummary
                     result={data.result}
                     records={records}
@@ -461,7 +463,7 @@ export function RunDetail({
                       setRecordTab("实际请求");
                     }}
                   />
-                </Card>
+                </Card>}
                 <p className="muted">
                   暂停在当前调用或训练完成后生效。uncertain 调用不会自动重试。
                 </p>
