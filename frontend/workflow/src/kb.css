@@ -1,0 +1,12 @@
+.kb-card {display:flex;flex-direction:column;gap:10px;min-width:0}
+.kb-card .model-top {margin-bottom:4px}
+.kb-card h2 {margin:0;line-height:1.45;overflow-wrap:anywhere}
+.kb-card p {min-height:0;margin:0;color:#526b72;font-size:13px;line-height:1.75}
+.kb-card .kb-count-line {font-size:14px;font-weight:650;color:#254c49}
+.kb-card .kb-count-explanation {padding:12px;background:#f4f7f2;border-radius:8px}
+.kb-card .kb-shared-sources {color:#467267;font-size:12px}
+.kb-card small {min-height:0;margin:0;color:#6b7a78;line-height:1.6}
+.kb-card .wide {margin-top:auto}
+.kb-read-warning {margin:0 0 18px;padding:12px 16px;border:1px solid #dddfcc;border-radius:10px;color:#69714f;background:#fafaf5}
+.knowledge-claim dl {display:grid;grid-template-columns:5em minmax(0,1fr);gap:8px 12px;font-size:13px;line-height:1.7}
+.knowledge-claim dd {margin:0;color:#395653;overflow-wrap:anywhere}

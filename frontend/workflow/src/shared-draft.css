@@ -1,0 +1,10 @@
+.shared-draft{padding:13px 17px;margin:12px 0 22px;border:1px solid #dce7df;border-radius:12px;background:#f7faf7;color:#41624d;font-size:12px}
+.shared-draft-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.shared-draft-heading [role=status]{display:flex;align-items:center;gap:8px;font-weight:600}
+.shared-draft-dot{width:7px;height:7px;display:inline-block;flex-shrink:0;border-radius:50%;background:#6d987b}
+.shared-draft p{margin:8px 0 0;color:#758479;line-height:1.7}
+.shared-draft .text-button{font-size:12px;padding:3px 0}
+.shared-draft-pending .shared-draft-dot,.shared-draft-saving .shared-draft-dot{background:#b5964c}
+.shared-draft-conflict,.shared-draft-offline{border-color:#e4d5b4;background:#fffaf0}
+.shared-draft-conflict .shared-draft-dot,.shared-draft-offline .shared-draft-dot{background:#bc863e}
+.shared-draft-conflict p{color:#856738}.shared-draft .actions{margin-top:10px;flex-wrap:wrap}.shared-draft .actions button{font-size:12px}

@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://architectureiq.local/contracts/kb_workflow.schema.json",
+  "title": "KB Workflow Studio v1",
+  "description": "Typed fixed scientific core with optional confirmation/evaluation routes. Semantic route validation is mandatory before execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "nodes",
+    "edges",
+    "settings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "discovery_per_round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "packet_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_calls_per_round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_tokens_per_round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_candidate_seed_runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exploration_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_seeds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confirmation_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed_start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wall_time_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "context_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enable_confirmation": {
+          "type": "boolean"
+        },
+        "enable_evaluation": {
+          "type": "boolean"
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_set_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_question_set_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_root": {
+          "type": "string"
+        },
+        "runtime_lock_path": {
+          "type": "string"
+        },
+        "kb_path": {
+          "type": "string"
+        },
+        "rules_path": {
+          "type": "string"
+        },
+        "learning_protocol": {
+          "enum": [
+            "single",
+            "paired_contrastive",
+            "paired_progressive"
+          ]
+        },
+        "method_id": {
+          "enum": [
+            "basic_learning",
+            "scientific",
+            "paired_progressive",
+            "expel",
+            "paired_expel"
+          ]
+        },
+        "method_version": {
+          "const": "1"
+        },
+        "loop_mode": {
+          "enum": [
+            "manual",
+            "automatic"
+          ]
+        },
+        "stop_after_no_change_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "use_previous_experience": {
+          "type": "boolean"
+        },
+        "record_conditions": {
+          "type": "boolean"
+        },
+        "initial_kb": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "maxProperties": 0
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "version"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependentRequired": {
+        "method_version": [
+          "method_id"
+        ]
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "position",
+        "config"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "input",
+            "solver",
+            "commit",
+            "reveal",
+            "discoverer",
+            "skeptic",
+            "experiment",
+            "confirmation",
+            "analyst",
+            "curator",
+            "publish",
+            "loop",
+            "evaluate",
+            "end",
+            "experience_curator",
+            "experience_save"
+          ]
+        },
+        "type": {
+          "enum": [
+            "question_input",
+            "agent",
+            "answer_commit",
+            "feedback_reveal",
+            "experiment",
+            "confirmation",
+            "publish",
+            "loop",
+            "evaluation",
+            "end",
+            "experience_save"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "position": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          }
+        },
+        "config": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "agent"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "role",
+                  "prompt"
+                ],
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "solver",
+                      "discoverer",
+                      "skeptic",
+                      "analyst",
+                      "curator",
+                      "experience_curator"
+                    ]
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "maxLength": 32000
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "evaluation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "phase"
+                ],
+                "properties": {
+                  "phase": {
+                    "enum": [
+                      "development",
+                      "final"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "not": {
+                  "enum": [
+                    "agent",
+                    "evaluation"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "type": "object",
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "target",
+        "source_handle",
+        "target_handle"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "source_handle": {
+          "const": "out"
+        },
+        "target_handle": {
+          "const": "in"
+        },
+        "mapping": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "condition": {
+          "enum": [
+            "always",
+            "continue",
+            "done"
+          ]
+        }
+      }
+    }
+  }
+}

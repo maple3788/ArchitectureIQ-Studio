@@ -1,0 +1,37 @@
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.superpowers/
+.tmp/
+data/
+state/
+credentials/
+outputs/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.venv-*/
+
+# Private operational records stay local; source provenance remains public.
+.private/
+migration/deployment.json
+migration/remote-preparation.json
+docs/plans/
+
+# Runtime databases and model artifacts.
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth

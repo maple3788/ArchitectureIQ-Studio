@@ -1,0 +1,15 @@
+{
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "max_tokens": 8192,
+  "extra": {
+    "seed": 20261007,
+    "top_k": 0,
+    "min_p": 0.0,
+    "repeat_penalty": 1.0,
+    "chat_template_kwargs": {
+      "reasoning_effort": "low",
+      "clear_thinking": true
+    }
+  }
+}

@@ -1,0 +1,749 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kb_snapshot": "data/kb_0008.json",
+  "selection": "all 58 claims with support_count + failure_count >= 1",
+  "compiled_by": "claude-opus-5-5, from claim text only; no GT, results, or pair statistics were viewed before compiling",
+  "conventions": {
+    "steps": "T <= ~256 -> steps le 256; T <= ~500/512 -> le 512; T <= ~1000 -> le 1024; T ~ 2000 -> ge 1024",
+    "lr": "a stated value '~X' maps to the grid point X only; 'small/undersized' -> le 1e-4; 'severely reduced/tiny' -> le 3e-5",
+    "ceteris_paribus": "optimizer claims require same arch_key; architecture claims require same opt_key and batch_size; dropped only when the claim itself says one axis dominates the other",
+    "offsets": "|E[y]| >> 1 -> target_abs_mean ge 2.5; '>= ~4' -> ge 4; 'O(1)' -> le 1.5",
+    "status": "testable = main prediction compiled; partial = some clause unobservable from spec (stability, feature norms, 'no effect' clauses) and only the rest compiled; untestable = prediction hinges on a quantity absent from specs"
+  },
+  "claims": [
+    {
+      "id": "K0001",
+      "status": "untestable",
+      "note": "Ranking depends on 'output sensitivity per unit parameter displacement', not a spec field."
+    },
+    {
+      "id": "K0002",
+      "status": "testable",
+      "note": "More LayerNorm in residual MLP wins under tiny lr.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["residual", "eq", true], ["lr", "le", 0.0001]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation"],
+          "predict": {"higher_better": "ln_count"}
+        }
+      ]
+    },
+    {
+      "id": "K0009",
+      "status": "partial",
+      "note": "'numerically stable' unobservable; adaptive lr >= 1e-3 beats lr <= 1e-4, same architecture.",
+      "rules": [
+        {
+          "scope": [["steps", "le", 512], ["adaptive", "eq", true]],
+          "same": ["arch_key"],
+          "predict": {"better": [["lr", "ge", 0.001]], "worse": [["lr", "le", 0.0001]]}
+        }
+      ]
+    },
+    {
+      "id": "K0010",
+      "status": "testable",
+      "note": "XOR, T<=256: adaptive lr >= 3e-4 beats lr <= 1e-4.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "xor_classification"], ["steps", "le", 256], ["adaptive", "eq", true]],
+          "same": ["arch_key"],
+          "predict": {"better": [["lr", "ge", 0.0003]], "worse": [["lr", "le", 0.0001]]}
+        }
+      ]
+    },
+    {
+      "id": "K0012",
+      "status": "testable",
+      "note": "Large-offset regression: momentum SGD beats plain SGD at the same nominal lr.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["target_abs_mean", "ge", 2.5], ["steps", "le", 256], ["opt", "eq", "SGD"]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["momentum", "ge", 0.9]], "worse": [["momentum", "eq", 0]]}
+        }
+      ]
+    },
+    {
+      "id": "K0015",
+      "status": "testable",
+      "note": "Adam/AdamW lr<=1e-4, T<=512: beta2 0.95 beats 0.999.",
+      "rules": [
+        {
+          "scope": [["sign_normalized", "eq", true], ["lr", "le", 0.0001], ["steps", "le", 512]],
+          "same": ["arch_key", "opt", "lr"],
+          "predict": {"better": [["beta2", "eq", 0.95]], "worse": [["beta2", "eq", 0.999]]}
+        }
+      ]
+    },
+    {
+      "id": "K0016",
+      "status": "testable",
+      "note": "Regression, T<=512, lr 1e-3: Adam/AdamW beats plain SGD at same lr.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["steps", "le", 512], ["lr", "eq", 0.001]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["sign_normalized", "eq", true]], "worse": [["opt", "eq", "SGD"], ["momentum", "eq", 0]]}
+        }
+      ]
+    },
+    {
+      "id": "K0019",
+      "status": "partial",
+      "note": "'stable' unobservable. Adam/AdamW/Adagrad ranked by displacement proxy; small-lr plain SGD on MSE loses to them.",
+      "rules": [
+        {
+          "scope": [["steps", "ge", 512], ["opt", "in", ["Adam", "AdamW", "Adagrad"]]],
+          "same": ["arch_key"],
+          "predict": {"higher_better": "disp"}
+        },
+        {
+          "scope": [["steps", "ge", 512], ["task", "eq", "regression"]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["opt", "in", ["Adam", "AdamW", "Adagrad"]], ["lr", "ge", 0.0001]],
+            "worse": [["opt", "eq", "SGD"], ["momentum", "eq", 0], ["lr", "le", 0.0001]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0020",
+      "status": "testable",
+      "note": "LM, T<=256: Adam/AdamW at 3e-4..1e-3 beats momentum SGD or lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "lm"], ["steps", "le", 256]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["sign_normalized", "eq", true], ["lr", "in", [0.0003, 0.001]]],
+            "worse": {"any": [["opt", "eq", "SGD"], ["lr", "le", 3e-05]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0021",
+      "status": "testable",
+      "note": "XOR, T<=256, lr 3e-4: shallower-and-wider MLP beats deeper-and-narrower residual MLP.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "xor_classification"], ["steps", "le", 256], ["lr", "eq", 0.0003], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"dominates": [["depth", "lower"], ["width", "higher"]], "loser": [["residual", "eq", true]]}
+        }
+      ]
+    },
+    {
+      "id": "K0022",
+      "status": "partial",
+      "note": "Weight-decay 'negligible' clause is a no-difference claim, not scored. Adaptive same-arch pairs ranked by displacement proxy.",
+      "rules": [
+        {
+          "scope": [["steps", "le", 256], ["adaptive", "eq", true]],
+          "same": ["arch_key"],
+          "predict": {"higher_better": "disp"}
+        }
+      ]
+    },
+    {
+      "id": "K0023",
+      "status": "partial",
+      "note": "Step size dominates architecture: on pairs differing in architecture, larger displacement proxy wins (adaptive only).",
+      "rules": [
+        {
+          "scope": [["budget", "lt", 10000], ["steps", "le", 256], ["adaptive", "eq", true]],
+          "differ": ["arch_key"],
+          "predict": {"higher_better": "disp", "min_ratio": 2}
+        }
+      ]
+    },
+    {
+      "id": "K0028",
+      "status": "untestable",
+      "note": "Ranking by initial empirical NTK magnitude, not a spec field."
+    },
+    {
+      "id": "K0029",
+      "status": "testable",
+      "note": "T<=256, lr<=1e-4: deeper residual MLP beats shallower non-residual MLP.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["steps", "le", 256], ["lr", "le", 0.0001]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"dominates": [["depth", "higher"]], "winner": [["residual", "eq", true]], "loser": [["residual", "eq", false]]}
+        }
+      ]
+    },
+    {
+      "id": "K0030",
+      "status": "testable",
+      "note": "Spiral, T<=512: adaptive lr 1e-3 beats SGD or lr<=1e-4; deep (>=4) residual LN MLP beats shallow (<=2) unnormalized MLP.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "spiral_classification"], ["steps", "le", 512]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["adaptive", "eq", true], ["lr", "eq", 0.001]],
+            "worse": {"any": [["opt", "eq", "SGD"], ["lr", "le", 0.0001]]}
+          }
+        },
+        {
+          "scope": [["family", "eq", "spiral_classification"], ["steps", "le", 512], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["depth", "ge", 4], ["ln_any", "eq", true]],
+            "worse": [["depth", "le", 2], ["ln_any", "eq", false]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0031",
+      "status": "testable",
+      "note": "CE tasks, T<=256: Adam/AdamW lr 1e-3 beats any lr<=1e-4, regardless of architecture.",
+      "rules": [
+        {
+          "scope": [["metric", "eq", "test_ce"], ["steps", "le", 256]],
+          "predict": {"better": [["sign_normalized", "eq", true], ["lr", "eq", 0.001]], "worse": [["lr", "le", 0.0001]]}
+        }
+      ]
+    },
+    {
+      "id": "K0036",
+      "status": "testable",
+      "note": "Tabular <10 features, T<=1024, lr<=1e-4: 1-block wide (>=128) residual beats deep (>=5) narrow (<=48) non-residual.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "synthetic_tabular_classification"], ["input_dim", "lt", 10], ["steps", "le", 1024], ["lr", "le", 0.0001], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["depth", "eq", 1], ["width", "ge", 128]],
+            "worse": [["residual", "eq", false], ["depth", "ge", 5], ["width", "le", 48]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0037",
+      "status": "partial",
+      "note": "SiLU-vs-GELU 'negligible' clause not scored. More LayerNorm in residual MLP wins, lr<=1e-4, T<=1024.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["residual", "eq", true], ["lr", "le", 0.0001], ["steps", "le", 1024]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation"],
+          "predict": {"higher_better": "ln_count"}
+        }
+      ]
+    },
+    {
+      "id": "K0038",
+      "status": "testable",
+      "note": "Spiral: deep (>=3) residual MLP with LayerNorm beats shallow (<=2) MLP.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "spiral_classification"], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["residual", "eq", true], ["depth", "ge", 3], ["ln_any", "eq", true]], "worse": [["depth", "le", 2]]}
+        }
+      ]
+    },
+    {
+      "id": "K0039",
+      "status": "testable",
+      "note": "Classification, batch<=32, T<=1024: Adam beats RMSprop at the same lr.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "classification"], ["batch_size", "le", 32], ["steps", "le", 1024]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["opt", "eq", "Adam"]], "worse": [["opt", "eq", "RMSprop"]]}
+        }
+      ]
+    },
+    {
+      "id": "K0043",
+      "status": "testable",
+      "note": "T<=256: adaptive lr 1e-3 beats lr<=1e-4 regardless of residual/LayerNorm.",
+      "rules": [
+        {
+          "scope": [["steps", "le", 256], ["adaptive", "eq", true]],
+          "predict": {"better": [["lr", "eq", 0.001]], "worse": [["lr", "le", 0.0001]]}
+        }
+      ]
+    },
+    {
+      "id": "K0044",
+      "status": "partial",
+      "note": "'stable' unobservable. XOR, T<=256: adaptive candidates ordered by displacement proxy.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "xor_classification"], ["steps", "le", 256], ["adaptive", "eq", true]],
+          "same": ["arch_key"],
+          "predict": {"higher_better": "disp"}
+        }
+      ]
+    },
+    {
+      "id": "K0047",
+      "status": "testable",
+      "note": "Adam lr<=1e-4, T<=512, regression: wider MLP wins.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["sign_normalized", "eq", true], ["lr", "le", 0.0001], ["steps", "le", 512], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"higher_better": "width"}
+        }
+      ]
+    },
+    {
+      "id": "K0052",
+      "status": "testable",
+      "note": "Bigram, T<=256, lr 1e-3: 1-layer transformer beats multi-layer transformer.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "bigram_lm"], ["model_type", "eq", "transformer_lm"], ["steps", "le", 256], ["lr", "eq", 0.001]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["num_layers", "eq", 1]], "worse": [["num_layers", "ge", 2]]}
+        }
+      ]
+    },
+    {
+      "id": "K0056",
+      "status": "partial",
+      "note": "'magnitude-dependent boundaries' has no clean spec mapping; scored on all classification: non-residual all-LayerNorm MLP loses to residual MLP.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "classification"], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["residual", "eq", true]], "worse": [["residual", "eq", false], ["ln_all", "eq", true]]}
+        }
+      ]
+    },
+    {
+      "id": "K0057",
+      "status": "testable",
+      "note": "Smooth boundaries (smooth_additive, spiral), T<=256: GELU/SiLU beat ReLU at equal width.",
+      "rules": [
+        {
+          "scope": [["rule_family", "in", ["smooth_additive", "spiral"]], ["steps", "le", 256], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "width"],
+          "predict": {"better": [["smooth_activation", "eq", true]], "worse": [["activation", "eq", "relu"]]}
+        }
+      ]
+    },
+    {
+      "id": "K0065",
+      "status": "untestable",
+      "note": "Ranking by total NTK magnitude, not a spec field."
+    },
+    {
+      "id": "K0066",
+      "status": "testable",
+      "note": "XOR, T<=256: momentum SGD at lr 3e-3 beats plain SGD or adaptive lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "xor_classification"], ["steps", "le", 256]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["opt", "eq", "SGD"], ["momentum", "ge", 0.9], ["lr", "eq", 0.003]],
+            "worse": {"any": [[["opt", "eq", "SGD"], ["momentum", "eq", 0]], [["adaptive", "eq", true], ["lr", "le", 3e-05]]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0067",
+      "status": "testable",
+      "note": "Spiral, T<=1024: adaptive optimizer beats plain SGD at the same lr.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "spiral_classification"], ["steps", "le", 1024]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["adaptive", "eq", true]], "worse": [["opt", "eq", "SGD"], ["momentum", "eq", 0]]}
+        }
+      ]
+    },
+    {
+      "id": "K0069",
+      "status": "testable",
+      "note": "Regression, T<=1024: momentum SGD beats Adagrad when its lr/(1-m) >= 10x Adagrad's 2*lr/sqrt(T).",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["steps", "le", 1024]],
+          "same": ["arch_key"],
+          "predict": {
+            "dominates": [["per_step", "higher", 10]],
+            "winner": [["opt", "eq", "SGD"], ["momentum", "ge", 0.9]],
+            "loser": [["opt", "eq", "Adagrad"]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0070",
+      "status": "testable",
+      "note": "Large-offset regression, T<=256: Adam/AdamW beat Adagrad at same lr, and beat plain SGD lr<=1e-4.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["target_abs_mean", "ge", 2.5], ["steps", "le", 256]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["sign_normalized", "eq", true]], "worse": [["opt", "eq", "Adagrad"]]}
+        },
+        {
+          "scope": [["task", "eq", "regression"], ["target_abs_mean", "ge", 2.5], ["steps", "le", 256]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["sign_normalized", "eq", true], ["lr", "ge", 0.0001]],
+            "worse": [["opt", "eq", "SGD"], ["momentum", "eq", 0], ["lr", "le", 0.0001]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0071",
+      "status": "testable",
+      "note": "Piecewise tabular, T<=1024: 2-3 block residual LN MLP beats deep (>=4) unnormalized residual and 1-block MLPs.",
+      "rules": [
+        {
+          "scope": [["rule_family", "eq", "piecewise_boundary"], ["steps", "le", 1024], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["depth", "in", [2, 3]], ["ln_any", "eq", true]],
+            "worse": {"any": [[["residual", "eq", true], ["depth", "ge", 4], ["ln_any", "eq", false]], ["depth", "eq", 1]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0073",
+      "status": "testable",
+      "note": "Multivariate regression, T<=256: Adam/AdamW lr>=3e-4 beats same optimizer at lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "multivariate_regression"], ["steps", "le", 256], ["sign_normalized", "eq", true]],
+          "same": ["arch_key", "opt"],
+          "predict": {"better": [["lr", "ge", 0.0003]], "worse": [["lr", "le", 3e-05]]}
+        }
+      ]
+    },
+    {
+      "id": "K0074",
+      "status": "testable",
+      "note": "Regression, small lr, T<=1024: wider-and-shallower MLP (Pareto) wins.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["steps", "le", 1024], ["lr", "le", 0.0001], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"dominates": [["width", "higher"], ["depth", "lower"]]}
+        }
+      ]
+    },
+    {
+      "id": "K0082",
+      "status": "testable",
+      "note": "Regression, T<=1024: GELU/SiLU beat ReLU/LeakyReLU at equal width.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["steps", "le", 1024], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "width"],
+          "predict": {"better": [["smooth_activation", "eq", true]], "worse": [["smooth_activation", "eq", false]]}
+        }
+      ]
+    },
+    {
+      "id": "K0083",
+      "status": "testable",
+      "note": "Regression, lr<=3e-4: depth<=3 beats depth>=4 non-residual unnormalized MLP.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["lr", "le", 0.0003], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["depth", "le", 3]], "worse": [["depth", "ge", 4], ["residual", "eq", false], ["ln_any", "eq", false]]}
+        }
+      ]
+    },
+    {
+      "id": "K0095",
+      "status": "testable",
+      "note": "Smooth additive, T<=256: shallow (<=2) wide (>=32) residual LN beats deep (>=4) narrow (<=16).",
+      "rules": [
+        {
+          "scope": [["rule_family", "eq", "smooth_additive"], ["steps", "le", 256], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["ln_any", "eq", true], ["depth", "le", 2], ["width", "ge", 32]],
+            "worse": [["depth", "ge", 4], ["width", "le", 16]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0100",
+      "status": "testable",
+      "note": "Bigram, T<=256: Adam/AdamW lr 3e-3 beats Adagrad and RMSprop lr<=3e-5, regardless of depth.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "bigram_lm"], ["steps", "le", 256]],
+          "predict": {
+            "better": [["sign_normalized", "eq", true], ["lr", "eq", 0.003]],
+            "worse": {"any": [["opt", "eq", "Adagrad"], [["opt", "eq", "RMSprop"], ["lr", "le", 3e-05]]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0101",
+      "status": "testable",
+      "note": "Multivariate regression, T>=1024: Adam/AdamW lr 3e-3 beats lr<=1e-4; RMSprop 1e-4 beats lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "multivariate_regression"], ["steps", "ge", 1024]],
+          "same": ["arch_key"],
+          "predict": {"better": [["sign_normalized", "eq", true], ["lr", "eq", 0.003]], "worse": [["lr", "le", 0.0001]]}
+        },
+        {
+          "scope": [["family", "eq", "multivariate_regression"], ["steps", "ge", 1024]],
+          "same": ["arch_key"],
+          "predict": {"better": [["opt", "eq", "RMSprop"], ["lr", "eq", 0.0001]], "worse": [["lr", "le", 3e-05]]}
+        }
+      ]
+    },
+    {
+      "id": "K0105",
+      "status": "testable",
+      "note": "Bigram V<=32, T<=256: displacement proxy decides, across model classes.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "bigram_lm"], ["vocab_size", "le", 32], ["steps", "le", 256], ["adaptive", "eq", true]],
+          "predict": {"higher_better": "disp"}
+        }
+      ]
+    },
+    {
+      "id": "K0124",
+      "status": "testable",
+      "note": "XOR: Adam/AdamW/RMSprop beat SGD (with or without momentum) at the same lr <= 1e-3.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "xor_classification"], ["lr", "le", 0.001]],
+          "same": ["arch_key", "lr"],
+          "predict": {"better": [["opt", "in", ["Adam", "AdamW", "RMSprop"]]], "worse": [["opt", "eq", "SGD"]]}
+        }
+      ]
+    },
+    {
+      "id": "K0132",
+      "status": "testable",
+      "note": "Spiral, T<=1024: Adam/AdamW lr 1e-3 beats lr<=3e-5 or Adagrad with displacement <= 0.01.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "spiral_classification"], ["steps", "le", 1024]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["sign_normalized", "eq", true], ["lr", "eq", 0.001]],
+            "worse": {"any": [["lr", "le", 3e-05], [["opt", "eq", "Adagrad"], ["disp", "le", 0.01]]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0133",
+      "status": "partial",
+      "note": "Mechanistic; implied ranking only: residual+LayerNorm MLP beats plain unnormalized MLP of depth >= 3.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["ln_any", "eq", true]],
+            "worse": [["residual", "eq", false], ["ln_any", "eq", false], ["depth", "ge", 3]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0138",
+      "status": "testable",
+      "note": "T<=256: Adagrad lr 1e-3 beats RMSprop/Adam/AdamW lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["steps", "le", 256]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["opt", "eq", "Adagrad"], ["lr", "eq", 0.001]],
+            "worse": [["opt", "in", ["RMSprop", "Adam", "AdamW"]], ["lr", "le", 3e-05]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0139",
+      "status": "testable",
+      "note": "Small (width<=32) residual LN MLP, classification, T<=256: Adam/AdamW lr 3e-3 beats lr 1e-3.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "classification"], ["model_type", "eq", "mlp"], ["residual", "eq", true], ["ln_any", "eq", true], ["width", "le", 32], ["steps", "le", 256], ["sign_normalized", "eq", true]],
+          "same": ["arch_key", "opt"],
+          "predict": {"better": [["lr", "eq", 0.003]], "worse": [["lr", "eq", 0.001]]}
+        }
+      ]
+    },
+    {
+      "id": "K0141",
+      "status": "testable",
+      "note": "|E[y]|>=4 regression, T<=256: Adam/AdamW lr 3e-3 beats adaptive lr<=1e-4 or momentum SGD lr<=1e-4.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["target_abs_mean", "ge", 4], ["steps", "le", 256]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["sign_normalized", "eq", true], ["lr", "eq", 0.003]],
+            "worse": {"any": [[["adaptive", "eq", true], ["lr", "le", 0.0001]], [["opt", "eq", "SGD"], ["momentum", "ge", 0.9], ["lr", "le", 0.0001]]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0144",
+      "status": "partial",
+      "note": "Stability bound unobservable. O(1) regression, wide (>=128) ReLU, T<=256: momentum SGD lr 3e-3 beats Adam/AdamW/RMSprop lr<=3e-5.",
+      "rules": [
+        {
+          "scope": [["task", "eq", "regression"], ["target_abs_mean", "le", 1.5], ["steps", "le", 256], ["width", "ge", 128], ["activation", "eq", "relu"]],
+          "same": ["arch_key"],
+          "predict": {
+            "better": [["opt", "eq", "SGD"], ["momentum", "ge", 0.9], ["lr", "eq", 0.003]],
+            "worse": [["opt", "in", ["Adam", "AdamW", "RMSprop"]], ["lr", "le", 3e-05]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0146",
+      "status": "testable",
+      "note": "Smooth additive, T<=512: shallow (<=2) wide (>=64) smooth-activation MLP beats deep (>=3) narrow (<=48) ReLU MLP.",
+      "rules": [
+        {
+          "scope": [["rule_family", "eq", "smooth_additive"], ["steps", "le", 512], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["depth", "le", 2], ["width", "ge", 64], ["smooth_activation", "eq", true]],
+            "worse": [["activation", "eq", "relu"], ["depth", "ge", 3], ["width", "le", 48]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0156",
+      "status": "partial",
+      "note": "'under-trained tasks' unobservable. Adam/AdamW beats Adagrad when lr_a*T > 2*lr_g*sqrt(T), same steps.",
+      "rules": [
+        {
+          "scope": [["opt", "in", ["Adam", "AdamW", "Adagrad"]]],
+          "same": ["arch_key", "steps"],
+          "predict": {
+            "dominates": [["disp", "higher"]],
+            "winner": [["sign_normalized", "eq", true]],
+            "loser": [["opt", "eq", "Adagrad"]]
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0157",
+      "status": "partial",
+      "note": "Displacement claim; implied ranking only: RMSprop beats Adagrad at same lr, T<=256.",
+      "rules": [
+        {
+          "scope": [["steps", "le", 256]],
+          "same": ["arch_key", "lr", "steps"],
+          "predict": {"better": [["opt", "eq", "RMSprop"]], "worse": [["opt", "eq", "Adagrad"]]}
+        }
+      ]
+    },
+    {
+      "id": "K0161",
+      "status": "untestable",
+      "note": "Ranking by last-layer feature norm ||h||^2, not a spec field."
+    },
+    {
+      "id": "K0167",
+      "status": "partial",
+      "note": "Bigram transformers, T<=512: on pairs differing in architecture, >=2x larger displacement proxy wins (adaptive only).",
+      "rules": [
+        {
+          "scope": [["family", "eq", "bigram_lm"], ["model_type", "eq", "transformer_lm"], ["steps", "le", 512], ["adaptive", "eq", true]],
+          "differ": ["arch_key"],
+          "predict": {"higher_better": "disp", "min_ratio": 2}
+        }
+      ]
+    },
+    {
+      "id": "K0173",
+      "status": "untestable",
+      "note": "Conditional on whether logit displacement overcomes an init-entropy penalty; neither term is a spec field."
+    },
+    {
+      "id": "K0177",
+      "status": "testable",
+      "note": "Non-residual MLP, T<=256: deep (>=5) with >=2 LayerNorms beats shallow (<=2).",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["residual", "eq", false], ["steps", "le", 256]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["depth", "ge", 5], ["ln_count", "ge", 2]], "worse": [["depth", "le", 2]]}
+        }
+      ]
+    },
+    {
+      "id": "K0194",
+      "status": "untestable",
+      "note": "Ranking by last-hidden-layer feature norm, not a spec field."
+    },
+    {
+      "id": "K0198",
+      "status": "testable",
+      "note": "Spiral/XOR, T<=256: adaptive candidates ordered by displacement proxy; beta2 0.95 beats 0.999.",
+      "rules": [
+        {
+          "scope": [["family", "in", ["spiral_classification", "xor_classification"]], ["steps", "le", 256], ["adaptive", "eq", true]],
+          "same": ["arch_key"],
+          "predict": {"higher_better": "disp"}
+        },
+        {
+          "scope": [["family", "in", ["spiral_classification", "xor_classification"]], ["steps", "le", 256], ["sign_normalized", "eq", true]],
+          "same": ["arch_key", "opt", "lr"],
+          "predict": {"better": [["beta2", "eq", 0.95]], "worse": [["beta2", "eq", 0.999]]}
+        }
+      ]
+    },
+    {
+      "id": "K0226",
+      "status": "testable",
+      "note": "1D oscillatory regression, T 512-2048, lr 3e-3: depth 2-3 residual beats depth-1 or deep (>=4) non-residual.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "univariate_regression"], ["target_oscillatory", "eq", true], ["steps", "ge", 512], ["lr", "eq", 0.003], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {
+            "better": [["residual", "eq", true], ["depth", "in", [2, 3]]],
+            "worse": {"any": [["depth", "eq", 1], [["residual", "eq", false], ["depth", "ge", 4]]]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "K0252",
+      "status": "testable",
+      "note": "1D oscillatory regression, T<=256, adaptive lr 1e-3: 2-layer non-residual beats 1-layer residual.",
+      "rules": [
+        {
+          "scope": [["family", "eq", "univariate_regression"], ["target_oscillatory", "eq", true], ["steps", "le", 256], ["adaptive", "eq", true], ["lr", "eq", 0.001], ["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size"],
+          "predict": {"better": [["residual", "eq", false], ["depth", "eq", 2]], "worse": [["residual", "eq", true], ["depth", "eq", 1]]}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "architectureiq-studio"
+version = "0.1.0"
+description = "Independent ArchitectureIQ research workflow Studio"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "torch>=2.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff==0.15.20", "jsonschema>=4.0"]
+inspector = ["streamlit>=1.32", "matplotlib>=3.8", "sympy>=1.12"]
+quiz-api = [
+    "fastapi>=0.110,<1.0",
+    "httpx>=0.26,<1.0",
+    "uvicorn[standard]>=0.27,<1.0",
+]
+studio = [
+    "fastapi>=0.110,<1.0",
+    "httpx>=0.26,<1.0",
+    "uvicorn[standard]>=0.27,<1.0",
+]
+
+[project.scripts]
+architecture-iq = "architecture_iq.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
