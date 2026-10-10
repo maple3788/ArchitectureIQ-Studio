@@ -724,6 +724,12 @@ def create_app(
 
         return knowledge_inventory(jobs, archives())
 
+    from .rag_routes import register_rag_routes
+    from architecture_iq.studio.knowledge import knowledge_inventory
+    register_rag_routes(api, catalog=catalog, models=models, jobs=jobs,
+                        inventory_provider=knowledge,
+                        require_execution=require_execution, allowed_roots=sources)
+
     build = dist_dir or ROOT / "frontend/workflow/dist"
     if (build / "assets").is_dir():
         api.mount("/assets", StaticFiles(directory=build / "assets"), name="assets")
