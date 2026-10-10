@@ -2,7 +2,7 @@
 from contextlib import closing
 import json
 
-from .catalog import Catalog, _hash
+from .catalog import Catalog, _hash, _public_question, rag_ready
 from .question_equivalence import STRATEGY, equivalence_id
 
 
@@ -30,19 +30,55 @@ def matches(summary: dict, filters: dict) -> bool:
                                        ('id', 'key', 'family', 'type', 'prompt')).casefold()
 
 
-def question_summary(catalog: Catalog, key: str) -> tuple[dict, list[dict]]:
-    try:
-        record = catalog.get_question(key)
-        return {**record['metadata'], 'prompt': record['public']['prompt']}, record['sources']
-    except (ValueError, KeyError, OSError, TypeError):
+def _indexed_question(catalog: Catalog, key: str, row=None) -> dict:
+    if row is None:
         with closing(catalog._connect()) as conn:
-            row = conn.execute('SELECT summary FROM questions WHERE key=?', (key,)).fetchone()
-        if row is None:
-            raise KeyError(f'Unknown question revision: {key}')
+            row = conn.execute('SELECT hash,summary FROM questions WHERE key=?', (key,)).fetchone()
+    if row is None:
+        raise KeyError(f'Unknown question revision: {key}')
+    path = catalog.root / 'records' / (row['hash'] + '.json')
+    try:
+        if not path.resolve().is_relative_to(catalog.root):
+            raise ValueError('Question record is outside the catalog')
+        stat = path.stat()
+        fingerprint = (row['hash'], stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    except (OSError, ValueError):
+        fingerprint = (row['hash'], None)
+    cached = catalog._data_index_cache.get(key)
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
+    try:
+        if fingerprint[-1] is None:
+            raise ValueError('Question record is unavailable')
+        record = catalog._load_frozen_record(key)
+        public = _public_question(record['public'])
+        summary = {**record['metadata'], 'prompt': public['prompt'], 'rag_ready': rag_ready(public)}
+        entry = {'summary': summary, 'identity': equivalence_id(record, question_key=key), 'status': 'verified'}
+        after = path.stat()
+        if fingerprint != (row['hash'], after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise ValueError('Question record changed during indexing')
+    except (ValueError, KeyError, OSError, TypeError):
         summary = json.loads(row['summary'])
         summary.update(ready=False, evaluation_ready=False, kb_ready=False, rag_ready=False,
                        issues=['Stored question is missing or failed integrity verification'])
-        return summary, []
+        entry = {'summary': summary, 'identity': STRATEGY + ':unavailable:' + _hash(key), 'status': 'unavailable'}
+    # Cache only the public summary and opaque identity, never the private record.
+    # File changes invalidate this process-local cache; source health is read below.
+    if len(catalog._data_index_cache) >= 4096 and key not in catalog._data_index_cache:
+        catalog._data_index_cache.pop(next(iter(catalog._data_index_cache)), None)
+    catalog._data_index_cache[key] = (fingerprint, entry)
+    return entry
+
+
+def question_summary(catalog: Catalog, key: str) -> tuple[dict, list[dict]]:
+    entry = _indexed_question(catalog, key)
+    summary = {**entry['summary']}
+    with closing(catalog._connect()) as conn:
+        aliases = conn.execute('SELECT source_id,origin,issues,blocked FROM aliases WHERE key=? ORDER BY source_id,origin',
+                               (key,)).fetchall()
+    summary['source_count'] = len({a['source_id'] for a in aliases})
+    summary = catalog._source_state(summary, aliases)
+    return summary, [{**dict(a), 'issues': json.loads(a['issues'])} for a in aliases]
 
 
 class QuestionBank:
@@ -55,16 +91,11 @@ class QuestionBank:
 
     def refresh(self) -> dict:
         with closing(self.catalog._connect()) as conn:
-            rows = conn.execute('SELECT key,hash FROM questions ORDER BY key').fetchall()
+            rows = conn.execute('SELECT key,hash,summary FROM questions ORDER BY key').fetchall()
         entries = []
         for row in rows:
-            try:
-                identity = equivalence_id(self.catalog._load_frozen_record(row['key']), question_key=row['key'])
-                status = 'verified'
-            except (ValueError, KeyError, OSError, TypeError):
-                identity = STRATEGY + ':unavailable:' + _hash(row['key'])
-                status = 'unavailable'
-            entries.append((row['key'], row['hash'], STRATEGY, identity, status))
+            indexed = _indexed_question(self.catalog, row['key'], row)
+            entries.append((row['key'], row['hash'], STRATEGY, indexed['identity'], indexed['status']))
         with closing(self.catalog._connect()) as conn, conn:
             conn.executemany('INSERT OR REPLACE INTO question_equivalence VALUES (?,?,?,?,?)', entries)
         return {'questions': len(entries), 'unavailable': sum(e[-1] != 'verified' for e in entries)}

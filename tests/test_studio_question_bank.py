@@ -92,3 +92,37 @@ def test_filters_and_pagination_are_stable_over_equivalence_groups(tmp_path):
     assert b.list_questions(filters={'family': 'absent'})['total'] == 0
     with pytest.raises(ValueError): b.list_questions(offset=-1)
     with pytest.raises(ValueError): b.list_questions(filters={'private': 'B'})
+
+
+def test_verified_index_reuses_unchanged_files_but_rechecks_health_and_repairs(tmp_path, monkeypatch):
+    from architecture_iq.studio.question_bank import question_summary
+    c = Catalog(tmp_path / 'state')
+    c.import_source(bakefile(tmp_path / 'in.json', [baked('q1'), baked('q2')]))
+    loaded = []
+    load = c._load_frozen_record
+    def counted_load(key):
+        loaded.append(key)
+        return load(key)
+    monkeypatch.setattr(c, '_load_frozen_record', counted_load)
+    b = bank(c)
+    first = b.list_questions()
+    before = len(loaded)
+    assert b.list_questions() == first
+    assert len(loaded) == before, 'Unchanged files must not be parsed again for each page or filter'
+    key = first['items'][0]['representative_key']
+    with c._connect() as conn:
+        conn.execute('UPDATE aliases SET blocked=1,issues=? WHERE key=?', ('["blocked"]', key))
+    assert question_summary(c, key)[0]['ready'] is False
+    assert b.list_questions()['items'][0]['representative_key'] != key
+    with c._connect() as conn:
+        conn.execute('UPDATE aliases SET blocked=0,issues=? WHERE key=?', ('[]', key))
+    assert question_summary(c, key)[0]['ready'] is True
+    path = c.root / 'records' / (question_summary(c, key)[0]['hash'] + '.json')
+    original = path.read_bytes()
+    path.write_text('{}')
+    broken = b.list_questions()
+    assert broken['total'] == 2
+    assert question_summary(c, key)[0]['ready'] is False
+    path.write_bytes(original)
+    assert b.list_questions() == first
+    assert 'correct_letter' not in json.dumps(b.list_questions())

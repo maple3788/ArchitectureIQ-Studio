@@ -174,6 +174,7 @@ class Catalog:
     """Thread-safe through per-operation SQLite connections and frozen files."""
 
     def __init__(self, root: Path):
+        self._data_index_cache = {}
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root / "records").mkdir(exist_ok=True)
