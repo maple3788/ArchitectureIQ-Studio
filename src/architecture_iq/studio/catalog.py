@@ -17,6 +17,7 @@ import sqlite3
 from typing import Any
 
 from architecture_iq.kb.rules import CONTROL_FIELDS, public_views
+from .rag_inputs import rag_ready
 from architecture_iq.studio.pairs import pair_manifest, pair_provenance
 
 
@@ -666,11 +667,13 @@ class Catalog:
         where = " WHERE " + " AND ".join(filters) if filters else ""
         with closing(self._connect()) as conn:
             total = conn.execute("SELECT COUNT(*) FROM questions q" + where, values).fetchone()[0]
-            rows = conn.execute("SELECT q.summary, (SELECT COUNT(DISTINCT source_id) FROM aliases a WHERE a.key=q.key) AS source_count FROM questions q"
+            rows = conn.execute("SELECT q.hash, q.summary, (SELECT COUNT(DISTINCT source_id) FROM aliases a WHERE a.key=q.key) AS source_count FROM questions q"
                 + where + " ORDER BY q.id, q.key LIMIT ? OFFSET ?", [*values, limit, offset]).fetchall()
             items = []
             for row in rows:
                 summary = {**json.loads(row["summary"]), "source_count": row["source_count"]}
+                stored = _read(self.root / 'records' / (row['hash'] + '.json'), self.root)
+                summary['rag_ready'] = rag_ready(_public_question(stored['public']))
                 query = "SELECT issues, blocked FROM aliases WHERE key=?"
                 alias_params = [summary["key"]]
                 if source_id:
@@ -686,7 +689,7 @@ class Catalog:
             summary["source_issues"] = source_issues
             summary["issues"] = list(dict.fromkeys([*summary["issues"], *source_issues]))
         if aliases and all(alias["blocked"] for alias in aliases):
-            summary.update(ready=False, evaluation_ready=False, kb_ready=False)
+            summary.update(ready=False, evaluation_ready=False, kb_ready=False, rag_ready=False)
         return summary
 
     def get_question(self, key: str, *, include_private: bool = False) -> dict:
@@ -706,6 +709,7 @@ class Catalog:
         # Apply the current public structural boundary on every read as well,
         # so older snapshots cannot bypass tightened import projections.
         record["public"] = _public_question(record["public"])
+        record['metadata']['rag_ready'] = rag_ready(record['public'])
         if "pair_provenance" in record["detail"]:
             record["detail"]["pair_provenance"] = pair_provenance(record["detail"]["pair_provenance"])
         for choice in record["detail"].get("choices", []):
