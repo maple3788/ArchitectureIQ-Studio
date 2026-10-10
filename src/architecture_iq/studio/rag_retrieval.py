@@ -92,3 +92,74 @@ def collect_candidates(question: dict, inventory: dict) -> dict:
                 add(item, lesson, payload, ['同题型的学习经验，尚未独立验证'], conditions)
     return {'entries': [grouped[key] for key in sorted(grouped)], 'excluded': excluded,
             'warnings': sorted(warnings, key=canonical_hash), 'inventory_hash': canonical_hash(identity)}
+
+
+def _tokens(text):
+    import re
+    result = []
+    for word in re.findall(r'[a-zA-Z0-9_]+|[\u3400-\u9fff]+', text.lower()):
+        if '\u3400' <= word[0] <= '\u9fff':
+            result.extend(word[i:i + 2] for i in range(max(1, len(word) - 1)))
+        else:
+            result.append(word)
+    return result
+
+
+# Validation still happens on every request; only the public token index is cached.
+from collections import Counter, OrderedDict
+import math
+_INDEXES = OrderedDict()
+
+
+def retrieve_knowledge(question: dict, inventory: dict, *, knowledge_limit: int = 8) -> dict:
+    if type(knowledge_limit) is not int or not 1 <= knowledge_limit <= 12:
+        raise ValueError('知识条数必须为 1–12 的整数')
+    admitted = collect_candidates(question, inventory)
+    entries = admitted.pop('entries')
+    cache_key = canonical_hash([STRATEGY, admitted['inventory_hash'], [e['payload'] for e in entries]])
+    if cache_key not in _INDEXES:
+        docs = [Counter(_tokens(e['text'] + ' ' + e['conditions_text'])) for e in entries]
+        _INDEXES[cache_key] = (docs, Counter(t for d in docs for t in d))
+        if len(_INDEXES) > 8:
+            _INDEXES.popitem(last=False)
+    _INDEXES.move_to_end(cache_key)
+    docs, df = _INDEXES[cache_key]
+    views = [{k: v for k, v in c['view'].items() if k != 'family'} for c in question['choices']]
+    query = set(_tokens(question['prompt'] + ' ' + json.dumps(views, ensure_ascii=False, sort_keys=True)))
+    avg = sum(sum(d.values()) for d in docs) / len(docs) if docs else 0
+    ranked = []
+    for entry, doc in zip(entries, docs):
+        condition = len(query & set(_tokens(entry['conditions_text'])))
+        score = 0.0
+        if avg:
+            length = sum(doc.values())
+            for term in query & doc.keys():
+                frequency = doc[term]
+                score += math.log(1 + (len(docs) - df[term] + .5) / (df[term] + .5)) * frequency * 2.2 / (frequency + 1.2 * (.25 + .75 * length / avg))
+        verified = entry['kind'] == 'formal'
+        if not verified and not condition and not score:
+            continue
+        hit = {k: copy.deepcopy(v) for k, v in entry.items() if k not in {'conditions_text', 'kbs', 'payload'}}
+        hit.update(score=score, condition_score=condition, verified=verified)
+        if condition:
+            hit['reasons'].append('条件文本相关（词项重合，非数值验证）')
+        if score:
+            hit['reasons'].append('题面与知识文本相关')
+        ranked.append((entry, hit))
+    ranked.sort(key=lambda pair: (-int(pair[1]['verified']), -pair[1]['condition_score'], -pair[1]['score'], pair[1]['citation_id']))
+    snapshots = {}
+    for entry, hit in ranked:
+        for kb in entry['kbs']:
+            key = (kb['id'], kb['version'])
+            snapshots.setdefault(key, {'kb': kb, 'hits': []})['hits'].append(hit)
+    def snapshot_order(snapshot):
+        signals = [(-int(h['verified']), -h['condition_score'], -h['score']) for h in snapshot['hits'][:3]]
+        return tuple(signals + [(0, 0, 0)] * (3 - len(signals))) + (snapshot['kb']['id'], snapshot['kb']['version'])
+    candidates = sorted(snapshots.values(), key=snapshot_order)[:3]
+    chosen = candidates[0] if candidates else None
+    hits = copy.deepcopy(chosen['hits'][:knowledge_limit]) if chosen else []
+    payloads = {entry['citation_id']: entry['payload'] for entry, _ in ranked}
+    return {**admitted, 'strategy': STRATEGY, 'candidates': candidates,
+            'selected_kb': copy.deepcopy(chosen['kb']) if chosen else None,
+            'knowledge': [copy.deepcopy(payloads[h['citation_id']]) for h in hits], 'provenance': hits,
+            'omitted': {'limit': max(0, len(chosen['hits']) - knowledge_limit) if chosen else 0, 'budget': 0}}

@@ -18,6 +18,7 @@ def public_question():
 
 def import_question(catalog, tmp_path, *, split='discovery', gt=True):
     raw = baked(split=split)
+    raw['detail']['prompt'] = public_question()['prompt']
     if not gt:
         raw.pop('reveal')
     catalog.import_source(bakefile(tmp_path / 'questions.json', [raw]))
@@ -67,3 +68,22 @@ def formal_library(tmp_path, monkeypatch):
     return question, {'id': tmp_path.name, 'version': snapshot['version'], 'kind': 'formal',
                       'name': '正式知识', 'snapshot': snapshot, 'source': str(tmp_path),
                       'sources': [{'id': tmp_path.name, 'path': str(tmp_path)}], 'counts': {}}
+
+
+def make_rag_case(tmp_path, monkeypatch, *, execution_enabled=False):
+    from fastapi.testclient import TestClient
+    from services.kb_workflow_api.app import create_app
+    state = tmp_path / 'state'
+    app = create_app(state_root=state, allowed_roots=[tmp_path], execution_enabled=execution_enabled)
+    key = import_question(app.state.catalog, tmp_path)
+    model = app.state.models.save({'id': 'glm', 'name': '测试 GLM', 'model': 'glm',
+                                   'base_url': 'http://models.example.test/v1',
+                                   'parameters': {'max_tokens': 64}, 'context_size': 32768})
+    item = experience_library(tmp_path / 'library')
+    case = {'app': app, 'client': TestClient(app), 'catalog': app.state.catalog,
+            'models': app.state.models, 'jobs': app.state.jobs, 'question_key': key,
+            'public': app.state.catalog.get_question(key)['public'], 'model': model,
+            'inventory': {'items': [item]}, 'state_root': state,
+            'selection': {'question_key': key, 'model_id': 'glm', 'knowledge_limit': 8}, 'calls': []}
+    monkeypatch.setattr('architecture_iq.kb.cli.require_execution_host', lambda *a: None)
+    return case
