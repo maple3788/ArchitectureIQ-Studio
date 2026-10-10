@@ -67,6 +67,15 @@ def create_app(
     api.state.catalog, api.state.models, api.state.jobs = catalog, models, jobs
     prefix = "/api/studio"
 
+    from architecture_iq.studio.datasets import DatasetStore
+    from architecture_iq.studio.question_bank import QuestionBank
+    from architecture_iq.studio.dataset_migration import migrate_legacy_datasets
+    from .dataset_routes import register_dataset_routes
+
+    datasets = DatasetStore(catalog)
+    api.state.dataset_migration = migrate_legacy_datasets(catalog, datasets)
+    register_dataset_routes(api, catalog=catalog, bank=QuestionBank(catalog), datasets=datasets, allowed_roots=sources)
+
     @api.exception_handler(ValueError)
     async def value_error(_request, exc):
         return JSONResponse(status_code=422, content={"detail": str(exc)})
