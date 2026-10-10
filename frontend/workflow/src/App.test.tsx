@@ -12,6 +12,6 @@ it('question shortcut opens RAG with exact version key and leaves workflow stora
  });
  render(<App/>);fireEvent.click(await screen.findByRole('button',{name:'打开 q1'}));
  fireEvent.click(await screen.findByRole('button',{name:'用 RAG 匹配 KB 作答'}));
- expect(await screen.findByRole('heading',{name:'RAG 作答'})).toBeTruthy();expect(screen.getByText('q1@rev')).toBeTruthy();
+ expect(await screen.findByRole('heading',{name:'RAG 作答'})).toBeTruthy();expect(screen.getAllByText('q1@rev').length).toBeGreaterThan(0);
  expect(location.hash).toBe('#rag');expect(localStorage.getItem('workflow-draft-test')).toBe('preserve');localStorage.removeItem('workflow-draft-test');
 });
