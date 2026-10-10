@@ -1,0 +1,36 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {QuestionBuilder} from './QuestionBuilder';
+import {datasetFixture,dataProps} from './dataTestFixtures';
+const schema={version:1,editable_fields:[{name:'input_dim',label:'输入维度',type:'integer',enum:[4,8],required:false,default_mode:'sample'}],read_only_facts:[{name:'noise_std',label:'noise_std',value:0.1}]};
+const caps={profiles:[{name:'v1.5',budgets:[64],n_seeds:1,num_choices:3,pools:{optimizers:['Adam']},families:[{name:'multivariate_regression',model_types:['mlp'],options:['input_dim'],form_schema:schema},{name:'univariate_regression',model_types:['mlp'],options:[],form_schema:{...schema,editable_fields:[]}}]}]};
+const target={collection_id:'ds_a',revision:'r1'};
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it('renders real family fields, clears obsolete values and binds the target preview',async()=>{
+ const requests:any[]=[];
+ vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{if(path.endsWith('/runs'))return new Response('{"items":[],"total":0}');if(path.includes('/datasets'))return new Response(JSON.stringify(datasetFixture));const body=JSON.parse(String(init?.body));requests.push(body);return new Response(JSON.stringify({...body,dataset_preview_hash:'preview',candidate_seed_runs:3}));});
+ const {rerender}=render(<QuestionBuilder capabilities={caps} target={target} version={0} act={dataProps.act} executionEnabled onRun={()=>{}}/>);
+ fireEvent.change(await screen.findByLabelText('输入维度'),{target:{value:'8'}});
+ fireEvent.click(screen.getByRole('button',{name:'冻结 spec 预览'}));
+ await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]).toMatchObject({family_options:{input_dim:8},dataset_target:target});
+ await waitFor(()=>expect((screen.getByRole('button',{name:'提交生成任务'}) as HTMLButtonElement).disabled).toBe(false));
+ rerender(<QuestionBuilder capabilities={caps} target={{...target,revision:'r2'}} version={0} act={dataProps.act} executionEnabled onRun={()=>{}}/>);
+ expect((screen.getByRole('button',{name:'提交生成任务'}) as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.change(screen.getByLabelText('Dataset family'),{target:{value:'univariate_regression'}});
+ expect(await screen.findByText('此类型按服务端规则采样，无额外可编辑参数。')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'冻结 spec 预览'}));await waitFor(()=>expect(requests).toHaveLength(2));expect(requests[1].family_options).toEqual({});
+});
+it('shows attachment conflict without regenerating questions',async()=>{
+ const paths:string[]=[];
+ const run={id:'run_fixture',kind:'generation',status:'complete',created_at:0,config:{dataset_target:target},result:{outcome:'partial',generated_questions:1},dataset_attachment:{status:'revision_conflict',target,question_keys:['q@v'],pair_keys:[],message:'题库已更新'}};
+ vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{paths.push(path);let value:any;
+  if(path.endsWith('/runs'))value={items:[run],total:1};else if(path.endsWith('/dataset-attachment'))value={...run.dataset_attachment,status:'attached',result_revision:'r3'};
+  else if(path.includes('/datasets?'))value={items:[{...datasetFixture,count:1}],total:1};else value={...datasetFixture,revision:'r2'};
+  return new Response(JSON.stringify(value));
+ });
+ render(<QuestionBuilder capabilities={caps} target={target} version={0} act={dataProps.act} executionEnabled={false} onRun={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'将已有结果加入 Dataset'}));
+ expect(await screen.findByText('已加入 Dataset')).toBeTruthy();
+ expect(paths).toContain('/api/studio/generations/run_fixture/dataset-attachment');
+ expect(paths.filter(p=>p==='/api/studio/generations')).toHaveLength(0);
+});
