@@ -132,7 +132,7 @@ def execute_rag(store, identifier: str, config: dict, *, client_factory=None) ->
             store.finish(identifier, key, {'status': 'invalid', 'error': str(exc)})
             raise ValueError(str(exc)) from exc
         usage = response.usage or {}
-        components = [usage.get('prompt_tokens', 0), usage.get('completion_tokens', 0)]
+        components = [usage.get('prompt_tokens'), usage.get('completion_tokens')]
         charged = sum(components) if all(type(n) is int and n >= 0 for n in components) else 0
         charged = charged or request['reserved_tokens']
         store.update_record(identifier, key, {'charged_tokens': charged})

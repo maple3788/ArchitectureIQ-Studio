@@ -7,8 +7,9 @@ import type {Action} from './Questions';
 import type {Json,ModelProfile} from './types';
 import type {RagHit,RagPreview} from './ragTypes';
 import './rag.css';
-export function RagKnowledge({hits}:{hits:RagHit[]}){
- return <ol className="rag-knowledge">{hits.map(hit=><li key={hit.citation_id} id={hit.citation_id}>
+const exclusionLabels:Record<string,string>={unusable_source:'来源不可用',unverified_or_disabled:'未经验证或已停用',outside_validated_scope:'超出已验证范围',ineligible_lesson_sources:'来源不符合经验准入要求',no_text_match:'缺少题面或条件文本关联'};
+export function RagKnowledge({hits,anchors=true}:{hits:RagHit[];anchors?:boolean}){
+ return <ol className="rag-knowledge">{hits.map(hit=><li key={hit.citation_id} id={anchors?hit.citation_id:undefined}>
   <b>{hit.verified?'正式规则 · 已验证适用':'经验 · 待验证'}</b><p>{hit.text}</p>
   <small>相关性信号 {hit.score.toFixed(3)} · 条件文本信号 {hit.condition_score}</small>
   <ul>{hit.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>
@@ -58,10 +59,11 @@ export function Rag({version,act,models,executionEnabled,questionKey,onQuestion,
   </Card>
   {current&&<>
    {!current.data.can_answer?<Card title={current.data.blocked_reason==='empty_library'?'知识库目录为空':'没有适用的匹配知识'}><p>{current.data.blocked_reason==='empty_library'?'请先完成知识学习并发布 KB，再来匹配。':'可检查公开题面、适用范围及知识来源。当前没有可发送的请求。'}</p></Card>:<>
-    <Card title="候选 KB"><p>自动采用第一名快照；相关性信号用于排序，经验仍需验证。</p><div className="rag-candidates">{current.data.retrieval.candidates.map((candidate,i)=><article key={candidate.kb.id+candidate.kb.version}><b>{i+1}. {candidate.kb.name}{i===0?' · 已选用':''}</b><small>{candidate.kb.kind==='formal'?'正式知识':'学习经验'} · {candidate.kb.version.slice(0,12)}</small><p>{candidate.hits.length} 条匹配知识 · 最高相关性信号 {candidate.hits[0]?.score.toFixed(3)||'0'}</p></article>)}</div></Card>
+    <Card title="候选 KB"><p>自动采用第一名快照；相关性信号用于排序，经验仍需验证。</p><div className="rag-candidates">{current.data.retrieval.candidates.map((candidate,i)=><article key={candidate.kb.id+candidate.kb.version}><b>{i+1}. {candidate.kb.name}{i===0?' · 已选用':''}</b><small>{candidate.kb.kind==='formal'?'正式知识':'学习经验'} · {candidate.kb.version.slice(0,12)}</small><p>{candidate.hits.length} 条匹配知识 · 最高相关性信号 {candidate.hits[0]?.score.toFixed(3)||'0'}</p><details><summary>查看匹配知识与理由</summary><RagKnowledge hits={candidate.hits} anchors={false}/></details></article>)}</div></Card>
     <Card title="交给模型的知识"><RagKnowledge hits={current.data.retrieval.provenance}/><p>因条数限制省略 {current.data.retrieval.omitted.limit} 条；因预算省略 {current.data.retrieval.omitted.budget} 条。</p></Card>
     <Card title="实际请求预览"><p>尚未发送 · 1 次调用 · 保守预留 {current.data.reserved_tokens} tokens</p><pre className="rag-prompt">{current.data.request?.payload.messages?.[0]?.content}</pre></Card>
    </>}
+   {!!Object.keys(current.data.retrieval.excluded).length&&<Card title="排除统计">{Object.entries(current.data.retrieval.excluded).map(([reason,count])=><p key={reason}>{exclusionLabels[reason]||reason}：{count}</p>)}</Card>}
    {!!current.data.retrieval.warnings.length&&<Card title="部分知识来源不可用">{current.data.retrieval.warnings.map((w,i)=><p key={i}>{w.message}</p>)}</Card>}
   </>}
   {picker&&<QuestionPicker version={version} act={act} purpose="rag" single onSelectQuestion={key=>{onQuestion(key);setPicker(false);}} onClose={()=>setPicker(false)}/>}

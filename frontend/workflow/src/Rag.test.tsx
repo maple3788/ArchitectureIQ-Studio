@@ -47,3 +47,13 @@ it('409 clears preview and requires matching again',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({detail:'预览已失效'}),{status:409}));
  fireEvent.click(screen.getByRole('button',{name:'启动 RAG 作答'}));await screen.findByText('预览已失效');expect(screen.queryByText('真实预览输入')).toBeNull();
 });
+
+it('shows alternate candidate hit explanations and source exclusion counts',async()=>{
+ setup(true,{...preview,retrieval:{...preview.retrieval,candidates:[...preview.retrieval.candidates,{kb:{id:'other',name:'另一个 KB',version:'v2',kind:'experience'},hits:[{...hit,citation_id:'other-id',text:'另一个候选的知识',reasons:['另一个候选的匹配理由']}]}],excluded:{ineligible_lesson_sources:4,unusable_source:1}}});
+ fireEvent.click(screen.getByRole('button',{name:'匹配 KB 并预览'}));
+ expect(await screen.findByText('另一个候选的匹配理由')).toBeTruthy();expect(screen.getByText('来源不符合经验准入要求：4')).toBeTruthy();expect(screen.getByText('来源不可用：1')).toBeTruthy();
+});
+it('explains why no-match knowledge was excluded',async()=>{
+ setup(true,{...preview,can_answer:false,request:null,blocked_reason:'no_match',retrieval:{...preview.retrieval,candidates:[],knowledge:[],provenance:[],excluded:{outside_validated_scope:3}}});
+ fireEvent.click(screen.getByRole('button',{name:'匹配 KB 并预览'}));expect(await screen.findByText('超出已验证范围：3')).toBeTruthy();
+});

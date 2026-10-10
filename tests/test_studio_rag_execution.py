@@ -170,3 +170,20 @@ def test_split_reflected_api_secret_is_redacted_in_rag_stream_and_records(tmp_pa
     for path in case['jobs'].directory(job['id']).rglob('*'):
         if path.is_file() and path.suffix in {'.json', '.jsonl'}:
             assert secret not in path.read_text()
+
+
+@pytest.mark.parametrize('usage', [{'prompt_tokens': 50}, {'completion_tokens': 20}, {}, {'prompt_tokens': True, 'completion_tokens': 20}])
+def test_partial_usage_charges_full_reservation(tmp_path, monkeypatch, usage):
+    from rag_fixtures import rag_client
+    from architecture_iq.studio.rag import execute_rag
+    case = executable(tmp_path, monkeypatch)
+    original = rag_client(case)
+    def factory(*args, **kwargs):
+        client = original(*args, **kwargs)
+        complete = client.complete_conversation
+        def reply(*a, **k):
+            response = complete(*a, **k); response.usage = usage; return response
+        client.complete_conversation = reply
+        return client
+    result = execute_rag(case['jobs'], case['job']['id'], case['config'], client_factory=factory)
+    assert result['charged_tokens'] == case['config']['request']['reserved_tokens']

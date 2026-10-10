@@ -108,6 +108,8 @@ def _tokens(text):
 # Validation still happens on every request; only the public token index is cached.
 from collections import Counter, OrderedDict
 import math
+from threading import Lock
+_INDEX_LOCK = Lock()
 _INDEXES = OrderedDict()
 
 
@@ -117,27 +119,31 @@ def retrieve_knowledge(question: dict, inventory: dict, *, knowledge_limit: int 
     admitted = collect_candidates(question, inventory)
     entries = admitted.pop('entries')
     cache_key = canonical_hash([STRATEGY, admitted['inventory_hash'], [e['payload'] for e in entries]])
-    if cache_key not in _INDEXES:
-        docs = [Counter(_tokens(e['text'] + ' ' + e['conditions_text'])) for e in entries]
-        _INDEXES[cache_key] = (docs, Counter(t for d in docs for t in d))
-        if len(_INDEXES) > 8:
-            _INDEXES.popitem(last=False)
-    _INDEXES.move_to_end(cache_key)
-    docs, df = _INDEXES[cache_key]
+    with _INDEX_LOCK:
+        if cache_key not in _INDEXES:
+            docs = [Counter(_tokens(e['text'] + ' ' + e['conditions_text'])) for e in entries]
+            _INDEXES[cache_key] = (docs, Counter(t for d in docs for t in d))
+            if len(_INDEXES) > 8:
+                _INDEXES.popitem(last=False)
+        _INDEXES.move_to_end(cache_key)
+        docs, df = _INDEXES[cache_key]
     views = [{k: v for k, v in c['view'].items() if k != 'family'} for c in question['choices']]
     query = set(_tokens(question['prompt'] + ' ' + json.dumps(views, ensure_ascii=False, sort_keys=True)))
     avg = sum(sum(d.values()) for d in docs) / len(docs) if docs else 0
     ranked = []
     for entry, doc in zip(entries, docs):
         condition = len(query & set(_tokens(entry['conditions_text'])))
-        score = 0.0
+        contributions = []
         if avg:
             length = sum(doc.values())
-            for term in query & doc.keys():
+            for term in sorted(query & doc.keys()):
                 frequency = doc[term]
-                score += math.log(1 + (len(docs) - df[term] + .5) / (df[term] + .5)) * frequency * 2.2 / (frequency + 1.2 * (.25 + .75 * length / avg))
+                contributions.append(math.log(1 + (len(docs) - df[term] + .5) / (df[term] + .5)) * frequency * 2.2 / (frequency + 1.2 * (.25 + .75 * length / avg)))
+        score = math.fsum(contributions)
         verified = entry['kind'] == 'formal'
         if not verified and not condition and not score:
+            counts = admitted['excluded']
+            counts['no_text_match'] = counts.get('no_text_match', 0) + 1
             continue
         hit = {k: copy.deepcopy(v) for k, v in entry.items() if k not in {'conditions_text', 'kbs', 'payload'}}
         hit.update(score=score, condition_score=condition, verified=verified)

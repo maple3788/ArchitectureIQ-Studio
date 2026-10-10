@@ -101,7 +101,9 @@ def test_verified_applicable_rule_precedes_unverified_lesson(tmp_path, monkeypat
 
 def test_same_family_alone_is_not_a_lesson_match(tmp_path):
     item = experience_library(tmp_path / 'irrelevant', text='Completely unrelated zebras dance.')
-    assert retrieve(public_question(), [item])['knowledge'] == []
+    result = retrieve(public_question(), [item])
+    assert result['knowledge'] == []
+    assert result['excluded']['no_text_match'] == 1
 
 
 def test_duplicate_terms_and_empty_documents_have_finite_scores(tmp_path):
@@ -134,3 +136,60 @@ def test_best_hit_after_twelfth_record_is_not_preclipped(tmp_path):
     item.update(version=snapshot['version'], snapshot=snapshot,
                 source=str(store.root / 'snapshots' / (snapshot['version'] + '.json')))
     assert retrieve(public_question(), [item])['knowledge'][0]['text'] == 'ReLU tanh 激活函数 回归 选择'
+
+
+def test_scores_are_deterministic_across_process_hash_seeds(tmp_path):
+    import os
+    import subprocess
+    import sys
+    probe = tmp_path / 'probe.py'
+    probe.write_text('''from architecture_iq.studio import rag_retrieval as r
+from architecture_iq.kb.store import canonical_hash
+terms = [f'term{i}' for i in range(25)]
+entries = []
+for i in range(5):
+    text = ' '.join(t for j,t in enumerate(terms) for _ in range((j+i)%5+1) if j%5 != i)
+    entries.append(dict(text=text, conditions_text='', kind='experience', citation_id=str(i),record_id=str(i),revision=1,
+        payload={'id':str(i),'text':text}, reasons=[],source_refs=[],kbs=[{'id':str(i),'version':'v','kind':'experience','name':'kb'}]))
+r.collect_candidates = lambda *a: dict(entries=entries,inventory_hash='x',warnings=[],excluded={})
+print(canonical_hash(r.retrieve_knowledge({'prompt':' '.join(terms),'choices':[{'view':{}}]},{})))
+''')
+    results = [subprocess.check_output([sys.executable, str(probe)], env={**os.environ, 'PYTHONHASHSEED': str(seed)}, text=True).strip()
+               for seed in (0, 1, 4)]
+    assert len(set(results)) == 1
+
+
+def test_concurrent_cache_eviction_keeps_inflight_preview_valid(monkeypatch):
+    from collections import OrderedDict
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from architecture_iq.studio import rag_retrieval as r
+    paused, release, eviction_done = threading.Event(), threading.Event(), threading.Event()
+    class PausingCache(OrderedDict):
+        armed = False
+        def __contains__(self, key):
+            present = super().__contains__(key)
+            if self.armed and present and threading.current_thread().name.startswith('inflight'):
+                paused.set()
+                assert release.wait(5)
+            return present
+    cache = PausingCache()
+    monkeypatch.setattr(r, '_INDEXES', cache)
+    entry = dict(text='relu',conditions_text='',kind='experience',citation_id='c',record_id='c',revision=1,
+        payload={'id':'c','text':'relu'},reasons=[],source_refs=[],kbs=[{'id':'kb','version':'v','kind':'experience','name':'kb'}])
+    monkeypatch.setattr(r, 'collect_candidates', lambda q, inv: dict(entries=[entry],inventory_hash=inv['id'],warnings=[],excluded={}))
+    q = {'prompt':'relu','choices':[{'view':{}}]}
+    for i in range(8): r.retrieve_knowledge(q, {'id':str(i)})
+    cache.armed = True
+    def evict():
+        try: return r.retrieve_knowledge(q, {'id':'8'})
+        finally: eviction_done.set()
+    with ThreadPoolExecutor(max_workers=1,thread_name_prefix='inflight') as a, ThreadPoolExecutor(max_workers=1) as b:
+        inflight = a.submit(r.retrieve_knowledge,q,{'id':'0'})
+        assert paused.wait(5)
+        competing = b.submit(evict)
+        try: eviction_done.wait(.3)
+        finally: release.set()
+        assert inflight.result()['knowledge'][0]['text'] == 'relu'
+        assert competing.result()['knowledge'][0]['text'] == 'relu'
+    assert len(cache) <= 8
