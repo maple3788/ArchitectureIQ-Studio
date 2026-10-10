@@ -28,7 +28,7 @@ def source_fingerprint() -> str:
         *repo.joinpath("prompts/templates").rglob("*.md"),
         *repo.joinpath("profiles").glob("*.yaml"),
         *repo.joinpath("tools").rglob("*.py"),
-        repo / "services/kb_workflow_api/app.py",
+        *repo.joinpath("services/kb_workflow_api").rglob("*.py"),
     ]
     return canonical_hash(
         {
@@ -64,7 +64,7 @@ class JobStore:
     def create(
         self, kind: str, config: dict, *, idempotency_key: str | None = None
     ) -> dict:
-        if kind not in {"evaluation", "workflow", "generation", "archive"}:
+        if kind not in {"evaluation", "workflow", "generation", "archive", "rag"}:
             raise ValueError("未知任务类型")
         fingerprint = canonical_hash({"kind": kind, "config": config})
         with exclusive_lock(self.root / ".create.lock"):

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 NODE_STEPS = {
-    'input': ('data', 'assemble'), 'solver': ('harness', 'solve'),
+    'retrieval': ('harness', 'retrieve'), 'input': ('data', 'assemble'), 'solver': ('harness', 'solve'),
     'commit': ('harness', 'commit'), 'reveal': ('harness', 'feedback'),
     'discoverer': ('harness', 'hypothesize'), 'skeptic': ('harness', 'skeptic'),
     'experiment': ('harness', 'experiment'), 'confirmation': ('harness', 'confirmation'),

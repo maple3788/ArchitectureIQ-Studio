@@ -87,3 +87,22 @@ def make_rag_case(tmp_path, monkeypatch, *, execution_enabled=False):
             'selection': {'question_key': key, 'model_id': 'glm', 'knowledge_limit': 8}, 'calls': []}
     monkeypatch.setattr('architecture_iq.kb.cli.require_execution_host', lambda *a: None)
     return case
+
+
+def rag_client(case, *, ranking=None, citations=None, response_model='glm', error=None):
+    from types import SimpleNamespace
+    class Client:
+        def complete_conversation(self, messages, model):
+            case['calls'].append(messages)
+            self.request_observer({'payload': {**case['config']['request']['payload'], 'messages': messages}})
+            if error: raise error
+            text = json.dumps({'ranking': ranking if ranking is not None else ['A', 'B', 'C'],
+                               'citations': citations if citations is not None else [case['config']['retrieval']['knowledge'][0]['id']],
+                               'rationale': '选择理由'}, ensure_ascii=False)
+            self.chunk_observer({'chunk': {'choices': [{'index': 0, 'delta': {'content': text}}]}})
+            raw = {'model': response_model, 'choices': [{'message': {'content': text}, 'finish_reason': 'stop'}]}
+            return SimpleNamespace(raw=raw, finish_reason='stop', usage={'prompt_tokens': 50, 'completion_tokens': 20})
+    def factory(profile, observer, **kwargs):
+        client = Client(); client.request_observer = observer
+        return client
+    return factory

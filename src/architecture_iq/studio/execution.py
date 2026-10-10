@@ -668,6 +668,10 @@ def worker(state: Path, identifier: str) -> None:
                 result = execute_evaluation(store, identifier, job["config"])
             elif job["kind"] == "workflow":
                 result = execute_workflow(store, identifier, job["config"])
+            elif job["kind"] == "rag":
+                from .rag import execute_rag
+
+                result = execute_rag(store, identifier, job["config"])
             elif job["kind"] == "generation":
                 from .generation import execute_generation
 
