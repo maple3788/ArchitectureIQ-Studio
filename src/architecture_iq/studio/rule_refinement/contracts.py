@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
+from pathlib import Path
 from typing import TypedDict
 
 from architecture_iq.kb.store import canonical_hash
@@ -85,3 +86,38 @@ def validate_limits(value: dict) -> dict:
     if result["required_fresh_passes"] * result["questions_per_batch"] > result["max_new_questions"]:
         raise ValueError("Fresh-pass target exceeds new question budget")
     return result
+
+
+def artifact_path(root: Path, reference: str, *, kind: str) -> Path:
+    if not isinstance(reference, str):
+        raise ValueError("Invalid artifact reference")
+    parts = reference.split("/")
+    if len(parts) != 2 or parts[0] != kind or not parts[1].endswith(".json"):
+        raise ValueError("Invalid artifact reference")
+    identifier(parts[1][:-5])
+    path = Path(root) / reference
+    if not path.resolve().is_relative_to(Path(root).resolve()):
+        raise ValueError("Artifact escapes run directory")
+    return path
+
+
+def validate_pool(value: dict) -> None:
+    fields(value, {"version", "parent_version", "members", "pairs", "source_bindings", "usage_refs"},
+           {"version", "parent_version", "members", "pairs", "source_bindings", "usage_refs"})
+    if value["version"] != canonical_hash({k:v for k,v in value.items() if k != "version"}):
+        raise ValueError("Research pool integrity failure")
+    if value["parent_version"] is not None:
+        digest(value["parent_version"])
+    for name in ("members", "pairs", "source_bindings", "usage_refs"):
+        if not isinstance(value[name], list):
+            raise ValueError("Pool collections must be arrays")
+    keys = set()
+    for member in value["members"]:
+        fields(member, {"ref", "case", "feedback_hash", "identity"}, {"ref", "case", "feedback_hash", "identity"})
+        fields(member["ref"], {"key", "hash"}, {"key", "hash"})
+        text(member["ref"]["key"])
+        digest(member["ref"]["hash"])
+        digest(member["feedback_hash"])
+        if member["ref"]["key"] in keys or member["case"].get("ref") != member["ref"]:
+            raise ValueError("Duplicate or mismatched pool member")
+        keys.add(member["ref"]["key"])

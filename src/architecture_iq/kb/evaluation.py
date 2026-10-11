@@ -60,6 +60,11 @@ def _decisive_pairs(question: dict, feedback: dict) -> list[tuple[str, str]]:
     return pairs
 
 
+def decisive_pairs(question: dict, feedback: dict) -> list[tuple[str, str]]:
+    """Expose the existing stored-GT criterion without changing historical scoring."""
+    return _decisive_pairs(question, feedback)
+
+
 def score_evaluation(questions: list[dict], outputs: dict, private: dict, *, pair_manifest: list[dict] | None = None) -> dict:
     correct = {
         arm: {

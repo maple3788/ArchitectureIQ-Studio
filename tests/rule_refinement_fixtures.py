@@ -56,3 +56,21 @@ def public_case(raw=None):
             "dataset_spec": deepcopy(raw["detail"]["dataset"]["files"]["dataset_spec.json"]),
             "candidate_specs": [deepcopy(c["files"]["candidate_spec.json"]) for c in choices],
             "objective": "test_mse"}
+
+
+def stored_feedback(raw=None):
+    raw = raw or raw_case()
+    return {"correct_letter": raw["reveal"]["correctLetter"], "higher_is_better": False,
+            "candidate_metrics": {c["candidateId"]: deepcopy(raw["reveal"]["files"][c["letter"]]["summary.json"])
+                                  for c in raw["detail"]["choices"]}}
+
+
+def pool_fixture(cases=None, feedback=None):
+    from architecture_iq.kb.store import canonical_hash
+    cases = cases if cases is not None else [public_case()]
+    feedback = feedback if feedback is not None else {c["ref"]["key"]: stored_feedback() for c in cases}
+    value = {"parent_version": None, "members": [
+        {"ref": deepcopy(c["ref"]), "case": deepcopy(c), "feedback_hash": canonical_hash(feedback[c["ref"]["key"]]),
+         "identity": {"dataset_id": c["question"]["dataset_id"], "lineage_id": c["question"]["lineage_id"]}}
+        for c in cases], "pairs": [], "source_bindings": [], "usage_refs": []}
+    return {**value, "version": canonical_hash(value)}

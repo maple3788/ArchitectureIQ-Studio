@@ -143,7 +143,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `seal_predictions(root: Path, *, batch_id: str, pool: dict, kb: dict, predictions: list[dict]) -> dict`；`score_sealed_batch(root: Path, *, prediction_receipt: str, pool: dict, feedback_loader: Callable[[dict], dict]) -> dict`。返回 BatchScore/封存收据；loader 只在全部成员预测及引用通过校验后调用。
 
-- [ ] **Step 1: 写失败测试。** `test_all_predictions_sealed_before_any_feedback_read` 用 loader spy 检查磁盘完整收据；`test_top1_correct_but_false_lower_assertion_blocks_pass`、`test_unscorable_cannot_disappear_from_completion` 的断言：
+- [x] **Step 1: 写失败测试。** `test_all_predictions_sealed_before_any_feedback_read` 用 loader spy 检查磁盘完整收据；`test_top1_correct_but_false_lower_assertion_blocks_pass`、`test_unscorable_cannot_disappear_from_completion` 的断言：
   ```python
   assert top1_correct["correct"] == 1
   assert top1_correct["wrong_assertions"] == 1
@@ -153,10 +153,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert abstention_score["scorable"] == 1 and abstention_score["correct"] == 0
   ```
   覆盖只有 correct_letter、相交 seed 区间、未知指标方向、反馈 hash 改变、缺一份预测、篡改答案、空题池；GT 不明确只计 unknown。资料故障不得出现在供模型修订的可学习反例列表。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_scoring.py -q`。
-- [ ] **Step 3: 实现接口。** 评分读封存 Prediction，以候选 ID→letter 映射核对存储答案；逐直接规则断言使用公开适配的 canonical 判据。按题/候选对/规则修订记录支持、反例、unknown 与独立数据实例，不伪造完整排序；all_pass 要求非空、无 incomplete/invalid、整题全对、无冲突/未覆盖/确定错误断言。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_evaluation.py tests/test_kb_claim_pairwise_eval.py`，预期全通过，旧评分结果保持不变。
-- [ ] **Step 5: 提交。** `git commit -m "feat: seal and score deterministic rule predictions"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_scoring.py -q`。
+- [x] **Step 3: 实现接口。** 评分读封存 Prediction，以候选 ID→letter 映射核对存储答案；逐直接规则断言使用公开适配的 canonical 判据。按题/候选对/规则修订记录支持、反例、unknown 与独立数据实例，不伪造完整排序；all_pass 要求非空、无 incomplete/invalid、整题全对、无冲突/未覆盖/确定错误断言。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_evaluation.py tests/test_kb_claim_pairwise_eval.py`，预期全通过，旧评分结果保持不变。
+- [x] **Step 5: 提交。** `git commit -m "feat: seal and score deterministic rule predictions"`。
 
 ## Task 4: 冻结研究池与新题使用账本
 
