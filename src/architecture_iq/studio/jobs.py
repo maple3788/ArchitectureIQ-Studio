@@ -64,7 +64,7 @@ class JobStore:
     def create(
         self, kind: str, config: dict, *, idempotency_key: str | None = None
     ) -> dict:
-        if kind not in {"evaluation", "workflow", "generation", "archive", "rag", "rule_refinement"}:
+        if kind not in {"evaluation", "workflow", "generation", "archive", "rag", "rule_refinement", "rule_evaluation"}:
             raise ValueError("未知任务类型")
         fingerprint = canonical_hash({"kind": kind, "config": config})
         with exclusive_lock(self.root / ".create.lock"):

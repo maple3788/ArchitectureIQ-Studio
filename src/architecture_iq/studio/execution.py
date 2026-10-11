@@ -609,8 +609,12 @@ def execute_workflow(store: JobStore, identifier: str, config: dict) -> dict:
     }
 
 
-def public_job(job: dict) -> dict:
+def public_job(job: dict, jobs: JobStore | None = None) -> dict:
     """Hide uncommitted private inputs; completed records reveal their own feedback."""
+    if (job.get("kind") in {"rule_refinement", "rule_evaluation"}
+            or jobs is not None and (jobs.directory(job["id"]) / "refinement_parent.json").exists()):
+        from .rule_refinement.views import public_refinement_job
+        return public_refinement_job(job, jobs)
     result = copy.deepcopy(job)
     config = result.get("config", {})
     enabled = config.get("transport", {}).get("stream", False)
@@ -644,8 +648,13 @@ def worker(state: Path, identifier: str) -> None:
     from architecture_iq.kb.cli import require_execution_host
     from .catalog import Catalog
 
-    require_execution_host(True)
     store = JobStore(state)
+    definition = store.definition(identifier)
+    if definition['kind'] == 'rule_evaluation':
+        from .rule_refinement.runner import validate_rule_evaluation_config
+        validate_rule_evaluation_config(store, identifier, definition['config'], catalog=Catalog(state))
+    else:
+        require_execution_host(True)
     directory = store.directory(identifier)
     with exclusive_lock(directory / ".worker.lock"):
         job = store.get(identifier, full=False)
@@ -668,6 +677,9 @@ def worker(state: Path, identifier: str) -> None:
                 )
             if job["kind"] == "evaluation":
                 result = execute_evaluation(store, identifier, job["config"])
+            elif job["kind"] == "rule_evaluation":
+                from .rule_refinement.runner import execute_rule_evaluation
+                result = execute_rule_evaluation(store, identifier, job["config"], catalog=Catalog(state))
             elif job["kind"] == "rule_refinement":
                 from .rule_refinement.runner import execute_refinement
                 result = execute_refinement(store, identifier, job["config"], catalog=Catalog(state))

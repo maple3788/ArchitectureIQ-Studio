@@ -16,6 +16,9 @@ _ARTIFACT_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, In
 
 
 def node_observations(job: dict, directory: Path) -> list[dict]:
+    if job.get('kind') in {'rule_refinement', 'rule_evaluation'}:
+        from .rule_refinement.views import refinement_observations
+        return refinement_observations(job, directory)
     if job.get('kind') != 'workflow':
         return []
     events = [event for event in job.get('events', [])

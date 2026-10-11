@@ -49,6 +49,8 @@ def collect_candidates(question: dict, inventory: dict) -> dict:
         entry['kbs'] = _stable_sources([*entry['kbs'], kb])
 
     for item in items:
+        if item.get('kind') == 'research_rules':
+            continue
         try:
             frozen = resolve_initial_knowledge({'id': item['id'], 'version': item['version']}, {'items': [item]})
         except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:

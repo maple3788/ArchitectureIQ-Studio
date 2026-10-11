@@ -323,7 +323,7 @@ API 位于 `/api/studio/rule-refinement`：
 
 run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派投影/observations。分页参数统一 offset/limit，与现有 Data 接口一致。新 API 未知字段返回 422，预览失效/CAS/不确定结果返回 409，错误结构 `{detail:{code,message,blockers?}}`，不输出私有正文。
 
-- [ ] **Step 1: 写失败测试。** `test_local_match_needs_no_model_and_never_reads_gt`、`test_previews_and_queued_jobs_never_expose_gt_or_credentials`、`test_source_health_change_invalidates_preview`、`test_two_choice_readiness_is_specific_to_new_method`、`test_task_overlap_is_rejected_without_pool_mutation`：
+- [x] **Step 1: 写失败测试。** `test_local_match_needs_no_model_and_never_reads_gt`、`test_previews_and_queued_jobs_never_expose_gt_or_credentials`、`test_source_health_change_invalidates_preview`、`test_two_choice_readiness_is_specific_to_new_method`、`test_task_overlap_is_rejected_without_pool_mutation`：
   ```python
   assert local_match.status_code == 200
   assert "GT_SENTINEL" not in serialized_public_responses
@@ -333,12 +333,12 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
   assert pool_bytes_after_evaluation == pool_bytes_before_evaluation
   ```
   测试 idempotency 重试、非法任意路径、无 receipt 读取反馈、模型版本变化、来源健康失败不变成“错题”、已知研究题/实例/lineage/pair 与 Task 重叠拒绝。独立评测关闭修订回路；同一 holdout 后续重复评测显示已使用，不伪称首次。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_api.py tests/test_rule_refinement_evaluation.py -q`。
-- [ ] **Step 3: 实现适配。** 新方法研究选择仍强制 discovery，但 readiness 按至少 2 个唯一候选、存储答案和合法公开规格判定；添加方法专用分支并保留 scientific 的 kb_ready≥3 语义。配对模式核验完整身份及双方新方法资格，不因旧 kb_ready 错拒两候选题对。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_api.py tests/test_rule_refinement_evaluation.py -q`。
+- [x] **Step 3: 实现适配。** 新方法研究选择仍强制 discovery，但 readiness 按至少 2 个唯一候选、存储答案和合法公开规格判定；添加方法专用分支并保留 scientific 的 kb_ready≥3 语义。配对模式核验完整身份及双方新方法资格，不因旧 kb_ready 错拒两候选题对。
   preview hash 覆盖编译语义、Dataset 精确修订与健康状态、KB/模型修订、生成计划、limits、源码身份。公开数据采用显式字段白名单；未封存研究反馈、尚未测试的生成私有结果、凭据引用/原始配置不能被递归复制到响应。新知识类型只从已接受 checkpoint/收据进入 inventory，不能让被拒 proposal 成为可选 KB；复用旧 KB 需显式转换为研究规则副本。
   rule_evaluation 为纯 stored-result job：worker 仅对此受严格校验的 kind 允许本地运行，其余真实执行维持原主机门禁；它不构造客户端、不生成代码、不修改 KB/pool。Task 使用全部累计研究及 KB 祖先使用记录检查重叠，已知重叠或题目身份不足以检查时阻断提交。评测使用账本独立保存，以后显式新研究运行才可学习这些反馈。若题目身份完整且无已知重叠，但初始 KB 无历史学习谱系，可保存描述性成绩并返回 `independence="unknown_prior_exposure"`，展示“此前接触情况未知”，不能标为已证明无泄漏的独立评测；完全可核验且首次使用时为 `verified_first_use`，已使用 holdout 为 `repeated_evaluation`。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_studio_api.py tests/test_studio_dataset_inputs.py tests/test_studio_knowledge.py tests/test_studio_initial_knowledge.py tests/test_studio_observations.py tests/test_execution_host_privacy.py`，预期全通过。
-- [ ] **Step 5: 提交。** `git commit -m "feat: expose rule refinement and isolated rule evaluation APIs"`。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_studio_api.py tests/test_studio_dataset_inputs.py tests/test_studio_knowledge.py tests/test_studio_initial_knowledge.py tests/test_studio_observations.py tests/test_execution_host_privacy.py`，预期全通过。
+- [x] **Step 5: 提交。** `git commit -m "feat: expose rule refinement and isolated rule evaluation APIs"`。
 
 ## Task 12: Harness 配置与受约束画布
 

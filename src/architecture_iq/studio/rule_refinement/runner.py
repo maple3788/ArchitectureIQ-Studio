@@ -343,3 +343,51 @@ def recover_refinement(jobs,identifier):
         jobs.update(identifier,status='queued',error=None)
         jobs.launch(identifier)
         return jobs.get(identifier)
+
+
+def validate_rule_evaluation_config(jobs,identifier,config,*,catalog):
+    """The sole local worker exception accepts only this finite stored-result protocol."""
+    from .contracts import fields,validate_pool
+    from .inputs import research_exposure
+    from architecture_iq.studio.dataset_inputs import DatasetInputs
+    from architecture_iq.studio.datasets import DatasetStore
+    required={'protocol','kb_ref','kb_snapshot','dataset_binding','phase','pool','independence','research_runs','research_exposure_hash','research_source','selection_health','usage_version','transport'}
+    fields(config,required|{'request_hash'},required)
+    definition=jobs.definition(identifier)
+    if (definition['kind']!='rule_evaluation' or definition['config']!=config or config['protocol']!='rule_evaluation_v1'
+            or config['transport']!={'stream':False} or config['phase'] not in {'development','final'}):
+        raise ValueError('Invalid stored rule evaluation definition')
+    validate_snapshot(config['kb_snapshot']);validate_pool(config['pool'])
+    ref={k:config['dataset_binding'][k] for k in ('collection_id','revision')}
+    selected=DatasetInputs(catalog,DatasetStore(catalog)).preview(ref,config['dataset_binding']['selection'],purpose='evaluation',method_id='rule_refinement',phase=config['phase'])
+    if not selected['can_apply'] or selected['binding']!=config['dataset_binding'] or selected['preview_hash']!=config['selection_health']:
+        raise ValueError('Evaluation materials changed after preview')
+    prior,_,runs=research_exposure(jobs,config['research_source'])
+    if canonical_hash(prior)!=config['research_exposure_hash'] or runs!=config['research_runs']:
+        raise ValueError('Research exposure changed after evaluation preflight')
+    receipt_path=jobs.state_root/'rule_evaluations'/'usage'/(identifier+'.json')
+    receipt=read_receipt(receipt_path)
+    if receipt['definition_hash']!=definition['definition_hash'] or receipt['members']!=[
+            {'ref':m['ref'],'identity':m['identity']} for m in config['pool']['members']]:
+        raise ValueError('Evaluation requires its own frozen usage reservation')
+    return receipt
+
+
+def execute_rule_evaluation(jobs,identifier,config,*,catalog):
+    receipt=validate_rule_evaluation_config(jobs,identifier,config,catalog=catalog)
+    if jobs.definition(identifier)['source_fingerprint']!=source_fingerprint():raise ValueError('Evaluation source fingerprint differs')
+    root=jobs.directory(identifier)/'refinement'
+    with exclusive_lock(root/'evaluation.lock'):
+        if (root/'result.json').exists():return read_receipt(root/'result.json')
+        pools=PoolStore(root,catalog)
+        pool=pools.freeze_members(config['dataset_binding']['keys'],purpose='evaluation',source_bindings=[config['dataset_binding']])
+        if pool!=config['pool']:raise ValueError('Frozen evaluation pool differs')
+        kb=RuleArtifactStore(root).import_rules(config['kb_snapshot'],source_ref=config['kb_ref'])
+        jobs.event(identifier,{'type':'stage','node_id':'verify','stage_id':'task','step_id':'rule_evaluate','state':'running'})
+        score=_score(root,pools,pool,kb,catalog,'evaluation-all')
+        result=_seal({'score':score,'kb_ref':config['kb_ref'],'dataset_binding':config['dataset_binding'],
+                      'usage_receipt':receipt['receipt_hash'],'independence':config['independence']})
+        write_json_atomic(root/'result.json',result)
+        jobs.event(identifier,{'type':'stage','node_id':'verify','stage_id':'task','step_id':'rule_evaluate','state':'complete',
+                               'artifact_refs':[score['receipt_ref']]})
+        return result

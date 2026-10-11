@@ -77,7 +77,7 @@ def create_app(
     register_dataset_routes(api, catalog=catalog, bank=QuestionBank(catalog), datasets=datasets, allowed_roots=sources)
 
     def job_view(job):
-        result = public_job(job)
+        result = public_job(job, jobs)
         if job.get('kind') == 'generation':
             from architecture_iq.studio.dataset_generation import get_generation_attachment
             result['dataset_attachment'] = get_generation_attachment(datasets, run_id=job['id'])
@@ -399,6 +399,8 @@ def create_app(
         if kind not in {"workflow", "evaluation"}:
             raise ValueError("Unsupported run kind")
         workflow = body.get("workflow")
+        if workflow and workflow.get("schema_version") == 2:
+            raise ValueError("规则研究请使用专用预览和运行入口")
         settings = workflow.get("settings", {}) if workflow else {}
         selected = body.get("question_set_id") or settings.get("question_set_id")
         if not selected:
@@ -664,7 +666,7 @@ def create_app(
             if previous_id < 0:
                 raise HTTPException(400, "Invalid Last-Event-ID")
             cursor = max(cursor, previous_id)
-        transport = public_job(job)["transport"]
+        transport = job_view(job)["transport"]
 
         def frame(event, value, sequence=None):
             prefix = f"id: {sequence}\n" if sequence is not None else ""
@@ -686,7 +688,7 @@ def create_app(
                     cursor = value["seq"]
                     yield frame("chunk", value, cursor)
                 if len(records) < 200 and state["status"] in {"complete", "failed", "uncertain", "interrupted"}:
-                    yield frame("terminal", {"status": state["status"], "error": state.get("error")})
+                    yield frame("terminal", {"status": state["status"], "error": job_view(state).get("error")})
                     return
                 if time.monotonic() - heartbeat >= 15:
                     yield ": heartbeat\n\n"
@@ -700,6 +702,8 @@ def create_app(
 
     @api.post(prefix + "/runs/{identifier}/round-decision")
     def round_decision(identifier: str, body: dict = Body(...)):
+        if jobs.definition(identifier)["kind"] in {"rule_refinement", "rule_evaluation"} or (jobs.directory(identifier) / "refinement_parent.json").exists():
+            raise HTTPException(409, "此协议不接受旧式轮次决定")
         if set(body) != {"round_index", "action"}:
             raise ValueError("Round decision requires round_index and action")
         jobs.decide_round(identifier, round_index=body["round_index"], action=body["action"])
@@ -707,11 +711,24 @@ def create_app(
 
     @api.post(prefix + "/runs/{identifier}/pause")
     def pause(identifier: str):
+        if (jobs.directory(identifier) / 'refinement_parent.json').exists():
+            raise HTTPException(409, '请通过父 Harness 控制新题挑战')
+        if jobs.definition(identifier)['kind'] == 'rule_refinement':
+            from architecture_iq.studio.rule_refinement.runner import request_refinement_control
+            request_refinement_control(jobs, identifier, 'pause')
+            return job_view(jobs.get(identifier))
         jobs.control(identifier, "pause")
         return public_job(jobs.get(identifier))
 
     @api.post(prefix + "/runs/{identifier}/resume")
     def resume(identifier: str):
+        if (jobs.directory(identifier) / 'refinement_parent.json').exists():
+            raise HTTPException(409, '请通过父 Harness 控制新题挑战')
+        if jobs.definition(identifier)['kind'] == 'rule_refinement':
+            require_execution()
+            from architecture_iq.studio.rule_refinement.runner import request_refinement_control
+            request_refinement_control(jobs, identifier, 'resume')
+            return job_view(jobs.get(identifier))
         jobs.control(identifier, "resume")
         return public_job(jobs.get(identifier))
 
@@ -755,6 +772,10 @@ def create_app(
     register_rag_routes(api, catalog=catalog, models=models, jobs=jobs,
                         inventory_provider=knowledge,
                         require_execution=require_execution, allowed_roots=sources)
+
+    from .rule_refinement_routes import register_rule_refinement_routes
+    register_rule_refinement_routes(api, catalog=catalog, datasets=datasets, models=models, jobs=jobs,
+                                    inventory_provider=knowledge, require_execution=require_execution)
 
     build = dist_dir or ROOT / "frontend/workflow/dist"
     if (build / "assets").is_dir():

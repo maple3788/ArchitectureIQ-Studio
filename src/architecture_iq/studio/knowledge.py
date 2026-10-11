@@ -16,6 +16,10 @@ def _read(path: Path) -> dict:
 
 
 def _description(kind: str, snapshot: dict) -> tuple[dict, str]:
+    if kind == 'research_rules':
+        rules = snapshot['rules']
+        active = sum(r['state'] == 'active' for r in rules)
+        return {'rules': len(rules), 'active_rules': active, 'retired_rules': len(rules)-active, 'verified_enabled': 0}, f'{active} 条研究规则 · 证据来自题池实践，独立评测另行记录'
     if kind == 'experience':
         lessons = snapshot.get('lessons', [])
         active = sum(value.get('status') == 'active' for value in lessons)
@@ -95,6 +99,16 @@ def knowledge_inventory(jobs, archives: list[dict]) -> dict:
         source = {'id': job['id'], 'kind': 'run', 'name': name,
                   'path': str(directory / 'result.json'), 'created_at': job['created_at'],
                   'updated_at': job['updated_at']}
+        if job['kind'] == 'rule_refinement':
+            if not (directory / 'refinement/checkpoint.json').exists():
+                continue
+            try:
+                from .rule_refinement.views import accepted_rule_snapshot
+                _, snapshot, _ = accepted_rule_snapshot(jobs, job['id'])
+                add('research_rules', snapshot, {**source, 'path': 'refinement/kb/' + snapshot['version'] + '.json'})
+            except _ARTIFACT_ERRORS:
+                warnings.append({'source_id': job['id'], 'message': '研究规则的接受记录无法核验'})
+            continue
         result_path = directory / 'result.json'
         if result_path.is_file():
             try:

@@ -354,7 +354,7 @@ def test_methods_catalog_and_round_decision_api(tmp_path):
     client, _ = make_client(tmp_path)
     response = client.get('/api/studio/methods')
     assert response.status_code == 200
-    assert {item['id'] for item in response.json()['items']} == {'basic_learning', 'scientific', 'paired_progressive', 'expel', 'paired_expel'}
+    assert {item['id'] for item in response.json()['items']} == {'basic_learning', 'scientific', 'paired_progressive', 'expel', 'paired_expel', 'rule_refinement'}
     store = client.app.state.jobs
     job = store.create('workflow', {})
     store.offer_round_decision(job['id'], round_index=1, kb_version='kb1', next_round_index=None,

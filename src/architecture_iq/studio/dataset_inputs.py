@@ -71,7 +71,13 @@ class DatasetInputs:
                 questions.append(self.catalog.get_question(key)['public'])
             except (OSError, ValueError, KeyError, TypeError):
                 questions.append({'id': key, 'unavailable': True})
-            readiness = 'rag_ready' if purpose == 'public' else 'evaluation_ready' if purpose == 'evaluation' else 'kb_ready'
+            readiness = 'rag_ready' if purpose == 'public' else 'evaluation_ready' if purpose == 'evaluation' or method_id == 'rule_refinement' else 'kb_ready'
+            if method_id == 'rule_refinement':
+                try:
+                    from .rule_refinement.pool import _case
+                    _case(self.catalog.get_question(key))
+                except (ValueError, KeyError, OSError, TypeError):
+                    block(key, 'invalid_rule_material', '规则匹配需要完整合法的公开候选规格')
             if not summary.get(readiness):
                 block(key, 'question_unavailable', '题目资料不满足当前用途，请检查来源和配置')
             expected_split = phase if purpose == 'evaluation' else 'discovery' if purpose == 'research' else None
@@ -82,11 +88,11 @@ class DatasetInputs:
             try:
                 current = pair_manifest([self.catalog.get_question(m['key']) for m in pair['members']])
                 if current['pair_key'] != pair['pair_key'] or purpose != 'public' and not current.get(
-                        'evaluation_ready' if purpose == 'evaluation' else 'kb_ready'):
+                        'evaluation_ready' if purpose == 'evaluation' or method_id == 'rule_refinement' else 'kb_ready'):
                     block(pair['pair_key'], 'pair_unavailable', '完整题对身份或可用性检查失败')
             except (OSError, ValueError, KeyError, TypeError):
                 block(pair['pair_key'], 'pair_unavailable', '完整题对来源不可用')
-        if keys and not blockers and purpose != 'public':
+        if keys and not blockers and purpose != 'public' and method_id != 'rule_refinement':
             try:
                 self.catalog._question_set_body(revision['name'], keys)
             except ValueError as exc:
@@ -111,7 +117,17 @@ class DatasetInputs:
                 raise ValueError('; '.join(b['message'] for b in preview['blockers']))
             revision = self.datasets.get(ref['collection_id'], ref['revision'])
             pairs = [next(p for p in revision['pairs'] if p['pair_key'] == key) for key in preview['binding']['pair_keys']]
-            body = self.catalog._bound_question_set_body(revision['name'], preview['binding']['keys'],
-                preview['binding'], pairs if revision['selection_mode'] == 'pairs' else None)
+            if method_id == 'rule_refinement':
+                records = [self.catalog.get_question(k, include_private=True) for k in preview['binding']['keys']]
+                body = {'schema_version': 1, 'name': revision['name'], 'keys': preview['binding']['keys'],
+                        'hashes': preview['binding']['hashes'], 'dataset_binding': preview['binding'],
+                        'questions': [r['public'] for r in records],
+                        'feedback': {r['metadata']['key']: r['feedback'] for r in records}}
+                if revision['selection_mode'] == 'pairs':
+                    body.update(selection_mode='pairs', pairs=pairs, pair_keys=preview['binding']['pair_keys'],
+                                pair_count=len(pairs), count=len(records))
+            else:
+                body = self.catalog._bound_question_set_body(revision['name'], preview['binding']['keys'],
+                    preview['binding'], pairs if revision['selection_mode'] == 'pairs' else None)
             identifier = self.catalog._store_question_set(body, conn)
         return self.catalog.get_question_set(identifier)
