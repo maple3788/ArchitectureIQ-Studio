@@ -1,8 +1,8 @@
-import {useState} from 'react';
-import {ReactFlow,Background,Controls,Handle,Position,MarkerType,type Connection} from '@xyflow/react';
+import {useState,type ReactNode} from 'react';
+import type {Connection} from '@xyflow/react';
+import {ResearchPathCanvas,type PathNode,type PathEdge} from './ResearchPathCanvas';
 import type {Workflow,WorkflowNode,Run} from './types';
 import {ErrorBox,Field} from './ui';
-import '@xyflow/react/dist/style.css';
 import './rule-refinement.css';
 const groupingNames:Record<string,string>={type:'按问题类型',rule:'按规则',family:'按数据家族'};
 const materialNames:Record<string,string>={public_cases:'公开题目',rule_kb:'规则 KB',sealed_feedback:'已封存反馈',patch:'修订补丁',decision:'验收决定'};
@@ -35,14 +35,27 @@ export function connectFeedback(workflow:Workflow,c:Connection):Workflow{
  else next.splice(c.source==='verify'?0:next.indexOf(c.source)+1,0,c.target);
  return route(workflow,next);
 }
-function Stage({data,selected}:any){return <div className={`rr-node ${selected?'selected':''}`}><small>{data.node.type==='group_cases'?'材料整理':data.node.id==='initialize'||data.node.id==='revise'?'模型':'程序'}</small><b>{data.node.label}</b>{data.inputs.map((p:string,i:number)=><Handle key={'in'+p} type="target" id={p} position={Position.Left} style={{top:30+i*24}}/>)}{data.outputs.map((p:string,i:number)=><Handle key={'out'+p} type="source" id={p} position={Position.Right} style={{top:30+i*24}}/>)}<span>{data.description}</span></div>;}
-const nodeTypes={stage:Stage};
-const descriptions:Record<string,string>={input:'固定 Dataset 修订',initialize:'导入规则或模型提出',verify:'全批预测封存后评分',revise:'根据问题提出补丁',accept:'同池回归 · 保护历史正确题',challenge:'新题第一次成绩独立保留',save:'规则、成绩与未解问题'};
-export function RuleRefinementCanvas({workflow,onChange,validation,run,onSelect}:{workflow:Workflow;onChange:(w:Workflow)=>void;validation?:{valid:boolean;errors:any[]};run?:Run;onSelect?:(node:WorkflowNode)=>void}){
- const [selected,setSelected]=useState('verify'),[error,setError]=useState('');const node=workflow.nodes.find(n=>n.id===selected);const order=groupOrder(workflow);
+const descriptions:Record<string,string>={input:'固定 Dataset 修订',initialize:'导入规则或模型提出',verify:'全批预测封存后评分',revise:'根据错题与冲突提出补丁',accept:'同池回归 · 保护历史正确题',challenge:'生成新题 · 独立保留首次成绩',save:'规则、成绩与未解问题'};
+const conditionNames:Record<string,string>={needs_revision:'错题与冲突',pool_passed:'题池通过',stopped:'达到停止条件',target_reached:'目标达成'};
+export function RuleRefinementCanvas({workflow,onChange,validation,run,onSelect,renderConfig}:{workflow:Workflow;onChange:(w:Workflow)=>void;validation?:{valid:boolean;errors:any[]};run?:Run;onSelect?:(node:WorkflowNode)=>void;renderConfig?:(node:WorkflowNode)=>ReactNode}){
+ const [selected,setSelected]=useState(renderConfig?'input':'verify'),[error,setError]=useState('');
+ const node=workflow.nodes.find(n=>n.id===selected)||workflow.nodes[0],selectedId=node?.id||'',order=groupOrder(workflow);
  const apply=(fn:()=>Workflow)=>{try{onChange(fn());setError('');}catch(e){setError((e as Error).message);}};
- const nodes=workflow.nodes.map(n=>({id:n.id,type:'stage',position:n.position,selected:n.id===selected,deletable:false,data:{node:n,description:descriptions[n.id]||'完整反馈 · 保留全部问题',inputs:[...new Set(workflow.edges.filter(e=>e.target===n.id).map(e=>e.target_handle))],outputs:[...new Set(workflow.edges.filter(e=>e.source===n.id).map(e=>e.source_handle))]}}));
- return <section className="rr-flow-section" aria-label="规则闭环画布"><div className="rr-flow-caption"><div><h3>规则修订 ↔ 新题挑战</h3><p>内环修订与回归；累计题池通过后进入外环。封存、验收和预算由程序保证。</p></div><Field label="添加问题分组"><select value="" disabled={!!run} onChange={e=>apply(()=>addGrouping(workflow,e.target.value))}><option value="">选择整理方式</option>{Object.entries(groupingNames).map(([k,v])=><option key={k} value={k} disabled={workflow.nodes.some(n=>n.config.strategy===k)}>{v}</option>)}</select></Field></div><ErrorBox error={error||(!validation?.valid?validation?.errors.join('；'):undefined)}/>
- <div className="rr-flow-body"><div className="rr-flow"><ReactFlow nodes={nodes} nodeTypes={nodeTypes} edges={workflow.edges.map(e=>({id:e.id,source:e.source,target:e.target,sourceHandle:e.source_handle,targetHandle:e.target_handle,label:materialNames[e.source_handle||''],type:'smoothstep',markerEnd:{type:MarkerType.ArrowClosed},deletable:false}))} fitView minZoom={0.3} maxZoom={1.3} nodesDraggable={!run} nodesConnectable={!run} deleteKeyCode={null} onNodeClick={(_,n)=>{setSelected(n.id);const value=workflow.nodes.find(x=>x.id===n.id);if(value)onSelect?.(value);}} onNodeDragStop={(_,n)=>onChange({...workflow,nodes:workflow.nodes.map(old=>old.id===n.id?{...old,position:n.position}:old)})} onConnect={c=>apply(()=>connectFeedback(workflow,c))}><Background/><Controls showInteractive={false}/></ReactFlow></div>
- <aside className="rr-node-panel"><small>节点详情</small><h3>{node?.label}</h3><p>{descriptions[selected]||'调整问题分组顺序，改变模型收到材料的组织方式。'}</p>{node?.type==='group_cases'&&<><Field label="分组位置"><select value={order.indexOf(selected)} disabled={!!run} onChange={e=>{const next=order.filter(id=>id!==selected);next.splice(Number(e.target.value),0,selected);onChange(route(workflow,next));}}>{order.map((id,i)=><option key={id} value={i}>{i+1}</option>)}</select></Field><button disabled={!!run} onClick={()=>apply(()=>removeGrouping(workflow,selected))}>移除此分组</button></>}{node&&<dl><dt>输入材料</dt><dd>{[...new Set(workflow.edges.filter(e=>e.target===selected).map(e=>materialNames[e.target_handle||'']))].join('、')||'所选 Dataset'}</dd><dt>输出材料</dt><dd>{[...new Set(workflow.edges.filter(e=>e.source===selected).map(e=>materialNames[e.source_handle||'']))].join('、')||'研究记录'}</dd></dl>}<p className="muted">拖动节点安排画布；拖动反馈端口可调整分组顺序。</p></aside></div></section>;
+ // Control-flow loops explain the runner; they are never written to the material DAG.
+ const loops:PathEdge[]=[{id:'control-accept-verify',source:'accept',target:'verify',sourceHandle:'control_loop',targetHandle:'control_loop',label:'继续检查题池',loop:true},{id:'control-challenge-verify',source:'challenge',target:'verify',sourceHandle:'control_loop',targetHandle:'control_loop',label:'新题首测 → 纳入题池',loop:true}].filter(e=>workflow.nodes.some(n=>n.id===e.source)&&workflow.nodes.some(n=>n.id===e.target));
+ const nodes:PathNode[]=workflow.nodes.map(n=>({id:n.id,label:n.label||n.id,position:n.position,stage:n.id==='input'?'data':n.id==='save'?'kb':'harness',kind:n.id==='revise'||n.id==='initialize'&&n.config.mode==='model'?'model':n.id==='accept'?'decision':'program',description:descriptions[n.id]||'整理完整反馈，保留全部问题',
+  inputs:[...new Set([...workflow.edges.filter(e=>e.target===n.id).map(e=>e.target_handle).filter((p):p is string=>!!p),...loops.filter(e=>e.target===n.id).map(()=> 'control_loop')])],
+  outputs:[...new Set([...workflow.edges.filter(e=>e.source===n.id).map(e=>e.source_handle).filter((p):p is string=>!!p),...loops.filter(e=>e.source===n.id).map(()=> 'control_loop')])]}));
+ const edges:PathEdge[]=[...workflow.edges.map(e=>({id:e.id,source:e.source,target:e.target,sourceHandle:e.source_handle,targetHandle:e.target_handle,label:conditionNames[e.condition||'']||materialNames[e.source_handle||'']})),...loops];
+ const materials=<dl><dt>输入材料</dt><dd>{[...new Set(workflow.edges.filter(e=>e.target===selectedId).map(e=>materialNames[e.target_handle||'']))].join('、')||'所选 Dataset'}</dd><dt>输出材料</dt><dd>{[...new Set(workflow.edges.filter(e=>e.source===selectedId).map(e=>materialNames[e.source_handle||'']))].join('、')||'研究记录'}</dd></dl>;
+ const inspector=node&&<div className="rr-node-panel"><header><small>{node.id==='input'?'Data':node.id==='save'?'KB':'Harness'}</small><h3>{node.label}</h3><p>{descriptions[node.id]||'调整问题分组顺序，改变模型收到材料的组织方式。'}</p></header>{renderConfig?.(node)}
+  {node.type==='group_cases'&&<><Field label="分组位置"><select value={order.indexOf(selectedId)} disabled={!!run} onChange={e=>{const next=order.filter(id=>id!==selectedId);next.splice(Number(e.target.value),0,selectedId);onChange(route(workflow,next));}}>{order.map((id,i)=><option key={id} value={i}>{i+1}</option>)}</select></Field><button disabled={!!run} onClick={()=>apply(()=>removeGrouping(workflow,selectedId))}>移除此分组</button></>}
+  {renderConfig?<details className="rr-materials"><summary>输入与输出材料</summary>{materials}</details>:materials}</div>;
+ return <section className="rr-flow-section"><ErrorBox error={error||(!validation?.valid?validation?.errors.join('；'):undefined)}/>
+  <ResearchPathCanvas nodes={nodes} edges={edges} selectedId={selectedId} onSelect={id=>{setSelected(id);const value=workflow.nodes.find(n=>n.id===id);if(value)onSelect?.(value);}} inspector={inspector} ariaLabel="规则闭环画布"
+   toolbar={<div className="rr-flow-toolbar"><span>规则修订与新题挑战</span><Field label="添加问题分组"><select value="" disabled={!!run} onChange={e=>apply(()=>addGrouping(workflow,e.target.value))}><option value="">选择整理方式</option>{Object.entries(groupingNames).map(([k,v])=><option key={k} value={k} disabled={workflow.nodes.some(n=>n.config.strategy===k)}>{v}</option>)}</select></Field></div>}
+   footer={<p className="rr-flow-note">实线传递材料，虚线表示循环。点击节点配置；反馈分组支持连接与排序。</p>}
+   onMove={run?undefined:(id,position)=>onChange({...workflow,nodes:workflow.nodes.map(old=>old.id===id?{...old,position}:old)})}
+   onConnect={run?undefined:c=>apply(()=>connectFeedback(workflow,c))}/>
+ </section>;
 }

@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowDown,BookOpen,Check,Database,GitCompareArrows,Lightbulb,MessageSquare,RotateCcw} from 'lucide-react';
+import {BookOpen,Database,GitCompareArrows,Lightbulb,MessageSquare,RotateCcw,Save} from 'lucide-react';
+import {ResearchPathCanvas,type PathNode} from './ResearchPathCanvas';
 import {RunStreamProvider} from './LiveOutput';
 import {RoundDecisionControls} from './LiveWorkflowCanvas';
 import {RunNodeIO} from './RunWorkflowView';
@@ -16,6 +17,7 @@ import './basic-learning.css';
 const nodes=[
  {id:'input',step:'assemble',title:'题目',area:'Data · 研究材料',purpose:'选择一道真实题目，组装公开题面。',hint:'同一道题，逐轮复盘',icon:Database},
  {id:'solver',step:'solve',title:'作答',area:'Harness · 模型调用',purpose:'阅读公开题面与已有经验，对候选方案排序并解释理由。回答保存后才会揭示本轮反馈。',hint:'公开题面 + 可选已有经验',icon:MessageSquare},
+ {id:'commit',step:'commit',title:'保存答案',area:'Harness · 程序步骤',purpose:'先封存模型的回答与排序，再进入反馈步骤。',hint:'固定回答，随后揭示反馈',icon:Save},
  {id:'reveal',step:'feedback',title:'对照结果',area:'Harness · 程序步骤',purpose:'将已保存的回答与题目的真实训练结果对照，供经验提炼使用。',hint:'保存回答后，揭示真实反馈',icon:GitCompareArrows},
  {id:'experience_curator',step:'experience_consolidate',title:'提炼经验',area:'Harness · 模型调用',purpose:'从本轮回答与反馈中提炼经验，修订适用条件和例外。',hint:'回答 + 反馈 → 经验草稿',icon:Lightbulb},
  {id:'experience_save',step:'experience_save',title:'知识库 · KB',area:'KB · 经验版本',purpose:'校验经验的来源与结构，保存可追溯的新版本。单题经验保持待验证状态。',hint:'保存经验、来源与版本',icon:BookOpen},
@@ -34,7 +36,7 @@ export function BasicLearning({workflow,models,researchSet,onResearch,onDataset,
  const latestRound=graph?.rounds.filter(r=>r<1000).at(-1)??1;
  const round=selectedRound??latestRound;
  const actual=run?.config.workflow??workflow;
- const current=run?.progress?.node_id==='commit'?'solver':run?.progress?.node_id;
+ const current=run?.progress?.node_id;
  useEffect(()=>{if(following&&nodes.some(n=>n.id===current)){setSelected(current!);setTab('output');setSelectedRound(undefined);}},[following,current,latestRound,run?.id]);
  useEffect(()=>{setSelectedRound(undefined);setFollowing(true);},[run?.id]);
  const selectedNode=nodes.find(n=>n.id===selected)??nodes[0];
@@ -58,6 +60,7 @@ export function BasicLearning({workflow,models,researchSet,onResearch,onDataset,
     return <><p className="basic-muted">本次配置已冻结；编辑工作流用于下一次运行。</p><dl className="basic-values">
       {selected==='input'&&<><dt>研究题目</dt><dd>{run.config.question_set?.name??'冻结题目'}</dd><dt>使用方式</dt><dd>同一道题逐轮复盘</dd></>}
       {selected==='solver'&&<><dt>作答模型</dt><dd>{frozenModel?.name??'未记录'}</dd>{frozenModel?.connection_type==='api'&&<><dt>服务身份</dt><dd>API 服务，权重身份未验证</dd></>}<dt>起始知识</dt><dd><FrozenInitialKB item={run.config.initial_kb} selection={actual.settings.initial_kb}/></dd><dt>后续轮次</dt><dd>{bool(actual.settings.use_previous_experience,'叠加本次学习的经验','每轮仅使用起始 KB，不叠加本次学习的经验')}</dd></>}
+      {selected==='commit'&&<><dt>保存内容</dt><dd>本轮原始回答与候选排序</dd><dt>后续步骤</dt><dd>保存成功后揭示反馈</dd></>}
       {selected==='reveal'&&<><dt>揭示时机</dt><dd>本轮回答保存之后</dd><dt>反馈来源</dt><dd>题目封存的真实训练结果</dd></>}
       {selected==='experience_curator'&&<><dt>提炼模型</dt><dd>{frozenModel?.name??'未记录'}</dd><dt>经验边界</dt><dd>{bool(actual.settings.record_conditions,'记录适用条件与例外','本次不记录条件与例外')}</dd><dt>更新方式</dt><dd>从已揭示的回答与反馈提炼、修订经验。</dd></>}
       {selected==='experience_save'&&<><dt>保存方式</dt><dd>校验来源与结构，保存新版本</dd><dt>经验状态</dt><dd>待验证</dd></>}
@@ -66,28 +69,25 @@ export function BasicLearning({workflow,models,researchSet,onResearch,onDataset,
   }
   if(selected==='input')return draftQuestion;
   if(selected==='solver')return <><Field label="作答模型"><select aria-label="作答模型" value={workflow.settings.model_id??''} onChange={e=>onSetting('model_id',e.target.value)}><option value="">选择模型</option>{models.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>{frozenModel?.connection_type==='api'&&<p className="basic-muted">API 服务，权重身份未验证；运行时冻结服务地址、模型名与请求参数。</p>}<InitialKBField value={workflow.settings.initial_kb} onChange={value=>onSetting('initial_kb',value)} version={version}/><label className="basic-check"><input type="checkbox" checked={workflow.settings.use_previous_experience!==false} onChange={e=>onSetting('use_previous_experience',e.target.checked)}/>后续轮次叠加本次学习的经验</label><p className="basic-muted">起始 KB 每轮都可使用；开启后，第二轮起还会读取本次学习积累的经验。再次作答属于接触反馈后的同题复盘。</p><details><summary>作答提示词</summary><RolePrompt role="solver" template={rolePrompts?.solver} guidance={workflow.nodes.find(n=>n.id==='solver')?.config.prompt??''} onGuidance={v=>onPrompt('solver',v)}/></details></>;
+  if(selected==='commit')return <p>程序封存当前答案和排序；保存成功后，才会向后续研究步骤揭示真实反馈。</p>;
   if(selected==='reveal')return <dl className="basic-values"><dt>揭示时机</dt><dd>本轮回答已保存之后</dd><dt>反馈来源</dt><dd>题目封存的真实训练结果</dd></dl>;
   if(selected==='experience_curator')return <><label className="basic-check"><input type="checkbox" checked={workflow.settings.record_conditions!==false} onChange={e=>onSetting('record_conditions',e.target.checked)}/>记录适用条件与例外</label><p className="basic-muted">经验保留回答与反馈来源，后续复盘可修订已有条目。</p><details><summary>经验提炼提示词</summary><RolePrompt role="experience_curator" template={rolePrompts?.experience_curator} guidance={workflow.nodes.find(n=>n.id==='experience_curator')?.config.prompt??''} onGuidance={v=>onPrompt('experience_curator',v)}/></details></>;
   if(selected==='experience_save')return <dl className="basic-values"><dt>更新方式</dt><dd>校验来源，保存新版本</dd><dt>经验状态</dt><dd>待验证 · 同题反馈不能证明独立能力提升</dd></dl>;
   return <><Field label="最多学习轮数"><select value={workflow.settings.max_rounds??2} onChange={e=>onSetting('max_rounds',Number(e.target.value))}>{[1,2,3].map(n=><option value={n} key={n}>{n} 轮</option>)}</select></Field><p>每轮结束后由你决定是否继续。</p><p className="basic-muted">下一轮复用同一道题与起始 KB；是否叠加本次学习的经验由作答配置决定。研究模型与其他配置在开始时冻结。</p></>;
  };
- const nodeButton=(id:string,index:string)=>{const n=nodes.find(n=>n.id===id)!,Icon=n.icon,state=status(id);return <button key={id} className={`basic-node basic-state-${state} ${selected===id?'is-selected':''}`} aria-label={n.title} aria-pressed={selected===id} onClick={()=>choose(id)}><span className="basic-node-icon">{state==='complete'?<Check size={18}/>:<Icon size={18}/>}</span><span className="basic-node-copy"><strong>{n.title}</strong></span><span className="basic-node-state">{run?nodeStatusLabel[state]:index}</span></button>;};
- const edge=(label:string)=><div className="basic-edge"><ArrowDown size={15}/><span>{label}</span></div>;
+ const pathNodes:PathNode[]=nodes.map(n=>({id:n.id,label:n.title,description:n.hint,stage:n.id==='input'?'data':n.id==='experience_save'?'kb':'harness',kind:n.id==='loop'?'decision':['solver','experience_curator'].includes(n.id)?'model':'program',status:run?nodeStatusLabel[status(n.id)]:undefined}));
+ const pathEdges=[...nodes.slice(1).map((n,i)=>({id:`path-${nodes[i].id}-${n.id}`,source:nodes[i].id,target:n.id})),{id:'repeat',source:'loop',target:'solver',label:'继续 · 同题复盘',loop:true}];
  return <RunStreamProvider run={run??emptyRun}><section className="basic-learning" aria-label="单题学习工作流">
   <div className="basic-overview"><div><p>{run?`第 ${round} 轮 · ${run.status==='waiting_round'?'本轮已封存，等待决定':frozenModel?.name??'冻结运行'}`:`${set?'1 道题':'未选题'} · ${frozenModel?.name??'待选择模型'} · 最多 ${workflow.settings.max_rounds??2} 轮`}</p></div></div>
   {run&&<><ErrorBox error={syncError}/><RunFailure run={run} nodeId={current}/></>}
-  <div className="basic-workspace"><div className="basic-graph" aria-label="学习节点图">
-   <div className="basic-group-label">DATA</div>{nodeButton('input','D')}{edge('公开题面')}
-   <div className="basic-harness"><div className="basic-group-label">HARNESS</div>{nodeButton('solver','1')}{edge('保存回答')}{nodeButton('reveal','2')}{edge('真实反馈')}{nodeButton('experience_curator','3')}</div>
-   {edge('经验草稿')}{nodeButton('experience_save','K')}{edge('保存新版本')}{nodeButton('loop','↻')}
-   <p className="basic-loop-return">↳ 同题复盘 → 补充经验的条件与例外</p>
-   {run&&<label className="basic-follow"><input type="checkbox" checked={following} onChange={e=>setFollowing(e.target.checked)}/>跟随当前节点</label>}
-  </div><section ref={inspector} className="basic-inspector" aria-label="节点详情">
+  <ResearchPathCanvas nodes={pathNodes} edges={pathEdges} selectedId={selected} onSelect={choose} ariaLabel="单题学习研究路径"
+   toolbar={run&&<label className="basic-follow"><input type="checkbox" checked={following} onChange={e=>setFollowing(e.target.checked)}/>跟随当前节点</label>}
+   inspector={<section ref={inspector} className="basic-inspector" aria-label="节点详情">
    <header><span className="eyebrow">{selectedNode.area}</span><h3>{selectedNode.title}</h3><p>{selectedNode.purpose}</p></header>
    {run&&<label className="basic-round">查看轮次<select aria-label="查看学习轮次" value={round} onChange={e=>{setFollowing(false);setSelectedRound(Number(e.target.value));}}>{(graph?.rounds.filter(r=>r<1000).length?graph.rounds.filter(r=>r<1000):[1]).map(r=><option key={r} value={r}>第 {r} 轮</option>)}</select></label>}
    {run&&<div className="basic-tabs" role="tablist" aria-label="配置与输入输出">{(['config','input','output'] as const).map((t,i)=><button key={t} role="tab" id={`basic-tab-${t}`} aria-controls="basic-panel" aria-selected={tab===t} onClick={()=>setTab(t)}>{['配置','输入','输出'][i]}</button>)}</div>}
    <div className="basic-panel" role={run?"tabpanel":undefined} id="basic-panel" aria-labelledby={run?`basic-tab-${tab}`:undefined}>{!run||tab==='config'?config():<RunNodeIO key={`${run.id}:${selected}:${round}`} run={run} nodeId={selected} stepId={selectedNode.step} round={round} direction={tab}/>}</div>
-  </section></div>
+  </section>}/>
   {run?.status==='waiting_round'&&run.round_decision&&<RoundDecisionControls run={run} act={act}/>}
   <p className="basic-footnote">同题复盘已接触先前反馈，产生的经验需要独立新题或受控实验验证。</p>
  </section></RunStreamProvider>;

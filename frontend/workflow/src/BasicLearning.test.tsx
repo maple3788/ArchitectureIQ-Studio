@@ -2,6 +2,12 @@ import {afterEach,it,expect,vi} from 'vitest';
 import {render,screen,fireEvent,cleanup,waitFor} from '@testing-library/react';
 import {BasicLearning} from './BasicLearning';
 import type {Run,Workflow} from './types';
+// The editor and stream remain real; jsdom has no canvas measurements.
+vi.mock('@xyflow/react',()=>({
+ ReactFlow:({nodes,nodeTypes,children}:any)=><div>{children}{nodes.map((node:any)=>{const Node=nodeTypes[node.type];return <Node key={node.id} data={node.data} selected={node.selected}/>;})}</div>,
+ Background:()=>null,Controls:()=>null,Handle:()=>null,
+ MarkerType:{ArrowClosed:'closed'},Position:{Left:'left',Right:'right',Top:'top',Bottom:'bottom'},
+}));
 
 const ids=['input','solver','commit','reveal','experience_curator','experience_save','loop','end'];
 const workflow:Workflow={schema_version:1,name:'单题学习',settings:{method_id:'basic_learning',model_id:'m',max_rounds:2,use_previous_experience:true,record_conditions:true},nodes:ids.map((id,i)=>({id,type:['solver','experience_curator'].includes(id)?'agent':'program',position:{x:0,y:i*100},config:{}})),edges:ids.slice(1).map((id,i)=>({id:`e${i}`,source:ids[i],target:id}))};

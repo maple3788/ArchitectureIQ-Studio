@@ -813,60 +813,25 @@ export function Workflow({
     !executionEnabled?'当前服务为只读 / 预览模式，请连接服务器执行服务':undefined,
     previewLoading?'正在生成冻结预览':!previewReady?(previewAttempted?'配置已变化或预览未成功，请重新预览':'尚未预览当前配置'):undefined,
   ].filter((reason):reason is string=>!!reason);
-  if(workflow.schema_version===2&&workflow.settings.method_id==='rule_refinement')return <div className="workflow-page">
-    <div className="workflow-title"><input className="workflow-name" aria-label="工作流名称" value={workflow.name} onChange={e=>setWorkflow({...workflow,name:e.target.value})}/><div className="actions"><Field label="切换学习方法"><select value="rule_refinement" onChange={e=>void switchMethod(e.target.value)}>{(methods.data?.items??[]).map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}</select></Field><button onClick={exportJson}>导出 JSON</button><label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label>{advancedBackup&&<button onClick={()=>setWorkflow(advancedBackup)}>恢复原高级草稿</button>}</div></div>
-    <section className="shared-draft" aria-label="服务器共享草稿"><p role="status">{shared.status==='saved'?'已保存到服务器':shared.status==='conflict'?'另一窗口已更新配置':shared.status==='offline'?'服务器连接中断，修改尚未同步':'正在同步草稿…'}</p><ErrorBox error={shared.error||error}/>{shared.status==='conflict'&&<div className="actions"><button onClick={()=>void shared.acceptRemote()}>使用服务器版本</button><button onClick={()=>void shared.keepLocal()}>保留我的修改</button><button onClick={exportJson}>导出我的草稿</button></div>}{shared.status==='offline'&&<button onClick={()=>void shared.retry()}>重试同步</button>}</section>
-    <RuleRefinementEditor workflow={workflow} onChange={setWorkflow} bootstrap={{...(bootstrap||{stats:{},capabilities:{},service:{host:'',state_root:'',execution_enabled:executionEnabled}}),models:items(models.data),service:{...(bootstrap?.service||{host:'',state_root:''}),execution_enabled:executionEnabled}}} onStarted={onRun} synced={shared.status==='saved'}/>
-  </div>;
+  const isRule=!liveRun.run&&workflow.schema_version===2&&workflow.settings.method_id==='rule_refinement';
+  const displayedName=liveRun.run?(liveRun.run.config.workflow?.name??liveRun.run.config.name??'冻结研究运行'):workflow.name;
   return (
-    <div className={`workflow-page stage-editor ${showBasic?'is-basic':''}`}>
+    <div className="workflow-page stage-editor is-basic unified-research-editor">
       <div className="workflow-title">
-        <div>
-          <span className="eyebrow">DATA → HARNESS → KB → TASK</span>
-          <input
-            aria-label="工作流名称"
-            className="workflow-name"
-            value={workflow.name}
-            onChange={(e) => setWorkflow({ ...workflow, name: e.target.value })}
-          />
-          <p>
-            可编辑草稿 <span>·</span>{" "}
-            {saved ? "版本 " + saved.revision : "尚未保存版本"} <span>·</span>{" "}
-            从研究题目，到知识与独立验证
-          </p>
-        </div>
-        {showBasic&&!liveRun.run&&<div className="basic-editor-tools"><select aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}><option value="basic_learning">单题学习</option>{(methods.data?.items??[]).filter(m=>m.id!=='basic_learning').map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}</select><details className="basic-more"><summary>更多</summary><div className="basic-advanced-tools"><button onClick={()=>void save()}>保存版本</button><button onClick={exportJson}>导出 JSON</button><label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label><button onClick={()=>setHistoryOpen(true)}>版本与备份</button>{advancedBackup&&<button onClick={()=>{setFreshBasic(false);setWorkflow(advancedBackup);setNotice('已恢复切换前的高级草稿。');}}>恢复原高级草稿</button>}<button onClick={resetDraft}>恢复默认</button></div></details></div>}
-        <div className="workflow-toolbar">
-          <label className="upload-button compact">
-            <Upload size={15} />
-            导入
-            <input
-              type="file"
-              accept=".json"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void importFile(f);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          <button onClick={exportJson}>
-            <Download size={15} />
-            导出
-          </button>
-          <button onClick={() => setHistoryOpen(true)}>
-            <History size={15} />
-            版本
-          </button>
-          <button onClick={() => void validate()}>
-            <ShieldCheck size={15} />
-            校验
-          </button>
-          <button onClick={() => void save()}>
-            <Save size={15} />
-            保存
-          </button>
-        </div>
+        <div><input aria-label="工作流名称" className="workflow-name" value={displayedName} readOnly={!!liveRun.run} onChange={e=>{if(!liveRun.run)setWorkflow({...workflow,name:e.target.value});}}/></div>
+        {!liveRun.run&&<div className="basic-editor-tools">
+          <select aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}>
+            {!workflow.settings.method_id&&<option value="" disabled>历史自定义流程</option>}
+            {(methods.data?.items?.length?methods.data.items:[{id:'basic_learning',name:'单题学习',status:'available'}]).map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}
+          </select>
+          <details className="basic-more"><summary>更多</summary><div className="basic-advanced-tools">
+            <button onClick={()=>void save()}>保存版本</button><button onClick={exportJson}>导出 JSON</button>
+            <label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label>
+            <button onClick={()=>setHistoryOpen(true)}>版本与备份</button>
+            {advancedBackup&&<button onClick={()=>{setFreshBasic(false);setWorkflow(advancedBackup);setNotice('已恢复切换前的高级草稿。');}}>恢复原高级草稿</button>}
+            <button onClick={resetDraft}>恢复默认</button>
+          </div></details>
+        </div>}
       </div>
       {!liveRun.run && <section className={`shared-draft shared-draft-${shared.status}`} aria-label="服务器共享草稿">
         <div className="shared-draft-heading">
@@ -874,9 +839,7 @@ export function Workflow({
             loading: "正在读取服务器草稿…", saved: "已保存到服务器", saving: "正在保存到服务器…",
             pending: "等待保存到服务器…", offline: "服务器连接中断，修改尚未同步", conflict: "另一窗口已更新配置",
           })[shared.status]}</div>
-          {!showBasic&&<button className="text-button" onClick={() => setHistoryOpen(true)}>版本与备份</button>}
         </div>
-        {!showBasic&&<p>Chrome 与 GPT 共用此配置{shared.revision ? ` · 第 ${shared.revision} 版` : ""}{shared.updatedAt ? ` · ${formatTimestamp(shared.updatedAt)}` : ""}</p>}
         {shared.status === "conflict" && <div className="shared-draft-conflict" role="alert">
           <p>你的修改暂未覆盖服务器。选择保留哪一版，另一版会留在服务器备份中。</p>
           <div className="actions"><button onClick={() => void shared.acceptRemote()}>使用服务器版本</button><button onClick={() => void shared.keepLocal()}>保留我的修改</button><button onClick={exportJson}>导出我的草稿</button></div>
@@ -886,9 +849,7 @@ export function Workflow({
         {shared.error && shared.status === "saved" && <button onClick={() => void shared.retry()}>重试备份同步</button>}
       </section>}
       <ErrorBox error={error || defaults.error} />
-      {!showBasic&&!liveRun.run&&<div className="basic-entry"><p>保留当前高级草稿，也可以从一道题开始学习。</p><button onClick={()=>void switchMethod('basic_learning')}>单题学习</button></div>}
-      {!showBasic&&!liveRun.run&&<div className="dataset-workflow-entry"><span>从命名 Dataset 固定实验输入</span><button onClick={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}}>从 Dataset 选择</button>{!showBasic&&<button onClick={()=>{setPickerPurpose('evaluation');setDatasetPickerOpen(true);}}>从 Dataset 选择评测题</button>}</div>}
-      {showBasic?<><BasicLearning workflow={workflow} models={items(models.data)} researchSet={chosenSet} onResearch={()=>{setFreshBasic(false);openPicker('research','single');}} onDataset={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}} onSetting={setSetting} onPrompt={(id,prompt)=>setWorkflow(updatePrompt(workflow,id,prompt))} rolePrompts={rolePrompts} version={version} run={liveRun.run} syncError={liveRun.syncState?.error} act={liveRun.act}/>
+      {isRule?<RuleRefinementEditor workflow={workflow} onChange={setWorkflow} bootstrap={{...(bootstrap||{stats:{},capabilities:{},service:{host:'',state_root:'',execution_enabled:executionEnabled}}),models:items(models.data),service:{...(bootstrap?.service||{host:'',state_root:''}),execution_enabled:executionEnabled}}} onStarted={onRun} synced={shared.status==='saved'}/>:showBasic?<><BasicLearning workflow={workflow} models={items(models.data)} researchSet={chosenSet} onResearch={()=>{setFreshBasic(false);openPicker('research','single');}} onDataset={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}} onSetting={setSetting} onPrompt={(id,prompt)=>setWorkflow(updatePrompt(workflow,id,prompt))} rolePrompts={rolePrompts} version={version} run={liveRun.run} syncError={liveRun.syncState?.error} act={liveRun.act}/>
 
       </>:<WorkflowStages
         workflow={workflow}
@@ -898,6 +859,8 @@ export function Workflow({
         researchSet={chosenSet}
         taskSet={chosenTaskSet}
         rolePrompts={rolePrompts}
+        onDataset={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}}
+        onTaskDataset={()=>{setPickerPurpose('evaluation');setDatasetPickerOpen(true);}}
         onResearch={() => openPicker("research")}
         onTask={() => openPicker("evaluation")}
         onResearchPairs={() => openPicker("research", "pairs")}
@@ -1470,13 +1433,7 @@ export function Workflow({
         </details>
       </WorkflowStages>}
       <ErrorBox error={models.error || sets.error} />
-      <div className="workflow-stage-submit" hidden={!!liveRun.run}>
-        {!showBasic&&<div>
-          <strong>预览后开始研究</strong>
-          <p>
-            冻结研究集、独立评测集、模型、KB 与预算；修改配置后需要重新预览。
-          </p>
-        </div>}
+      <div className="workflow-stage-submit" hidden={!!liveRun.run||isRule}>
         <div className="actions">
           <button
             disabled={
@@ -1499,19 +1456,12 @@ export function Workflow({
         </div>
         {startReasons.length>0&&<ul className="basic-start-reasons" aria-label="开始前需要完成">{startReasons.map(reason=><li key={reason}><span>{reason}</span>{reason==='尚未选择真实题目'&&<button onClick={()=>openPicker()}>选择题目</button>}{reason.startsWith('模型尚未通过运行验证')&&chosenModel&&<button onClick={()=>void act(()=>api(`/models/${encodeURIComponent(chosenModel.id)}/check`,{}))}>检查模型</button>}{reason==='尚未选择模型'&&onModels&&<button onClick={onModels}>模型设置</button>}</li>)}</ul>}
       </div>
-      <div className="workflow-status" hidden={showBasic&&!notice}>
+      <div className="workflow-status" hidden={!notice}>
         <div>
           <span className={`status-dot ${validation?.valid ? "ok" : ""}`} />
           {notice || "配置自动保存到服务器，所有浏览器共用"}
           <span className="muted">· 冻结版本与历史运行保持独立</span>
         </div>
-        {!showBasic&&<button
-          className="text-button"
-          onClick={resetDraft}
-        >
-          <RotateCcw size={14} />
-          恢复默认
-        </button>}
       </div>
       {datasetPickerOpen&&<DatasetInputPicker purpose={pickerPurpose} phase={taskPhase} methodId={workflow.settings.method_id} selectionMode={workflow.settings.learning_protocol?.startsWith('paired')?'pairs':'single'} single={workflow.settings.method_id==='basic_learning'&&pickerPurpose==='research'} onApply={set=>{(pickerPurpose==='evaluation'?applyTaskQuestions:applyQuestions)(set);setDatasetPickerOpen(false);}} onClose={()=>setDatasetPickerOpen(false)}/>}
       {pickerOpen && pickerMode === "pairs" && (

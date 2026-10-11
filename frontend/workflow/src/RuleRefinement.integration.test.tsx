@@ -6,7 +6,7 @@ import {WorkflowWorkspace} from './WorkflowWorkspace';
 import {KB} from './KB';
 import {Runs} from './Runs';
 import fixture from './ruleWorkflowFixture.json';
-vi.mock('./RuleRefinementCanvas',()=>({RuleRefinementCanvas:()=> <div>真实材料配置已加载</div>}));
+vi.mock('./ResearchPathCanvas',()=>({ResearchPathCanvas:({nodes,onSelect,inspector}:any)=><section><nav>{nodes.map((node:any)=><button key={node.id} onClick={()=>onSelect(node.id)}>{node.label}</button>)}</nav>{inspector}</section>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const act=async(fn:()=>Promise<any>)=>fn();
 it('loads a v2 shared draft, survives refresh, and switches through server templates',async()=>{
@@ -18,8 +18,8 @@ it('loads a v2 shared draft, survives refresh, and switches through server templ
  else if(url.pathname.endsWith('/methods'))result={items:[{id:'rule_refinement',name:'规则 KB 闭环',status:'available',learning_protocol:'rule_refinement_v1',data_modes:['single','pairs']},{id:'basic_learning',name:'单题学习',status:'available',learning_protocol:'basic_learning'}]};
  return new Response(JSON.stringify(result));});
  function App(){return <SharedWorkflowDraftProvider><Workflow version={0} act={act} executionEnabled={false} onRun={()=>{}}/></SharedWorkflowDraftProvider>;}
- const view=render(<App/>);await screen.findByRole('heading',{name:'研究 Dataset'});fireEvent.change(screen.getByLabelText('最大修订尝试'),{target:{value:'9'}});await waitFor(()=>expect(writes.length).toBeGreaterThan(0));expect(draft.workflow.settings.limits.max_revision_attempts).toBe(9);
- view.unmount();render(<App/>);await screen.findByRole('heading',{name:'研究 Dataset'});expect((screen.getByLabelText('最大修订尝试') as HTMLInputElement).value).toBe('9');
+ const view=render(<App/>);await screen.findByRole('heading',{name:'研究题池'});fireEvent.click(screen.getByRole('button',{name:'新题挑战'}));fireEvent.change(screen.getByLabelText('最大修订尝试'),{target:{value:'9'}});await waitFor(()=>expect(writes.length).toBeGreaterThan(0));expect(draft.workflow.settings.limits.max_revision_attempts).toBe(9);
+ view.unmount();render(<App/>);await screen.findByRole('heading',{name:'研究题池'});fireEvent.click(screen.getByRole('button',{name:'新题挑战'}));expect((screen.getByLabelText('最大修订尝试') as HTMLInputElement).value).toBe('9');
  fireEvent.change(screen.getByLabelText('切换学习方法'),{target:{value:'basic_learning'}});await waitFor(()=>expect(gets).toContain('/api/studio/workflow/default?method_id=basic_learning'));expect(writes.every(w=>w.workflow.settings.method_id!=='rule_refinement'||!('question_set_id' in w.workflow.settings))).toBe(true);
 });
 it('opens a persisted rule run through Harness and never starts on reconnect',async()=>{

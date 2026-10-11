@@ -4,30 +4,31 @@ import {
   screen,
   cleanup,
   fireEvent,
+  within,
   waitFor,
   act as reactAct,
 } from "@testing-library/react";
 import { Workflow } from "./Workflow";
 import { WorkflowWorkspace } from "./WorkflowWorkspace";
 import { SharedWorkflowDraftProvider } from "./SharedWorkflowDraft";
+import { LiveRunContext } from "./LiveWorkflowCanvas";
+import ruleWorkflow from './ruleWorkflowFixture.json';
+import type {Run} from './types';
 import { useState } from "react";
 // Exercise the real editor and transport; only the external canvas renderer is replaced.
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ children, nodes, onNodeClick, nodeTypes }: any) => {
-    const Stage = nodeTypes.stage;
     return (
       <div>
         {children}
-        {nodes.map((node: any) => (
-          <div key={node.id}>
-            <button onClick={() => onNodeClick({}, node)}>
-              画布节点 {node.id}
-            </button>
-            {node.id === "input" && (
-              <Stage data={node.data} selected={node.selected} />
-            )}
-          </div>
-        ))}
+        {nodes.map((node: any) => {
+          const Card = nodeTypes[node.type];
+          return <div key={node.id}>
+            {onNodeClick && <button onClick={() => onNodeClick({}, node)}>画布节点 {node.id}</button>}
+            {Card && (node.type === 'researchPath' || node.id === 'input') &&
+              <Card data={node.data} selected={node.selected} isConnectable={false}/>}
+          </div>;
+        })}
       </div>
     );
   },
@@ -136,6 +137,7 @@ function setup(
   workspace=false,
   initialDraft?:any,
   serverWorkflow:any = graph,
+  historicalRun?:Run,
 ) {
   const drafts = new Map<string, string>();
   if(initialDraft)drafts.set("architectureiq-studio-workflow-v1",JSON.stringify(initialDraft));
@@ -222,6 +224,7 @@ function setup(
   function Editor(){
     const [id,setId]=useState<string>();
     const editor=<Workflow version={0} act={action} executionEnabled onRun={value=>{onRun(value);setId(value);}}/>;
+    if(historicalRun)return <LiveRunContext.Provider value={{run:historicalRun}}>{editor}</LiveRunContext.Provider>;
     return workspace?<WorkflowWorkspace version={0} act={action} selectedRun={id}>{editor}</WorkflowWorkspace>:editor;
   }
   const tree=(visible:boolean)=><SharedWorkflowDraftProvider>{visible?<Editor/>:<div>题库页面</div>}</SharedWorkflowDraftProvider>;
@@ -229,7 +232,7 @@ function setup(
   return { submissions, onRun, drafts, draftWrites, backups, getSharedDraft:()=>sharedDraft, getDraftReads:()=>draftReads, showEditor:(visible:boolean)=>view.rerender(tree(visible)) };
 }
 async function openInternals() {
-  await screen.findByRole("heading", { name: "Data · 研究数据" });
+  await screen.findByLabelText("工作流名称");
   fireEvent.click(screen.getByText("内部流程与高级配置"));
   await screen.findByRole("button", { name: "画布节点 input" });
 }
@@ -259,8 +262,7 @@ it("opens preview before execution and submits its frozen hash and a stable idem
   await waitFor(() => expect(submissions).toHaveLength(2));
   expect(submissions[1].headers["Idempotency-Key"]).toBe(key);
   fireEvent.click(screen.getByRole("button", { name: "关闭详情" }));
-  await openInternals();
-  fireEvent.click(screen.getByRole("button", { name: /^解题 Solver/ }));
+  fireEvent.click(screen.getByRole("button", { name: "解题 Solver" }));
   fireEvent.change(screen.getByLabelText("角色任务补充指令"), {
     target: { value: "updated exact guidance" },
   });
@@ -337,9 +339,9 @@ it("blocks an edit made while submission validation is in flight", async () => {
 
 it("starts at question selection and opens the picker from either input surface", async () => {
   setup();
-  await openInternals();
+  fireEvent.click(await screen.findByRole("button", { name: "题目选择" }));
   expect(screen.queryByLabelText("角色任务补充指令")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "画布节点 input" }));
+  fireEvent.click(screen.getByRole("button", { name: "调整研究题目" }));
   expect(
     await screen.findByRole("dialog", { name: "题目选择器" }),
   ).toBeTruthy();
@@ -347,7 +349,8 @@ it("starts at question selection and opens the picker from either input surface"
     screen.getByRole("dialog", { name: "题目选择器" }).textContent,
   ).toContain("set1");
   fireEvent.click(screen.getByRole("button", { name: "关闭选择器" }));
-  fireEvent.click(screen.getByRole("button", { name: /^题目选择/ }));
+  await openInternals();
+  fireEvent.click(screen.getByRole("button", { name: "画布节点 input" }));
   expect(
     await screen.findByRole("dialog", { name: "题目选择器" }),
   ).toBeTruthy();
@@ -386,22 +389,21 @@ it("keeps budgets and file references closed until requested", async () => {
   expect(screen.getAllByLabelText("研究轮数").length).toBeGreaterThan(0);
   fireEvent.click(screen.getByText("预算与服务器文件"));
   expect(detail.open).toBe(true);
-  expect(screen.getByLabelText("每轮调用上限（次）")).toBeTruthy();
+  expect(within(detail).getByLabelText("每轮调用上限（次）")).toBeTruthy();
 });
 
-it("presents four vertical stages and hides the internal workflow initially", async () => {
+it("presents the research path and opens only the selected node's settings", async () => {
   setup();
-  for (const title of [
-    "Data · 研究数据",
-    "Harness · 研究策略",
-    "KB · 知识积累",
-    "Task · 新题解答与效果验证",
-  ])
-    expect(await screen.findByRole("heading", { name: title })).toBeTruthy();
+  expect(await screen.findByRole("region", { name: "方法研究路径" })).toBeTruthy();
+  for (const label of ["题目选择", "解题 Solver", "最终评估"])
+    expect(screen.getByRole("button", { name: label })).toBeTruthy();
   expect(screen.getByText("内部流程与高级配置").closest("details")?.open).toBe(
     false,
   );
   expect(screen.queryByRole("button", { name: "画布节点 input" })).toBeNull();
+  expect(screen.queryByLabelText("安排独立评测")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "最终评估" }));
+  expect(screen.getByLabelText("安排独立评测")).toBeTruthy();
   expect(screen.getByText(/无 KB、初始 KB、本轮 KB/)).toBeTruthy();
 });
 it("keeps independent Task selection separate from research coverage and invalidates the preview", async () => {
@@ -409,6 +411,7 @@ it("keeps independent Task selection separate from research coverage and invalid
   fireEvent.click(await screen.findByRole("button", { name: "预览研究配置" }));
   await screen.findByRole("button", { name: "按此配置运行" });
   fireEvent.click(screen.getByRole("button", { name: "关闭详情" }));
+  fireEvent.click(screen.getByRole("button", { name: "最终评估" }));
   fireEvent.click(screen.getByLabelText("安排独立评测"));
   fireEvent.click(screen.getByRole("button", { name: "选择独立评测题目" }));
   expect(screen.getByRole("dialog").textContent).toContain("evaluation final");
@@ -433,6 +436,7 @@ it("keeps independent Task selection separate from research coverage and invalid
 
 it("invalidates preview on Task phase changes and preserves the set when Task is disabled", async () => {
   const { submissions } = setup();
+  fireEvent.click(await screen.findByRole("button", { name: "最终评估" }));
   fireEvent.click(await screen.findByLabelText("安排独立评测"));
   fireEvent.click(screen.getByRole("button", { name: "选择独立评测题目" }));
   fireEvent.click(await screen.findByRole("button", { name: "应用三题" }));
@@ -549,6 +553,7 @@ function setupPairedWorkflow() {
 it("reopens saved research and Task pair sets through their default edit actions", async () => {
   setupPairedWorkflow();
   await screen.findByText("已冻结研究题对");
+  fireEvent.click(screen.getByText("题目选择与分批"));
   const protocol = screen.getByLabelText("学习方式") as HTMLSelectElement;
   expect(protocol.value).toBe("paired_progressive");
   expect(protocol.querySelector<HTMLOptionElement>('option[value="single"]')?.disabled).toBe(true);
@@ -559,6 +564,7 @@ it("reopens saved research and Task pair sets through their default edit actions
   expect(screen.queryByRole("dialog", { name: "题目选择器" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "关闭题对选择" }));
 
+  fireEvent.click(screen.getByRole("button", { name: "最终评估" }));
   fireEvent.click(screen.getByRole("button", { name: "调整独立评测题目" }));
   expect(await screen.findByRole("dialog", { name: "选择题目对" })).toBeTruthy();
   await waitFor(() => expect((screen.getByRole("checkbox", { name: "选择题对 task-pair" }) as HTMLInputElement).checked).toBe(true));
@@ -576,6 +582,7 @@ it("keeps pair selection when opening the research input from the advanced canva
 
 it("changes a pair set to ordinary research only through explicit single-question selection", async () => {
   const { submissions } = setupPairedWorkflow();
+  fireEvent.click(await screen.findByText("题目选择与分批"));
   fireEvent.click(await screen.findByRole("button", { name: "改为单题选择" }));
   expect(await screen.findByRole("dialog", { name: "题目选择器" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "选择题目对" })).toBeNull();
@@ -591,19 +598,18 @@ it("changes a pair set to ordinary research only through explicit single-questio
   });
 });
 
-it("keeps the actual draft canvas and stage DOM mounted after an idempotent Start attaches the run",async()=>{
+it("keeps the actual draft canvas and path nodes mounted after an idempotent Start attaches the run",async()=>{
  const {submissions}=setup(path=>path==="/api/studio/runs/workflow-job"?Promise.resolve(response({id:"workflow-job",kind:"workflow",created_at:1,status:"running",config:{workflow:graph},progress:{node_id:"solver",state:"running",round_index:1}})):undefined,true);
- await screen.findByRole("heading",{name:"Data · 研究数据"});
- const canvas=screen.getByTestId("live-workflow-canvas"),data=screen.getByTestId("live-stage-data");
+ const canvas=await screen.findByRole("region",{name:"方法研究路径"}),data=screen.getByRole("button",{name:"题目选择"});
  fireEvent.click(await enterRun());
- await screen.findByText("本次冻结运行");
- expect(submissions).toHaveLength(1);expect(screen.getByTestId("live-workflow-canvas")).toBe(canvas);expect(screen.getByTestId("live-stage-data")).toBe(data);
+ await screen.findByText(/本次冻结运行/);
+ expect(submissions).toHaveLength(1);expect(screen.getByRole("region",{name:"方法研究路径"})).toBe(canvas);expect(screen.getByRole("button",{name:"题目选择"})).toBe(data);
  expect(screen.queryByRole("button",{name:"按此配置运行"})).toBeNull();
 });
 it("invalidates preview when changing the catalog method and binds its authoritative settings",async()=>{
- const method=(id:string,name:string,experience_mode:string)=>({id,version:"1",name,description:"Description",adaptation:"Adapted",paper_url:null,status:"available",learning_protocol:"single",experience_mode,hash:id,steps:[]});
+ const method=(id:string,name:string,experience_mode:string)=>({id,version:"1",name,description:"Description",adaptation:"Adapted",paper_url:null,status:"available",learning_protocol:"single",experience_mode,hash:id,steps:[{id:'assemble',stage_id:'data',label:'组装题目与材料',node_ids:['input']},{id:'solve',stage_id:'harness',label:'独立作答',node_ids:['solver']},{id:'evaluate',stage_id:'task',label:'独立新题效果验证',node_ids:['evaluate']}]});
  const {submissions}=setup(path=>path==="/api/studio/methods"?Promise.resolve(response({items:[method("scientific","Scientific","off"),method("expel","ExpeL","expel_inspired")]})):undefined,false,undefined,{...graph,settings:{...graph.settings,method_id:"scientific",method_version:"1",loop_mode:"manual"}});
- await enterRun();fireEvent.click(screen.getByRole("button",{name:"关闭详情"}));fireEvent.change(screen.getByLabelText("论文方法"),{target:{value:"expel"}});
+ await enterRun();fireEvent.click(screen.getByRole("button",{name:"关闭详情"}));fireEvent.change(screen.getByLabelText("切换学习方法"),{target:{value:"expel"}});
  expect((screen.getByRole("button",{name:"开始研究"}) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(await enterRun());await waitFor(()=>expect(submissions).toHaveLength(1));expect(submissions[0].body.workflow.settings).toMatchObject({method_id:"expel",method_version:"1",learning_protocol:"single",loop_mode:"manual"});
  expect(Object.hasOwn(submissions[0].body.workflow.settings,"experience_mode")).toBe(false);
@@ -611,10 +617,26 @@ it("invalidates preview when changing the catalog method and binds its authorita
  fireEvent.click(screen.getByRole("button",{name:"调整研究题目"}));fireEvent.click(await screen.findByRole("button",{name:"应用三题"}));fireEvent.click(await enterRun());await waitFor(()=>expect(submissions).toHaveLength(2));expect(Object.hasOwn(submissions[1].body.workflow.settings,"experience_mode")).toBe(false);
 });
 it('shows legacy missing no-change stop as unconfigured without writing a phantom default',async()=>{
- const {submissions}=setup();const field=await screen.findByLabelText('连续无变化停止轮数');expect((field as HTMLInputElement).value).toBe('');fireEvent.click(await enterRun());await waitFor(()=>expect(submissions).toHaveLength(1));expect(Object.hasOwn(submissions[0].body.workflow.settings,'stop_after_no_change_rounds')).toBe(false);
+ const {submissions}=setup();fireEvent.click(await screen.findByText('轮次与预算'));const field=screen.getByLabelText('连续无变化停止轮数');expect((field as HTMLInputElement).value).toBe('');fireEvent.click(await enterRun());await waitFor(()=>expect(submissions).toHaveLength(1));expect(Object.hasOwn(submissions[0].body.workflow.settings,'stop_after_no_change_rounds')).toBe(false);
 });
 
 const basicGraph={...graph,name:'单题学习',settings:{method_id:'basic_learning',method_version:'1',loop_mode:'manual',max_rounds:2,discovery_per_round:1,packet_size:1,use_previous_experience:true,record_conditions:true}};
+it.each([
+ ['basic_learning','单题学习工作流'],
+ ['scientific','方法研究路径'],
+])('shows the frozen %s run when the current shared draft is a different rule workflow',async(methodId,region)=>{
+ const frozenWorkflow={...(methodId==='basic_learning'?basicGraph:graph),name:'历史运行冻结名称',settings:{...(methodId==='basic_learning'?basicGraph:graph).settings,method_id:methodId}};
+ const historicalRun:Run={id:'historical-run',kind:'workflow',created_at:1,status:'complete',config:{workflow:frozenWorkflow,question_set:{id:'historic-set',name:'历史题集',keys:['historic@v1']}},progress:{node_id:'input',state:'complete',round_index:1}};
+ const draft={...structuredClone(ruleWorkflow),name:'正在编辑的规则闭环草稿'};
+ const {draftWrites,getSharedDraft}=setup(undefined,false,undefined,draft,historicalRun);
+ expect(await screen.findByRole('region',{name:region})).toBeTruthy();
+ expect(screen.queryByLabelText('研究材料类型')).toBeNull();
+ const name=screen.getByRole('textbox',{name:'工作流名称'}) as HTMLInputElement;
+ expect(name.value).toBe('历史运行冻结名称');
+ expect(name.readOnly).toBe(true);
+ expect(getSharedDraft().workflow.name).toBe('正在编辑的规则闭环草稿');
+ expect(draftWrites).toHaveLength(0);
+});
 it('fresh single-question mode freezes one eligible real question and keeps manual repeat settings',async()=>{
  const saved:any[]=[];
  setup((path,init)=>{
@@ -693,7 +715,7 @@ it('keeps an explicit empty model choice after fresh default auto-selection',asy
 it('switches to single-question learning only explicitly and restores the backed-up advanced draft',async()=>{
  const original={...graph,name:'高级实验草稿',settings:{...graph.settings,method_id:'scientific',max_rounds:3},nodes:graph.nodes.map(n=>n.id==='solver'?{...n,config:{role:'solver',prompt:'自定义指令'}}:n)};
  const {getSharedDraft}=setup(path=>path==='/api/studio/workflow/default?method_id=basic_learning'?Promise.resolve(response(basicGraph)):undefined,false,undefined,original);
- fireEvent.click(await screen.findByRole('button',{name:'单题学习'}));
+ fireEvent.change(await screen.findByRole('combobox',{name:'切换学习方法'}),{target:{value:'basic_learning'}});
  await screen.findByRole('region',{name:'单题学习工作流'});
  await waitFor(()=>expect(getSharedDraft().advanced_backup?.settings.max_rounds).toBe(3));
  fireEvent.click(screen.getByText('更多',{exact:true}));
@@ -748,6 +770,7 @@ it('restores an archived browser draft only through the explicit server backup a
  const {backups,getSharedDraft}=setup(undefined,false,original,current);
  await screen.findByRole('region',{name:'单题学习工作流'});
  await waitFor(()=>expect(backups).toHaveLength(1));
+ fireEvent.click(screen.getByText('更多',{exact:true}));
  fireEvent.click(screen.getByRole('button',{name:'版本与备份'}));
  await screen.findByRole('heading',{name:original.name});
  fireEvent.click(screen.getByRole('button',{name:'恢复此草稿'}));

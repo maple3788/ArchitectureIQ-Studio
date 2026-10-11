@@ -1,0 +1,56 @@
+.research-path { min-width: 0; margin: 18px 0; color: #263f35; }
+.research-path-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.research-path-toolbar > * { min-width: 0; }
+.research-path-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; min-width: 0; border: 1px solid #dfe7e1; border-radius: 14px; overflow: hidden; background: #fff; }
+.research-path-board { position: relative; min-width: 0; height: 590px; background: #f5f8f7; }
+.research-path-board .react-flow { background: transparent; }
+.research-path-board .react-flow__node { padding: 0; border: 0; border-radius: 10px; box-shadow: none; background: transparent; }
+.research-path-card { width: 210px; border: 1px solid #d9e3dc; border-radius: 11px; background: white; box-shadow: 0 2px 5px #243e3010; transition: border-color 120ms, box-shadow 120ms; }
+.research-path-card:hover { border-color: #9fb8aa; }
+.research-path-card.is-selected { border-color: #618c74; box-shadow: 0 0 0 2px #dceadf, 0 3px 8px #243e3010; }
+.research-path-card .research-path-card-button { display: flex; flex-direction: column; gap: 9px; width: 100%; min-height: 112px; padding: 15px; border: 0; border-radius: 10px; box-shadow: none; background: transparent; color: #294236; text-align: left; white-space: normal; font: inherit; }
+.research-path-card .research-path-card-button:hover { border: 0; background: #fbfdfb; }
+.research-path-card .research-path-card-button { align-items: stretch; }
+.research-path-card .research-path-card-button:focus-visible { outline: 2px solid #286855; outline-offset: 3px; }
+.research-path-card-top { display: flex; align-items: center; gap: 7px; width: 100%; color: #76857d; font-size: 11px; line-height: 1; }
+.research-path-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; background: #edf3ed; color: #638270; }
+.stage-data .research-path-icon { color: #58817e; background: #edf5f3; }
+.stage-kb .research-path-icon { color: #90764b; background: #f6f2e8; }
+.stage-task .research-path-icon { color: #7580a1; background: #eff0f7; }
+.research-path-index { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 10px; color: #94a198; }
+.research-path-card strong { font-size: 14px; font-weight: 650; line-height: 1.45; }
+.research-path-description { font-size: 11px; line-height: 1.6; color: #809086; overflow-wrap: anywhere; }
+.research-path-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #718174; }
+.research-path-status i { width: 5px; height: 5px; border-radius: 50%; background: #a9b5ae; }
+.research-path-status.status-running, .research-path-status.status-complete { color: #3f856b; }
+.research-path-status.status-running i, .research-path-status.status-complete i { background: #639b7e; }
+.research-path-status.status-failed, .research-path-status.status-uncertain { color: #ac655a; }
+.research-path-status.status-failed i, .research-path-status.status-uncertain i { background: #bf8175; }
+.research-path-board .react-flow__handle { width: 7px; height: 7px; min-width: 7px; min-height: 7px; border: 2px solid white; background: #a4bbae; }
+.research-path-board .react-flow__edge-path { stroke: #a5b8ad; stroke-width: 1.35; }
+.research-path-board .research-path-loop .react-flow__edge-path { stroke-dasharray: 5 4; stroke: #7b9e8a; }
+.research-path-board .research-path-optional .react-flow__edge-path { stroke-dasharray: 3 5; stroke: #b2beb7; }
+.research-path-board .react-flow__controls { margin: 14px; border: 1px solid #dce5de; border-radius: 7px; box-shadow: 0 2px 5px #243e300a; overflow: hidden; }
+.research-path-board .react-flow__controls button { width: 29px; height: 29px; min-height: 0; padding: 7px; border: 0; border-bottom: 1px solid #e6ece7; border-radius: 0; background: #fff; box-shadow: none; }
+.research-path-board .react-flow__controls button:last-child { border-bottom: 0; }
+.research-path-board-hint { position: absolute; bottom: 18px; right: 18px; pointer-events: none; color: #8a9b91; font-size: 11px; }
+.research-path-inspector { min-width: 0; max-height: 590px; overflow-y: auto; overscroll-behavior: contain; padding: 24px; border-left: 1px solid #dfe7e1; background: #fff; }
+.research-path-inspector > :first-child { margin-top: 0; }
+.research-path-inspector h2 { font-size: 20px; }
+.research-path-inspector h3 { font-size: 17px; }
+.research-path-inspector p { line-height: 1.75; }
+.research-path-inspector .form-grid { grid-template-columns: minmax(0, 1fr); }
+.research-path-inspector .workflow-stage-fields { grid-template-columns: minmax(0, 1fr); }
+.research-path-inspector .workflow-stage-selection { flex-wrap: wrap; gap: 12px; }
+.research-path-inspector input, .research-path-inspector select, .research-path-inspector textarea { max-width: 100%; min-width: 0; }
+.research-path-footer { margin-top: 14px; }
+@media (max-width: 1100px) {
+  .research-path-layout { grid-template-columns: minmax(0, 1fr); }
+  .research-path-inspector { max-height: none; border-left: 0; border-top: 1px solid #dfe7e1; }
+  .research-path-board { height: 510px; }
+}
+@media (max-width: 560px) {
+  .research-path-board { height: 430px; }
+  .research-path-inspector { padding: 20px; }
+  .research-path-board-hint { right: 12px; bottom: 14px; font-size: 10px; }
+}
