@@ -100,7 +100,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `validate_limits(value: dict) -> dict`；`RuleArtifactStore(root: Path).import_rules(source: dict, *, source_ref: dict) -> dict`、`.get(version: str) -> dict`、`.apply_patch(base_version: str, patch: dict) -> dict`、`.save_proposal(attempt_id: str, proposal: dict) -> dict`。`.apply_patch` 只创建候选快照，不更新已接受指针。公用 fixture 提供真实结构的三候选公开题、可分/不可分 seed metrics、完整正常/反事实题对及各自 tmp_path Catalog，不使用运行目录样本。
 
-- [ ] **Step 1: 写失败测试。** `test_revision_is_immutable_and_split_preserves_parents` 检查 split/merge/retire、旧文件字节和父关系；`test_hidden_fields_and_forged_evidence_are_rejected` 覆盖 DSL 禁用题号、答案、路径、额外字段和伪造证据；`test_limits_match_approved_defaults` 的关键断言：
+- [x] **Step 1: 写失败测试。** `test_revision_is_immutable_and_split_preserves_parents` 检查 split/merge/retire、旧文件字节和父关系；`test_hidden_fields_and_forged_evidence_are_rejected` 覆盖 DSL 禁用题号、答案、路径、额外字段和伪造证据；`test_limits_match_approved_defaults` 的关键断言：
   ```python
   assert limits["max_revision_attempts"] == 12
   assert limits["max_no_progress"] == 3
@@ -109,10 +109,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert edited_text["version"] != original["version"]
   ```
   测试同内容换 ID/调序/重复规则不会制造可执行改进；没有正资源上限、非法基版本、循环父关系、坏 hash 都拒绝。历史多 clause 经现有导入器拆分并保留来源；无法编译条目显示拒绝清单，不把自然语言自动当规则。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_artifacts.py -q`，预期新接口缺失导致 FAIL。
-- [ ] **Step 3: 实现上述接口。** JSON 原子写入、canonical_hash 和现有 exclusive_lock/read_receipt；规则逐条 `validate_rule`。导入可创建明确空 KB 作为模型初始化基线，但空 KB 不可作为通过结果；固定的形式化 KB 导入只保留原始来源，研究副本不回写原库。
-- [ ] **Step 4: 验证。** 同一命令加 `tests/test_kb_workflow_rules.py tests/test_kb_workflow_legacy.py`，预期全通过。
-- [ ] **Step 5: 提交本任务列出的新增文件。** `git commit -m "feat: add immutable research rule artifacts"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_artifacts.py -q`，预期新接口缺失导致 FAIL。
+- [x] **Step 3: 实现上述接口。** JSON 原子写入、canonical_hash 和现有 exclusive_lock/read_receipt；规则逐条 `validate_rule`。导入可创建明确空 KB 作为模型初始化基线，但空 KB 不可作为通过结果；固定的形式化 KB 导入只保留原始来源，研究副本不回写原库。
+- [x] **Step 4: 验证。** 同一命令加 `tests/test_kb_workflow_rules.py tests/test_kb_workflow_legacy.py`，预期全通过。
+- [x] **Step 5: 提交本任务列出的新增文件。** `git commit -m "feat: add immutable research rule artifacts"`。
 
 ## Task 2: 无模型的整题规则预测
 
