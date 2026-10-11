@@ -120,7 +120,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `predict_question(case: dict, kb: dict) -> dict` 只接收 PublicCase/RuleKB；`predict_batch(cases: list[dict], kb: dict) -> list[dict]` 保留输入顺序。不接收 Catalog、GT、模型或文件读取回调。
 
-- [ ] **Step 1: 写失败测试。** 参数化构造 `A>B,B>C`、`A>B,B>A`、`A>B,B>C,C>A`、`A>B,A>C,A>D,B>C,C>D,D>B`、两个不连通组、缺公开字段与调换 choices 顺序。关键断言：
+- [x] **Step 1: 写失败测试。** 参数化构造 `A>B,B>C`、`A>B,B>A`、`A>B,B>C,C>A`、`A>B,A>C,A>D,B>C,C>D,D>B`、两个不连通组、缺公开字段与调换 choices 顺序。关键断言：
   ```python
   # test_transitive_winner_keeps_direct_evidence
   assert chain["answer_id"] == "candidate-a"
@@ -132,10 +132,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert disconnected["status"] == "uncovered"
   ```
   重复同向规则不改变答案/覆盖；多指标不合并；重复 candidate ID、单候选、危险表达式为 invalid；禁止任何模型调用/GT访问的 mock 设置为一调用即失败。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_prediction.py -q`。
-- [ ] **Step 3: 实现接口。** 使用 `public_views`、`match_rule`；直接边去重保留来源，以拓扑检查全图冲突，再计算可达性和唯一全覆盖起点。规则缺少必要字段时不命中，规范结构坏掉时返回 invalid；稳定排序决定显示路径，派生边不能增加直接断言证据数。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_rules.py`，预期全通过；20 候选的稠密无环图测试只保存有限路径，不枚举全部路径。
-- [ ] **Step 5: 提交。** `git commit -m "feat: execute rule graphs with conflict abstention"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_prediction.py -q`。
+- [x] **Step 3: 实现接口。** 使用 `public_views`、`match_rule`；直接边去重保留来源，以拓扑检查全图冲突，再计算可达性和唯一全覆盖起点。规则缺少必要字段时不命中，规范结构坏掉时返回 invalid；稳定排序决定显示路径，派生边不能增加直接断言证据数。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_rules.py`，预期全通过；20 候选的稠密无环图测试只保存有限路径，不枚举全部路径。
+- [x] **Step 5: 提交。** `git commit -m "feat: execute rule graphs with conflict abstention"`。
 
 ## Task 3: 整批封存、评分与规则反例
 
