@@ -696,7 +696,7 @@ it('switches to single-question learning only explicitly and restores the backed
  fireEvent.click(await screen.findByRole('button',{name:'单题学习'}));
  await screen.findByRole('region',{name:'单题学习工作流'});
  await waitFor(()=>expect(getSharedDraft().advanced_backup?.settings.max_rounds).toBe(3));
- fireEvent.click(screen.getByText('高级方法与草稿管理'));
+ fireEvent.click(screen.getByText('更多',{exact:true}));
  fireEvent.click(screen.getByRole('button',{name:'恢复原高级草稿'}));
  await screen.findByDisplayValue('高级实验草稿');
  await waitFor(()=>expect(getSharedDraft().workflow.name).toBe(original.name));

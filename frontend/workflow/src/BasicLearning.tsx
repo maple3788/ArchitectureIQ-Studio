@@ -22,8 +22,8 @@ const nodes=[
  {id:'loop',step:'loop',title:'是否继续',area:'Loop · 手动决定',purpose:'本轮封存后等待你的决定。下一轮使用同一道题，并按配置读取上一版经验。',hint:'带着经验，回到作答',icon:RotateCcw},
 ] as const;
 const emptyRun:Run={id:'draft',kind:'workflow',created_at:0,status:'draft',config:{}};
-export function BasicLearning({workflow,models,researchSet,onResearch,onSetting,onPrompt,rolePrompts,version,run,syncError,act}: {
- workflow:Workflow;models:ModelProfile[];researchSet?:QuestionSet;onResearch:()=>void;
+export function BasicLearning({workflow,models,researchSet,onResearch,onDataset,onSetting,onPrompt,rolePrompts,version,run,syncError,act}: {
+ workflow:Workflow;models:ModelProfile[];researchSet?:QuestionSet;onResearch:()=>void;onDataset?:()=>void;
  onSetting:(key:string,value:any)=>void;onPrompt:(id:string,value:string)=>void;rolePrompts?:Record<string,string>;
  version:number;run?:Run;syncError?:string;act?:Action;
 }) {
@@ -50,7 +50,7 @@ export function BasicLearning({workflow,models,researchSet,onResearch,onSetting,
   return node?.invocations.filter(i=>!i.unbound&&i.round===round).at(-1)?.status??'not_run';
  };
  const frozenModel=run?.config.models?.[0]??models.find(m=>m.id===workflow.settings.model_id);
- const draftQuestion=<><strong>{set?.name??'尚未选择题目'}</strong><p className="basic-muted">{questionKey?.split('@')[0]??(set?'已保存 1 道真实题目':'从题库选入一道资料完整的发现题。')}</p><button onClick={onResearch}>更换题目</button>{detail.data&&<details className="basic-question"><summary>阅读完整公开题面</summary><QuestionReader record={detail.data}/></details>}<ErrorBox error={detail.error||loadedSet.error}/></>;
+ const draftQuestion=<><div className="basic-question-heading"><div><strong>{set?.name??'尚未选择题目'}</strong><p className="basic-muted">{questionKey?.split('@')[0]??(set?'已保存 1 道真实题目':'选择本次研究使用的题目。')}</p></div>{onDataset?<details className="basic-question-sources"><summary>{set?'更换题目':'选择题目'}</summary><div><button onClick={onDataset}>从 Dataset 选择</button><button onClick={onResearch}>从总题库选择</button></div></details>:<button onClick={onResearch}>更换题目</button>}</div>{detail.data&&<details className="basic-question"><summary>阅读完整公开题面</summary><QuestionReader record={detail.data}/></details>}<ErrorBox error={detail.error||loadedSet.error}/></>;
  const config=()=>{
   if(run){
     const nodeConfig=actual.nodes.find((n:any)=>n.id===selected)?.config;
@@ -71,22 +71,22 @@ export function BasicLearning({workflow,models,researchSet,onResearch,onSetting,
   if(selected==='experience_save')return <dl className="basic-values"><dt>更新方式</dt><dd>校验来源，保存新版本</dd><dt>经验状态</dt><dd>待验证 · 同题反馈不能证明独立能力提升</dd></dl>;
   return <><Field label="最多学习轮数"><select value={workflow.settings.max_rounds??2} onChange={e=>onSetting('max_rounds',Number(e.target.value))}>{[1,2,3].map(n=><option value={n} key={n}>{n} 轮</option>)}</select></Field><p>每轮结束后由你决定是否继续。</p><p className="basic-muted">下一轮复用同一道题与起始 KB；是否叠加本次学习的经验由作答配置决定。研究模型与其他配置在开始时冻结。</p></>;
  };
- const nodeButton=(id:string,index:string)=>{const n=nodes.find(n=>n.id===id)!,Icon=n.icon,state=status(id);return <button key={id} className={`basic-node basic-state-${state} ${selected===id?'is-selected':''}`} aria-label={n.title} aria-pressed={selected===id} onClick={()=>choose(id)}><span className="basic-node-icon">{state==='complete'?<Check size={18}/>:<Icon size={18}/>}</span><span className="basic-node-copy"><strong>{n.title}</strong><small>{id==='input'?(set?'1 道真实题目':'尚未选题'):n.hint}</small></span><span className="basic-node-state">{run?nodeStatusLabel[state]:index}</span></button>;};
+ const nodeButton=(id:string,index:string)=>{const n=nodes.find(n=>n.id===id)!,Icon=n.icon,state=status(id);return <button key={id} className={`basic-node basic-state-${state} ${selected===id?'is-selected':''}`} aria-label={n.title} aria-pressed={selected===id} onClick={()=>choose(id)}><span className="basic-node-icon">{state==='complete'?<Check size={18}/>:<Icon size={18}/>}</span><span className="basic-node-copy"><strong>{n.title}</strong></span><span className="basic-node-state">{run?nodeStatusLabel[state]:index}</span></button>;};
  const edge=(label:string)=><div className="basic-edge"><ArrowDown size={15}/><span>{label}</span></div>;
  return <RunStreamProvider run={run??emptyRun}><section className="basic-learning" aria-label="单题学习工作流">
-  <div className="basic-overview"><div><span className="eyebrow">DATA → HARNESS → KB</span><h2>从一道题，积累一条经验</h2><p>{run?`第 ${round} 轮 · ${run.status==='waiting_round'?'本轮已封存，等待决定':frozenModel?.name??'冻结运行'}`:`${set?'1 道题':'未选题'} · ${frozenModel?.name??'待选择模型'} · 最多 ${workflow.settings.max_rounds??2} 轮`}</p></div><span className="basic-badge">手动循环</span></div>
+  <div className="basic-overview"><div><p>{run?`第 ${round} 轮 · ${run.status==='waiting_round'?'本轮已封存，等待决定':frozenModel?.name??'冻结运行'}`:`${set?'1 道题':'未选题'} · ${frozenModel?.name??'待选择模型'} · 最多 ${workflow.settings.max_rounds??2} 轮`}</p></div></div>
   {run&&<><ErrorBox error={syncError}/><RunFailure run={run} nodeId={current}/></>}
   <div className="basic-workspace"><div className="basic-graph" aria-label="学习节点图">
    <div className="basic-group-label">DATA</div>{nodeButton('input','D')}{edge('公开题面')}
-   <div className="basic-harness"><div className="basic-group-label">HARNESS <span>单题学习 · 2 次模型调用 / 轮</span></div>{nodeButton('solver','1')}{edge('保存回答')}{nodeButton('reveal','2')}{edge('真实反馈')}{nodeButton('experience_curator','3')}</div>
+   <div className="basic-harness"><div className="basic-group-label">HARNESS</div>{nodeButton('solver','1')}{edge('保存回答')}{nodeButton('reveal','2')}{edge('真实反馈')}{nodeButton('experience_curator','3')}</div>
    {edge('经验草稿')}{nodeButton('experience_save','K')}{edge('保存新版本')}{nodeButton('loop','↻')}
    <p className="basic-loop-return">↳ 同题复盘 → 补充经验的条件与例外</p>
    {run&&<label className="basic-follow"><input type="checkbox" checked={following} onChange={e=>setFollowing(e.target.checked)}/>跟随当前节点</label>}
   </div><section ref={inspector} className="basic-inspector" aria-label="节点详情">
    <header><span className="eyebrow">{selectedNode.area}</span><h3>{selectedNode.title}</h3><p>{selectedNode.purpose}</p></header>
    {run&&<label className="basic-round">查看轮次<select aria-label="查看学习轮次" value={round} onChange={e=>{setFollowing(false);setSelectedRound(Number(e.target.value));}}>{(graph?.rounds.filter(r=>r<1000).length?graph.rounds.filter(r=>r<1000):[1]).map(r=><option key={r} value={r}>第 {r} 轮</option>)}</select></label>}
-   <div className="basic-tabs" role="tablist" aria-label="配置与输入输出">{(['config','input','output'] as const).map((t,i)=><button key={t} role="tab" id={`basic-tab-${t}`} aria-controls="basic-panel" aria-selected={tab===t} onClick={()=>setTab(t)}>{['配置','输入','输出'][i]}</button>)}</div>
-   <div className="basic-panel" role="tabpanel" id="basic-panel" aria-labelledby={`basic-tab-${tab}`}>{tab==='config'?config():run?<RunNodeIO key={`${run.id}:${selected}:${round}`} run={run} nodeId={selected} stepId={selectedNode.step} round={round} direction={tab}/>:tab==='input'&&selected==='input'?draftQuestion:tab==='input'?<p className="basic-muted">开始后可查看此节点实际收到的材料与 Prompt。当前是待运行的配置。</p>:<p className="basic-muted">运行到此节点后，在这里查看真实输出。模型调用支持逐段显示。</p>}</div>
+   {run&&<div className="basic-tabs" role="tablist" aria-label="配置与输入输出">{(['config','input','output'] as const).map((t,i)=><button key={t} role="tab" id={`basic-tab-${t}`} aria-controls="basic-panel" aria-selected={tab===t} onClick={()=>setTab(t)}>{['配置','输入','输出'][i]}</button>)}</div>}
+   <div className="basic-panel" role={run?"tabpanel":undefined} id="basic-panel" aria-labelledby={run?`basic-tab-${tab}`:undefined}>{!run||tab==='config'?config():<RunNodeIO key={`${run.id}:${selected}:${round}`} run={run} nodeId={selected} stepId={selectedNode.step} round={round} direction={tab}/>}</div>
   </section></div>
   {run?.status==='waiting_round'&&run.round_decision&&<RoundDecisionControls run={run} act={act}/>}
   <p className="basic-footnote">同题复盘已接触先前反馈，产生的经验需要独立新题或受控实验验证。</p>

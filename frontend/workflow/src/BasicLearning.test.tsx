@@ -19,10 +19,8 @@ it('selects a node and changes only its real frozen-draft settings',()=>{
  expect(screen.getByRole('checkbox',{name:'后续轮次叠加本次学习的经验'})).toBeTruthy();
  fireEvent.click(screen.getByRole('checkbox',{name:'后续轮次叠加本次学习的经验'}));
  expect(props.onSetting).toHaveBeenCalledWith('use_previous_experience',false);
- fireEvent.click(screen.getByRole('tab',{name:'输出'}));
- expect(screen.getByText(/运行到此节点后/)).toBeTruthy();
+ expect(screen.queryByRole('tab',{name:'输出'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'提炼经验'}));
- fireEvent.click(screen.getByRole('tab',{name:'配置'}));
  expect(screen.getByRole('checkbox',{name:'记录适用条件与例外'})).toBeTruthy();
 });
 it('shows only the selected round and node output, with real SSE attribution',async()=>{
@@ -42,13 +40,16 @@ it('shows only the selected round and node output, with real SSE attribution',as
 });
 it('renders frozen model and learning settings in Chinese and cannot edit the run',()=>{
  const run:Run={id:'sealed',kind:'workflow',created_at:1,status:'complete',config:{workflow,models:[model]},events:[]};
- render(<BasicLearning {...props} run={run}/>);
+ const {rerender}=render(<BasicLearning {...props} run={run}/>);
  fireEvent.click(screen.getByRole('button',{name:'作答'}));
  fireEvent.click(screen.getByRole('tab',{name:'配置'}));
  expect(screen.getByText('作答模型')).toBeTruthy();
  expect(screen.getByText('起始知识')).toBeTruthy();
  expect(screen.getByText('叠加本次学习的经验')).toBeTruthy();
  expect(screen.queryByRole('checkbox',{name:'后续轮次叠加本次学习的经验'})).toBeNull();
+ fireEvent.click(screen.getByRole('tab',{name:'输出'}));
+ rerender(<BasicLearning {...props}/>);
+ expect(screen.getByRole('checkbox',{name:'后续轮次叠加本次学习的经验'})).toBeTruthy();
 });
 it('shows the saved experience version and offers manual repeat using that setting',()=>{
  const run:Run={id:'waiting',kind:'workflow',created_at:1,status:'waiting_round',config:{workflow},round_decision:{round_index:1,kb_version:'formal-unchanged',next_round_available:true,next_round_index:2,next_question_ids:['q'],available_actions:['continue','finish'],status:'waiting'},node_observations:[{node_id:'experience_save',step_id:'experience_save',round_index:1,availability:'available',output:{version:'experience-v1'}}]};
