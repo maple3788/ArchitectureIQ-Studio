@@ -677,6 +677,11 @@ def worker(state: Path, identifier: str) -> None:
             elif job["kind"] == "generation":
                 from .generation import execute_generation
 
+                if (directory / "refinement_parent.json").exists():
+                    from .rule_refinement.challenges import BoundGenerationStore, start_child_watchdog
+                    store = BoundGenerationStore(state)
+                    start_child_watchdog(store, identifier)
+                    store.boundary(identifier)
                 result = execute_generation(
                     store, identifier, job["config"], Catalog(state)
                 )

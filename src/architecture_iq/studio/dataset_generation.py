@@ -32,7 +32,7 @@ def get_generation_attachment(datasets, *, run_id: str) -> dict | None:
     return datasets.attachment(run_id)
 
 
-def _completed_keys(store, catalog, run_id):
+def _completed_keys(store, catalog, run_id, *, evaluation=False):
     definition = store.definition(run_id)
     if definition['kind'] != 'generation':
         raise ValueError('Only generation runs have generated questions')
@@ -59,7 +59,7 @@ def _completed_keys(store, catalog, run_id):
             continue
         record = catalog.get_question(entry['key'])
         aliases = [s for s in record['sources'] if s['source_id'] == source['id']]
-        if record['metadata']['ready'] and any(not a['blocked'] for a in aliases):
+        if record['metadata'].get('evaluation_ready' if evaluation else 'ready') and any(not a['blocked'] for a in aliases):
             records.append(record)
     records = list({r['metadata']['key']: r for r in records}.values())
     if config['mode'] != 'paired':
@@ -69,8 +69,25 @@ def _completed_keys(store, catalog, run_id):
         if record['metadata'].get('pair_id'):
             grouped.setdefault(record['metadata']['pair_id'], []).append(record)
     pairs = [pair_manifest(group) for group in grouped.values()]
-    pairs = [p for p in pairs if p['ready'] and len(p['members']) == 2]
+    pairs = [p for p in pairs if p.get('evaluation_ready' if evaluation else 'ready') and len(p['members']) == 2]
     return [m['key'] for p in pairs for m in p['members']], pairs
+
+
+def completed_generation_result(store, catalog, run_id: str) -> dict:
+    """Read a terminal canonical manifest and validated members without executing GT."""
+    from architecture_iq.kb.store import canonical_hash
+    keys, pairs = _completed_keys(store, catalog, run_id, evaluation=True)
+    generated = store.directory(run_id).resolve() / 'generated'
+    manifest = _read(generated / 'generation_manifest.json', generated)
+    result = manifest['result']
+    outer = store.directory(run_id) / 'result.json'
+    if outer.exists():
+        saved = _read(outer, store.directory(run_id))
+        if any(saved.get(k) != v for k,v in result.items()):
+            raise ValueError('Outer result differs from canonical generation manifest')
+    return dict(outcome=manifest['status'], question_keys=keys, pairs=pairs, result=result,
+                manifest_hash=canonical_hash(manifest),
+                requested_question_count=manifest['config']['requested_question_count'])
 
 
 def attach_generation_result(store, catalog, datasets, *, run_id: str, target: dict, operation_id: str) -> dict:

@@ -243,7 +243,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `prepare_challenge(config: dict, *, attempt_index: int, questions_per_batch: int) -> dict`；`run_challenge(jobs: JobStore, *, parent_id: str, attempt_index: int, frozen_config: dict, ledger: BudgetLedger) -> dict`；`recover_challenge(jobs: JobStore, catalog: Catalog, *, child_id: str, parent_id: str) -> dict`；`BoundGenerationStore(JobStore).boundary(identifier: str, event: dict | None = None) -> None` 检查父控制/截止时间再调用原边界；`dataset_generation.completed_generation_result(store, catalog, run_id: str) -> dict` 返回验证后的结果、keys、pairs，不执行 GT。
 
-- [ ] **Step 1: 写失败测试。** `test_sixteen_questions_becomes_eight_complete_pairs`、`test_child_cost_is_reserved_before_launch`、`test_recover_terminal_manifest_without_rerunning_gt`、`test_partial_and_duplicate_batch_never_counts_as_pass`：
+- [x] **Step 1: 写失败测试。** `test_sixteen_questions_becomes_eight_complete_pairs`、`test_child_cost_is_reserved_before_launch`、`test_recover_terminal_manifest_without_rerunning_gt`、`test_partial_and_duplicate_batch_never_counts_as_pass`：
   ```python
   assert paired["num_questions"] == 8
   assert paired["requested_question_count"] == 16
@@ -252,12 +252,12 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert repeated_attempt["child_id"] == first_attempt["child_id"]
   ```
   覆盖奇数配对目标拒绝、生成不足/筛选失败、同批共享实例、重复批次、冻结 profile 改变、已有 generated/ 但无完整结果、父暂停/停止阻止下一候选、到截止时间受管理子进程结束且待定工作保守计费。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_challenges.py -q`。
-- [ ] **Step 3: 实现接口。** 调用 `validate_generation` 冻结 profile/spec/seed/规模及 candidate_seed_runs；首版按用户配置生成范围和确定性不重叠 seed 区间出题，不让修订模型自由改生成预算。子任务沿用 `generation` kind，幂等键 `parent_id:challenge:attempt_index`；父关联单独封存并验证双方定义 hash，不塞进 canonical config 的字段白名单。禁用 dataset_target 自动收录研究池，必须先经首测账本。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_challenges.py -q`。
+- [x] **Step 3: 实现接口。** 调用 `validate_generation` 冻结 profile/spec/seed/规模及 candidate_seed_runs；首版按用户配置生成范围和确定性不重叠 seed 区间出题，不让修订模型自由改生成预算。子任务沿用 `generation` kind，幂等键 `parent_id:challenge:attempt_index`；父关联单独封存并验证双方定义 hash，不塞进 canonical config 的字段白名单。禁用 dataset_target 自动收录研究池，必须先经首测账本。
   预留整个批次 GT 成本后使用 `JobStore.launch`；单题生成利用 candidates 前边界与每个候选完成后的回调检查下一单元，配对生成利用现有 candidate/candidate_complete 边界，绝不复制训练循环。新增 `enforce_child_deadline(jobs: JobStore, child_id: str, deadline: float) -> None`，由独立监控进程在真实 GT 前启动，核对冻结父关联及 PID/process_stamp，截止时结束该生成任务拥有的进程组及受管理后代，不误杀别的任务；子任务完成则监控退出。父关联校验也在子执行入口进行，子边界读父持久化控制；即使父进程崩溃、单个候选超时，监控仍有效。用 fake process tree 测试归属与终止，旧生成任务不启用这套父预算适配。
   从完整 outer result 或已终结 generation_manifest 恢复时复用现有 `_completed_keys` 的配置、来源和成员检查，并封存恢复引用；非终结输出标 uncertain。保留所有生成候选的筛选/失败统计，不补题凑满、不按成绩挑题。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_studio_generation.py tests/test_studio_pair_generation.py tests/test_studio_dataset_generation.py`，预期全通过。mock subprocess/GT 验证回调顺序和终止，不在本地实际生成训练代码执行。
-- [ ] **Step 5: 提交。** `git commit -m "feat: run bounded canonical challenge batches"`。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_studio_generation.py tests/test_studio_pair_generation.py tests/test_studio_dataset_generation.py`，预期全通过。mock subprocess/GT 验证回调顺序和终止，不在本地实际生成训练代码执行。
+- [x] **Step 5: 提交。** `git commit -m "feat: run bounded canonical challenge batches"`。
 
 ## Task 9: 新方法与可编辑流程协议
 
