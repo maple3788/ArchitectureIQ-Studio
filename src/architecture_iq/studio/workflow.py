@@ -44,6 +44,9 @@ def _edge(source: str, target: str, condition: str = "always") -> dict:
 
 def default_workflow(method_id: str = "basic_learning") -> dict:
     """Return a new editable template; no runtime identity is invented here."""
+    if method_id == "rule_refinement":
+        from .rule_refinement.workflow import default_rule_workflow
+        return default_rule_workflow()
     method = resolve_method({"method_id": method_id})
     basic = method_id == "basic_learning"
     nodes = []
@@ -243,12 +246,18 @@ def _inspect(spec: Any) -> tuple[list[str], dict, set[tuple[str, str, str]]]:
 
 
 def validate_workflow(spec: dict) -> dict:
+    if isinstance(spec, dict) and spec.get("schema_version") == 2:
+        from .rule_refinement.workflow import validate_rule_workflow
+        return validate_rule_workflow(spec)
     errors, _, _ = _inspect(spec)
     return {"valid": not errors, "errors": errors}
 
 
 def compile_workflow(spec: dict) -> dict:
     """Freeze a valid graph's execution semantics without mutating the draft."""
+    if isinstance(spec, dict) and spec.get("schema_version") == 2:
+        from .rule_refinement.workflow import compile_rule_workflow
+        return compile_rule_workflow(spec)
     errors, nodes, routes = _inspect(spec)
     if errors:
         raise ValueError("Invalid workflow: " + "; ".join(errors))

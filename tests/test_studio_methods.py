@@ -30,7 +30,7 @@ def test_default_draft_uses_manual_loop_and_versioned_method():
 def test_registry_is_copy_safe_and_hashes_its_complete_descriptor():
     from architecture_iq.studio.methods import list_methods
     entries = list_methods()
-    assert {m['id'] for m in entries} == {'basic_learning', 'scientific', 'paired_progressive', 'expel', 'paired_expel'}
+    assert {m['id'] for m in entries} == {'basic_learning', 'rule_refinement', 'scientific', 'paired_progressive', 'expel', 'paired_expel'}
     assert all(m['hash'] == canonical_hash({k:v for k,v in m.items() if k != 'hash'}) for m in entries)
     entries[0]['steps'][0]['label'] = 'mutated client copy'
     assert list_methods()[0]['steps'][0]['label'] != 'mutated client copy'

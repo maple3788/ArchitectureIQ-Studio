@@ -265,7 +265,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `default_rule_workflow() -> dict`、`validate_rule_workflow(spec: dict) -> dict`、`compile_rule_workflow(spec: dict) -> dict`；编译返回 `{workflow,method,protocol,workflow_hash,execution_hash,limits,initialization,grouping,model_nodes,generation,execution_order}`。新方法支持 `data_modes=["single","pairs"]`、`publication_policy="research_rules_only"`；旧 descriptor 原样保留。
 
-- [ ] **Step 1: 写失败测试。** `test_rule_template_has_separate_protocol_and_no_solver`、`test_graph_cannot_bypass_sealing_acceptance_or_limits`、`test_supported_grouping_routes_compile_in_edited_order`、`test_legacy_recipe_and_draft_hashes_remain_identical`：
+- [x] **Step 1: 写失败测试。** `test_rule_template_has_separate_protocol_and_no_solver`、`test_graph_cannot_bypass_sealing_acceptance_or_limits`、`test_supported_grouping_routes_compile_in_edited_order`、`test_legacy_recipe_and_draft_hashes_remain_identical`：
   ```python
   assert compiled["protocol"] == "rule_refinement_v1"
   assert "solver" not in compiled["model_nodes"]
@@ -274,12 +274,12 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert changed_prompt["execution_hash"] != original["execution_hash"]
   ```
   schema v2 草稿允许保存尚未连完的图，但验证/运行必须失败；测试 schema v1 正常保存、CAS 冲突有恢复副本，v2 不被旧 schema 静默接受。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_workflow.py -q`。
-- [ ] **Step 3: 实现协议。** 增加早期分派，schema v2 仅接受新方法。固定职责节点为 `input,initialize,verify,revise,accept,challenge,save`；verify 内封装程序预测→整批封存→评分，accept 内含候选全池验证。两层有界循环由控制器拥有，画布使用分组容器展示；它们不是可绕过的普通材料边。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_workflow.py -q`。
+- [x] **Step 3: 实现协议。** 增加早期分派，schema v2 仅接受新方法。固定职责节点为 `input,initialize,verify,revise,accept,challenge,save`；verify 内封装程序预测→整批封存→评分，accept 内含候选全池验证。两层有界循环由控制器拥有，画布使用分组容器展示；它们不是可绕过的普通材料边。
   支持 initialize 的 import/model 模式、节点模型/提示词配置，以及 verify→revise 之间添加/删除/排序最多 3 个 `group_cases` 节点（config.strategy 为 `type|rule|family`，不重复）。合法端口为 `public_cases,rule_kb,sealed_feedback,patch,decision`；mapping 只允许对应类型的完整引用，不支持任意表达式。循环出口 `needs_revision|pool_passed|accepted|rejected|target_reached|continue|stopped` 由后端状态决定，禁止用户伪造条件值。反馈只能从 verify 流向分组/修订，初始规则模型只能接公开材料。
   允许重连支持的材料路径，但编译器拒绝少节点、错类型、跳过验证、任意额外环和无可达终点；布局/标签只影响 workflow_hash。草稿只做结构校验，运行另做完整语义校验。
-- [ ] **Step 4: 验证。** 上述命令加三个旧测试文件，预期全通过；新方法无独立确认/科学发布的伪节点。
-- [ ] **Step 5: 提交。** `git commit -m "feat: compile editable rule refinement workflows"`。
+- [x] **Step 4: 验证。** 上述命令加三个旧测试文件，预期全通过；新方法无独立确认/科学发布的伪节点。
+- [x] **Step 5: 提交。** `git commit -m "feat: compile editable rule refinement workflows"`。
 
 ## Task 10: 持久化有界控制器、停止与恢复
 

@@ -58,10 +58,12 @@ def _validate_json(value):
 def _validate_workflow(workflow):
     if not isinstance(workflow, dict):
         raise ValueError('workflow 必须是对象')
-    if type(workflow.get('schema_version')) is not int or workflow['schema_version'] != 1:
-        raise ValueError('草稿 schema_version 必须为 1')
+    if type(workflow.get('schema_version')) is not int or workflow['schema_version'] not in (1, 2):
+        raise ValueError('草稿 schema_version 必须为 1 或 2')
     if not isinstance(workflow.get('name'), str) or not isinstance(workflow.get('settings'), dict):
         raise ValueError('草稿需要文本 name 和对象 settings')
+    if workflow['schema_version'] == 2 and workflow['settings'].get('method_id') != 'rule_refinement':
+        raise ValueError('v2 草稿只支持规则 KB 闭环')
     for key, maximum in (('nodes', 128), ('edges', 512)):
         values = workflow.get(key)
         if not isinstance(values, list) or len(values) > maximum:

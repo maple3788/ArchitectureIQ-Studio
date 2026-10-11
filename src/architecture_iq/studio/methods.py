@@ -79,8 +79,29 @@ def _basic_recipe() -> dict:
     return value
 
 
+def _rule_recipe() -> dict:
+    value = {
+        'id': 'rule_refinement', 'version': '1', 'name': '规则 KB 闭环',
+        'description': '程序执行条件规则，模型修订错题与冲突，经不退步验收后挑战新题。',
+        'paper_url': None, 'adaptation': '反复研究题池的经验规则；独立评测另行冻结，不构成科学发布。',
+        'status': 'available', 'learning_protocol': 'rule_refinement_v1', 'experience_mode': 'off',
+        'data_modes': ['single', 'pairs'], 'memory_policy': None,
+        'publication_policy': 'research_rules_only',
+        'steps': [_step('assemble', 'data', '冻结研究题池', 'input'),
+                  _step('rule_initialize', 'harness', '初始化规则', 'initialize'),
+                  _step('rule_verify', 'harness', '程序验证并封存预测', 'verify'),
+                  _step('rule_revise', 'harness', '修订错误与冲突', 'revise'),
+                  _step('rule_accept', 'harness', '同池不退步验收', 'accept'),
+                  _step('rule_challenge', 'harness', '新题首次挑战', 'challenge'),
+                  _step('rule_save', 'kb', '保存研究规则与证据', 'save')],
+    }
+    value['hash'] = canonical_hash(value)
+    return value
+
+
 _REGISTRY = {r['id']: r for r in [
     _basic_recipe(),
+    _rule_recipe(),
     _recipe('scientific', '受控科学研究', '独立作答、提出假说，经受控实验整理可验证知识。'),
     _recipe('paired_progressive', '渐进反事实学习', '从正常题归纳，再预测反事实并修订适用条件。', paired=True),
     _recipe('expel', 'ExpeL · 跨题经验学习', '检索既有案例，将多题反馈整理成可修订的经验规律。', memory=True),
