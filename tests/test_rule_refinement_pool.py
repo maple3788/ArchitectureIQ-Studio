@@ -200,3 +200,42 @@ def test_profile_label_does_not_make_an_identical_dataset_independent(tmp_path):
     old=s.initialize(binding)
     new=s.freeze_members([k for k in keys if k not in binding["keys"]])
     assert any(item["field"] == "instance_hash" for item in check_independence(old,new)["overlap"])
+
+
+def test_repeated_instance_within_new_batch_cannot_count_as_complete_pass(tmp_path):
+    s,c,datasets,_,_,keys=setup(tmp_path,[distinct_raw("old",1),distinct_raw("new_a",2),distinct_raw("new_b",2)])
+    old_key=next(key for key in keys if c.get_question(key)["metadata"]["id"] == "old")
+    dataset=datasets.create(name="old only",keys=[old_key],operation_id="old-only")
+    binding=DatasetInputs(c,datasets).preview({k:dataset[k] for k in ("collection_id","revision")},{},purpose="research")["binding"]
+    initial=s.initialize(binding)
+    incoming=s.freeze_members([key for key in keys if key not in binding["keys"]])
+    first=s.record_first_test("duplicates",pool=incoming,score=batch_score(s,incoming,name="duplicates"),
+                              generation=generation(incoming))
+    assert first["first_score"]["all_pass"]
+    assert not first["batch_passed"]
+    assert first["eligible"] == 1
+    assert first["novelty"]["independent_instances"] == 1
+    assert any(item["field"] == "instance_hash" for item in first["novelty"]["overlap"])
+    # Repeated research material still joins the pool; only independence is denied.
+    assert len(s.promote("duplicates",expected_pool_version=initial["version"])["members"]) == 3
+
+
+def test_incoming_complete_pair_is_one_unit_but_relabelled_pair_is_not_new(tmp_path):
+    from architecture_iq.studio.rule_refinement.pool import PoolStore,check_independence
+    c,*_=import_pair(tmp_path)
+    pair=c.list_question_pairs()["items"][0]
+    store=PoolStore(tmp_path/"run",c)
+    incoming=store.freeze_members([m["key"] for m in pair["members"]],pairs=[pair])
+    assert check_independence({"members":[]},incoming)["eligible"]
+    duplicate=deepcopy(incoming)
+    for member in duplicate["members"]:
+        member["ref"]["key"] += "_renamed"
+        for field in ("dataset_id","lineage_id","pair_id"):
+            member["identity"][field] += "_renamed"
+    for manifest in duplicate["pairs"]:
+        for member in manifest["members"]:
+            member["key"] += "_renamed"
+    combined={"members":incoming["members"]+duplicate["members"],"pairs":incoming["pairs"]+duplicate["pairs"]}
+    novelty=check_independence({"members":[]},combined)
+    assert not novelty["eligible"]
+    assert novelty["eligible_keys"] == [m["ref"]["key"] for m in incoming["members"]]

@@ -67,3 +67,32 @@ def test_uncertain_role_cannot_be_reissued_by_recovery(tmp_path,monkeypatch):
     monkeypatch.setattr(jobs,'launch',lambda _:pytest.fail('uncertain call cannot restart'))
     result=runner.recover_refinement(jobs,job['id'])
     assert result['status']=='uncertain' and provider.count.value==1
+
+
+@pytest.mark.parametrize('boundary',['checkpoint','inner_result','outer_result'])
+def test_finish_publication_recovers_all_copies_and_state_without_external_work(tmp_path,monkeypatch,boundary):
+    from architecture_iq.studio.rule_refinement import runner
+    args=setup_run(tmp_path,monkeypatch)
+    jobs,_,job,provider,_,counts=args
+    directory=jobs.directory(job['id']);root=directory/'refinement'
+    original=runner.write_json_atomic
+    target={'checkpoint':root/'checkpoint.json','inner_result':root/'result.json','outer_result':directory/'result.json'}[boundary]
+    def crash(path,value):
+        original(path,value)
+        if path == target and (boundary != 'checkpoint' or value.get('phase') == 'finish'):
+            raise SystemExit('crash during final publication')
+    monkeypatch.setattr(runner,'write_json_atomic',crash)
+    with pytest.raises(SystemExit):execute(args)
+    monkeypatch.setattr(runner,'write_json_atomic',original)
+    jobs.update(job['id'],status='interrupted')
+    monkeypatch.setattr(jobs,'launch',lambda _:pytest.fail('finish recovery needs no worker'))
+    saved=(root/'result.json').read_bytes() if (root/'result.json').exists() else None
+    for _ in range(2):
+        recovered=runner.recover_refinement(jobs,job['id'])
+        assert recovered['status'] == 'complete'
+        assert recovered['result']['outcome'] == 'target_reached'
+    assert read_receipt(root/'result.json') == read_receipt(directory/'result.json')
+    if saved is not None:assert (root/'result.json').read_bytes() == saved
+    assert provider.count.value == 2 and counts['generation'] == 3
+    finish_events=[e for e in jobs.events(job['id']) if e.get('step_id') == 'rule_finish']
+    assert len(finish_events) == 1

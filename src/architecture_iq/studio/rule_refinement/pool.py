@@ -57,23 +57,40 @@ def check_independence(existing: dict, incoming: dict) -> dict:
         for key in by_field:
             if member["identity"].get(key):
                 by_field[key].add(member["identity"][key])
-    fresh_keys = []
+    # A verified complete pair may share identity within its unit. Compare
+    # every unit with prior pools AND all preceding units in this batch.
+    pair_units = {m["key"]: tuple(n["key"] for n in pair["members"])
+                  for pair in incoming.get("pairs", []) for m in pair["members"]}
+    members = {m["ref"]["key"]: m for m in incoming["members"]}
+    fresh_keys, visited = [], set()
     for member in incoming["members"]:
-        key, identity = member["ref"]["key"], member["identity"]
-        reasons = []
-        for required in ("dataset_id", "lineage_id", "instance_hash", "question_fingerprint"):
-            if not identity.get(required):
-                missing.append({"key": key, "field": required})
-                reasons.append(required)
-        if key in old_keys:
-            overlap.append({"key":key, "field":"question_key"})
-            reasons.append("question_key")
-        for field, old_values in by_field.items():
-            if identity.get(field) in old_values:
-                overlap.append({"key":key, "field":field})
-                reasons.append(field)
-        if not reasons:
-            fresh_keys.append(key)
+        key = member["ref"]["key"]
+        if key in visited:
+            continue
+        unit_keys = pair_units.get(key, (key,))
+        unit = [members[k] for k in unit_keys]
+        visited.update(unit_keys)
+        blocked = False
+        for item in unit:
+            key, identity = item["ref"]["key"], item["identity"]
+            for required in ("dataset_id", "lineage_id", "instance_hash", "question_fingerprint"):
+                if not identity.get(required):
+                    missing.append({"key": key, "field": required})
+                    blocked = True
+            if key in old_keys:
+                overlap.append({"key": key, "field": "question_key"})
+                blocked = True
+            for field, old_values in by_field.items():
+                if identity.get(field) in old_values:
+                    overlap.append({"key": key, "field": field})
+                    blocked = True
+        if not blocked:
+            fresh_keys.extend(unit_keys)
+        for item in unit:
+            old_keys.add(item["ref"]["key"])
+            for field in by_field:
+                if item["identity"].get(field):
+                    by_field[field].add(item["identity"][field])
     return {"policy": NOVELTY_POLICY, "overlap": overlap, "missing_identity": missing,
             "eligible": bool(incoming["members"]) and not overlap and not missing,
             "eligible_keys": fresh_keys,

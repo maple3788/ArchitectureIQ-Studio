@@ -145,15 +145,23 @@ def _caller(jobs,identifier,config,cp,ledger,client_factory):
 
 def _finish(jobs,identifier,root,cp,ledger,pools):
     path=root/'result.json'
-    if path.exists():return read_receipt(path)
-    score=_read_score(root,cp['score_ref']) if cp.get('score_ref') else None
-    kb=RuleArtifactStore(root).get(cp['kb_version'])
-    pool=pools.get(cp['pool_version'])
-    result=_seal(dict(outcome='target_reached' if cp['stop_reason']=='target_reached' else 'stopped',
-                      stop_reason=cp['stop_reason'],best_kb=kb,pool={'version':pool['version'],'question_count':len(pool['members']),'pair_count':len(pool['pairs'])},
-                      score=score,fresh_batches=pools.batches(),unresolved=score['problems'] if score else [],budget=ledger.snapshot()))
-    write_json_atomic(path,result)
-    write_json_atomic(jobs.directory(identifier)/'result.json',result)
+    if path.exists():
+        result=read_receipt(path)
+    else:
+        score=_read_score(root,cp['score_ref']) if cp.get('score_ref') else None
+        kb=RuleArtifactStore(root).get(cp['kb_version'])
+        pool=pools.get(cp['pool_version'])
+        result=_seal(dict(outcome='target_reached' if cp['stop_reason']=='target_reached' else 'stopped',
+                          stop_reason=cp['stop_reason'],best_kb=kb,pool={'version':pool['version'],'question_count':len(pool['members']),'pair_count':len(pool['pairs'])},
+                          score=score,fresh_batches=pools.batches(),unresolved=score['problems'] if score else [],budget=ledger.snapshot()))
+        write_json_atomic(path,result)
+    outer=jobs.directory(identifier)/'result.json'
+    if outer.exists():
+        if read_receipt(outer)!=result:
+            raise ValueError('Published refinement result differs')
+    else:
+        write_json_atomic(outer,result)
+    _sync_events(jobs,identifier,root)
     status={'uncertain':'uncertain','execution_failure':'failed'}.get(cp['stop_reason'],'complete')
     jobs.update(identifier,status=status,error=cp.get('failure_type'))
     return result
@@ -324,7 +332,15 @@ def recover_refinement(jobs,identifier):
         _validate_saved(root)
         cp=read_receipt(root/'checkpoint.json')
         state=read(jobs.directory(identifier)/'state.json')
-        if cp['phase']=='finish' or state['status'] in {'starting','running','paused'} and (not state.get('pid') or process_stamp(state['pid'])==state.get('process_stamp')):
+        if cp['phase']=='finish':
+            # A finish checkpoint commits the outcome before its result copies
+            # and job state are published. Repair those writes without a worker.
+            with exclusive_lock(root/'runner.lock'):
+                cp=read_receipt(root/'checkpoint.json')
+                _finish(jobs,identifier,root,cp,BudgetLedger(root,config['limits'],clock=time.time),
+                        PoolStore(root,Catalog(jobs.state_root)))
+            return jobs.get(identifier)
+        if state['status'] in {'starting','running','paused'} and (not state.get('pid') or process_stamp(state['pid'])==state.get('process_stamp')):
             return jobs.get(identifier)
         pools=PoolStore(root,Catalog(jobs.state_root));pools.public_cases(cp['pool_version'])
         ledger=BudgetLedger(root,config['limits'],clock=time.time)

@@ -11,3 +11,12 @@ it('keeps_all_first_test_scores_after_later_success',()=>{render(<RuleRefinement
 it('does_not_invent_model_text_for_rule_execution',()=>{render(<RuleRefinementRun run={{...run,status:'running',result:undefined,refinement:{...run.refinement,phase:'baseline'}}} act={async f=>f()}/>);expect(screen.queryByLabelText('模型实时输出')).toBeNull();expect(screen.getByText('等待已封存的评分记录')).toBeTruthy();expect(deriveRuleRefinementView({...run,result:undefined,refinement:undefined,events:[]}).phase).toBe('等待运行记录');});
 it('reconnect_deduplicates_events_without_starting_run',()=>{const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);const event={sequence:1,node_id:'verify'};const newer={...run,events:[event,event],refinement:{...run.refinement,revision:10}};const view=deriveRuleRefinementView(newer);expect(view.events).toHaveLength(1);expect(retainRuleRun(newer,{...run,refinement:{revision:9},status:'running'})).toBe(newer);render(<RuleRefinementRun run={newer} act={async f=>f()}/>);expect(fetcher).not.toHaveBeenCalled();});
 it('reads rejected proposal evidence without selecting it as current KB',async()=>{vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({kind:'decision',value:{accepted:false,reason:'regression',regressed:['q1']}})));render(<RuleRefinementRun run={{...run,artifacts:[{id:'a1',kind:'decision',label:'版本验收'}]}} act={async f=>f()}/>);fireEvent.click(screen.getByRole('tab',{name:'版本与验收'}));fireEvent.click(screen.getByRole('button',{name:'版本验收'}));await waitFor(()=>expect(screen.getByText('已答对的题目退步')).toBeTruthy());expect(screen.queryByRole('button',{name:'接受此 KB'})).toBeNull();});
+it('offers backend verification for an uncertain run without a final result',async()=>{
+ const fetcher=vi.fn(async(_input:RequestInfo|URL,_init?:RequestInit)=>new Response(JSON.stringify({status:'queued'})));vi.stubGlobal('fetch',fetcher);
+ const {rerender}=render(<RuleRefinementRun run={{...run,status:'uncertain',result:undefined,refinement:{...run.refinement,phase:'revise'}}} act={async f=>f()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'核验并恢复'}));
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+ expect(String(fetcher.mock.calls[0][0])).toContain('/rule-refinement/runs/r/recover');
+ rerender(<RuleRefinementRun run={{...run,status:'uncertain'}} act={async f=>f()}/>);
+ expect(screen.queryByRole('button',{name:'核验并恢复'})).toBeNull();
+});
