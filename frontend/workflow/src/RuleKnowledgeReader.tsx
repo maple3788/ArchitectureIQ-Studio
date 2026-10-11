@@ -29,7 +29,7 @@ function RuleClaim({id,rules,score}:{id:string;rules:Json[];score?:Json}){
   <h3>{first.text||'未命名规则'}</h3>
   {metadata&&!hasLocal&&<p className="muted">本平台尚未重新验证。</p>}
   {first.rationale&&<p>{first.rationale}</p>}
-  {metadata?.parents?.length>0&&<p className="rr-claim-lineage">来自 {metadata.parents.join('、')}{metadata.operation?` · ${metadata.operation}`:''}</p>}
+  {metadata?.parents?.length>0&&<details><summary>规则修订来源</summary><p className="rr-claim-lineage">来自 {metadata.parents.join('、')}{metadata.operation?` · ${metadata.operation}`:''}</p></details>}
   <div className="rr-strict-rules"><h4>程序执行条件</h4>{rules.map((r,index)=><RuleClause key={r.rule_id} rule={r} index={index} multiple={rules.length>1} evidence={score?.per_rule?.[r.rule_id]}/>)}</div>
   {metadata&&<div className="rr-injection-policy"><h4>模型参考策略</h4>{!active.length?<p>规则已退役，不用于模型参考。</p>:policies.map(r=><ModelReferencePolicy key={r.rule_id} metadata={r.metadata} label={policies.length>1?r.rule_id:undefined}/>)}</div>}
   {metadata?.dev_evidence&&<details className="rr-development"><summary>来源开发证据</summary><p>{metadata.dev_evidence}</p><p className="muted">这是来源文档记录的证据，不计作本平台的独立确认结果。</p></details>}
@@ -42,10 +42,10 @@ export function RuleKnowledgeReader({kbRef,runId,onEvaluate,record}:{kbRef:KBRef
  const [tab,setTab]=useState('知识'),[rule,setRule]=useState('all'),[question,setQuestion]=useState('');const rules:Json[]=kb?.snapshot?.rules||[];
  const rows: [string,Json][]=Object.entries(score?.per_question||{});const applicable=rows.filter(([key])=>rule==='all'?Object.values(score?.per_rule||{}).some((r:any)=>r.question_keys?.includes(key)):score?.per_rule?.[rule]?.question_keys?.includes(key));
  const selected=applicable.some(([key])=>key===question)?question:applicable[0]?.[0];
- return <section className="rr-knowledge"><ErrorBox error={inventory.error||resource.error}/>{!kb?(inventory.loading?<Loading/>:<p>此规则版本不可用。</p>):<>
+ return <section className="rr-knowledge"><ErrorBox error={inventory.error||resource.error}/>{!kb?(inventory.loading?<Loading/>:<p>这份规则暂不可用。</p>):<>
   <p className="rr-status-note">研究规则 · 仅说明在已记录条件和批次上的表现。</p>
   <RuleVersionSummary snapshot={kb.snapshot}/>
-  {!kb.snapshot.source_document&&<p className="rr-version">版本 {kbRef.version} · 父版本 {kb.snapshot.parent_version||'初始副本'}</p>}
+  {!kb.snapshot.source_document&&<details><summary>修订记录</summary><p className="rr-version">版本 {kbRef.version} · 父版本 {kb.snapshot.parent_version||'初始副本'}</p></details>}
   {onEvaluate&&<button onClick={()=>onEvaluate(kbRef)}>在 Task 中检查此规则 KB</button>}
   <Tabs tabs={['知识','适用题目']} value={tab} onChange={setTab}/>
   {tab==='知识'?<div>{ruleGroups(rules).map(group=><RuleClaim key={group.id} {...group} score={score}/>)}{!rules.length&&<p>当前 KB 为空，尚未提出有效规则。</p>}</div>:<div><div className="form-grid"><Field label="按规则查看"><select value={rule} onChange={e=>setRule(e.target.value)}><option value="all">全部已命中规则</option>{rules.map((r:Json)=><option key={r.rule_id} value={r.rule_id}>{r.text||r.rule_id}{r.metadata?.claim_id?` · ${r.metadata.claim_id} 分支 ${r.metadata.clause_index??1}`:''}</option>)}</select></Field><Field label="适用题目"><select value={selected||''} onChange={e=>setQuestion(e.target.value)}>{applicable.map(([key,row],i)=><option key={key} value={key}>{i+1}. {row.case?.question?.id||key}</option>)}</select></Field></div>{selected?<RuleCaseEvidence row={score.per_question[selected]}/>:<p>当前保存的评分中没有适用题目。</p>}</div>}

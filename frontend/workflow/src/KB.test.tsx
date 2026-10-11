@@ -27,9 +27,9 @@ it('shows learned experience independently of formal verified knowledge', async(
 it('counts imported claims separately from their executable branches',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({items:[{id:'builtin:kb-v10',version:'v10hash',kind:'research_rules',name:'KB v10 · 架构与优化器规则',snapshot:{source_document:{version_label:'v10',filename:'kb_v10_revision.json'},rules:[0,1].map(i=>({rule_id:'R6:'+i,state:'active',metadata:{claim_id:'R6',clause_index:i,validity_status:'proposed',validation_origin:'source_reported'},text:'参数量条件下的深度宽度权衡',rule:{max_param_ratio:2,predict:{higher_better:'depth'}}}))}}]})));
  render(<KB version={0}/>);
- expect(await screen.findByRole('button',{name:'阅读 KB v10 · 架构与优化器规则'})).toBeTruthy();
+ expect(await screen.findByRole('button',{name:'阅读 架构与优化器规则'})).toBeTruthy();
  expect(screen.getByText('1 条主张 · 2 个执行分支')).toBeTruthy();
- fireEvent.click(screen.getByRole('button',{name:'阅读 KB v10 · 架构与优化器规则'}));
+ fireEvent.click(screen.getByRole('button',{name:'阅读 架构与优化器规则'}));
  expect(screen.getAllByRole('heading',{name:'参数量条件下的深度宽度权衡'})).toHaveLength(1);
 });
 
@@ -45,10 +45,18 @@ it('opens one explicitly grouped library with the latest version and evaluates t
  expect(screen.queryByRole('button',{name:'阅读 KB v9'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'阅读 架构与优化器规则'}));
  expect(screen.getByText('版本 v10 的知识')).toBeTruthy();
- fireEvent.change(screen.getByLabelText('知识库版本'),{target:{value:'builtin:kb-v9:hash-v9'}});
+ expect(screen.queryByLabelText('知识库版本')).toBeNull();
+ expect(screen.getByText('查看修订记录').closest('details')!.open).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'在 Task 中检查此规则 KB'}));
+ expect(onEvaluate).toHaveBeenLastCalledWith({id:'builtin:kb-v10',version:'hash-v10'});
+ fireEvent.click(screen.getByText('查看修订记录'));
+ fireEvent.change(screen.getByLabelText('阅读记录'),{target:{value:'builtin:kb-v9:hash-v9'}});
  expect(screen.getByText('版本 v9 的知识')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'在 Task 中检查此规则 KB'}));
- expect(onEvaluate).toHaveBeenCalledWith({id:'builtin:kb-v9',version:'hash-v9'});
+ expect(onEvaluate).toHaveBeenLastCalledWith({id:'builtin:kb-v9',version:'hash-v9'});
+ expect(screen.getByText('正在阅读历史记录。')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'返回当前知识'}));
+ expect(screen.getByText('版本 v10 的知识')).toBeTruthy();
 });
 it('keeps independent identically named experiments separate inside collapsed experience',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({items:[1,2].map(i=>({id:`run-${i}`,version:`experience-${i}`,kind:'experience',name:'同名实验',snapshot:{lessons:[{id:`L${i}`,text:`研究经验${i}`,status:'active'}],episodes:[]},sources:[{id:`run-${i}`,kind:'run'}]}))})));

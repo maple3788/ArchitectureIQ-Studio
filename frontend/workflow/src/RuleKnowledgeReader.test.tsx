@@ -54,7 +54,8 @@ it('uses active revisions for a split claim rather than its retired source polic
  const version={id:'split',version:'split-hash',snapshot:{source_document:{version_label:'KB v10'},rules:[base,{...base,rule_id:'R1-new',state:'active',text:'已缩小范围的规则',metadata:{...base.metadata,validity_status:'proposed',validation_origin:'modified_in_studio'}}]}};
  render(<RuleKnowledgeReader kbRef={{id:version.id,version:version.version}} record={version}/>);
  expect(screen.getByRole('heading',{name:'已缩小范围的规则'})).toBeTruthy();
- expect(screen.getByText('KB v10')).toBeTruthy();
+ expect(screen.getByText('规则知识')).toBeTruthy();
+ expect(screen.queryByText('KB v10')).toBeNull();
  expect(screen.getByText(/待独立确认，不作为已复现知识供模型参考/)).toBeTruthy();
  expect(screen.queryByText(/来源允许参考/)).toBeNull();
  expect(screen.getByText('已退役')).toBeTruthy();

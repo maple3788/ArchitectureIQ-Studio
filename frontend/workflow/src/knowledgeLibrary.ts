@@ -5,6 +5,8 @@ export type KnowledgeLibrary={key:string;name:string;section:'knowledge'|'experi
 export const isExperience=(record:Json)=>record.kind==='experience'||Array.isArray(record.snapshot?.lessons);
 export const knowledgeVersionKey=(record:Json)=>`${record.id}:${record.version}`;
 export function knowledgeTitle(record:Json){
+ if(record.library?.name)return readableName(record.library.name,'知识库');
+ if(['builtin:kb-v9','builtin:kb-v10'].includes(record.id))return '架构与优化器规则';
  return readableName(record.name||record.title,isExperience(record)?'学习经验':record.counts?.legacy_unverified?'历史导入知识':'知识快照');
 }
 function whollyLegacy(record:Json){
@@ -28,6 +30,14 @@ export function groupKnowledgeLibraries(records:Json[]):KnowledgeLibrary[]{
   group.section=isExperience(latest)?'experience':group.versions.every(whollyLegacy)?'history':'knowledge';
   return group;
  });
+}
+/** One choice per declared library. A saved reference stays pinned to its exact
+ * record; presenting the current library must never silently upgrade a draft. */
+export function knowledgeChoices(records:Json[],selected?:{id:string;version:string}){
+ return groupKnowledgeLibraries(records).map(group=>({
+  name:group.name,
+  record:group.versions.find(record=>record.id===selected?.id&&record.version===selected?.version)??group.versions[0],
+ }));
 }
 export function knowledgeMatches(record:Json,query:string){
  const needle=query.trim().toLocaleLowerCase();if(!needle)return true;
