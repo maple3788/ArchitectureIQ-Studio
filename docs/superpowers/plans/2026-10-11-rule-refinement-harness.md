@@ -366,7 +366,7 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
 
 **Interfaces:** `deriveRuleRefinementView(run: Run) -> RuleRefinementView`（在 types 文件补充），只接受实际 job/events/收据引用；`RuleRefinementRun({run,act})`、`RuleKnowledgeReader({kbRef,runId?,onEvaluate?})`；`onEvaluate(kbRef)` 打开 Task 专用规则评测配置，仅选 Dataset/phase 并执行 Task 11 预览与提交，不要求 LLM。
 
-- [ ] **Step 1: 写失败测试。** `does_not_label_budget_stop_as_success`、`keeps_all_first_test_scores_after_later_success`、`reads_knowledge_before_applicable_questions`、`does_not_invent_model_text_for_rule_execution`、`reconnect_deduplicates_events_without_starting_run`：
+- [x] **Step 1: 写失败测试。** `does_not_label_budget_stop_as_success`、`keeps_all_first_test_scores_after_later_success`、`reads_knowledge_before_applicable_questions`、`does_not_invent_model_text_for_rule_execution`、`reconnect_deduplicates_events_without_starting_run`：
   ```tsx
   expect(screen.getByText("资源上限已达到")).toBeVisible();
   expect(screen.queryByText("目标已达成")).not.toBeInTheDocument();
@@ -374,11 +374,11 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
   expect(startRequests).toHaveLength(0); // 阅读/重连
   ```
   混合历史 run.kind 正常分派、无事件显示等待、未判定证据与零命中规则显示准确、下位关系反例可见、被拒补丁仍可读且不能选作当前 KB。断言 first-score 与累计成绩有不同标签，不能覆盖展示。
-- [ ] **Step 2: 红灯。** `npm --prefix frontend/workflow test -- src/RuleRefinementRun.test.tsx src/RuleKnowledgeReader.test.tsx`。
-- [ ] **Step 3: 实现视图。** 顶部展示 KB/题池版本、正确/可评分/未完成数量、明确作答率与真实当前阶段；中部按错题/冲突/缺口/规则反例组织阅读。点题沿用做题式 QuestionReader，旁边显示规则直接关系/传递路径及已释放 GT；KB 默认直接阅读条件、版本差异和证据，再切“适用题目”。通过记录视图进入完整首测历史和拒绝原因，不以重复点击卡片代替主要内容。
+- [x] **Step 2: 红灯。** `npm --prefix frontend/workflow test -- src/RuleRefinementRun.test.tsx src/RuleKnowledgeReader.test.tsx`。
+- [x] **Step 3: 实现视图。** 顶部展示 KB/题池版本、正确/可评分/未完成数量、明确作答率与真实当前阶段；中部按错题/冲突/缺口/规则反例组织阅读。点题沿用做题式 QuestionReader，旁边显示规则直接关系/传递路径及已释放 GT；KB 默认直接阅读条件、版本差异和证据，再切“适用题目”。通过记录视图进入完整首测历史和拒绝原因，不以重复点击卡片代替主要内容。
   接入持久化 stage polling 和 provider SSE；分别维护 sequence/seq，无推算阶段、假进度、假模型文本。暂停、停止、恢复按钮仅在后端允许状态出现。知识界面使用“在这些批次通过/尚未检验/有反例”的事实文案；预算结束仍能阅读最佳版本。独立 Task 界面只显示规则 KB 冻结快照与既有题集，终结结果不出现“继续修订同一运行”按钮。
-- [ ] **Step 4: 验证。** 上述命令加 `src/WorkflowWorkspace.test.tsx src/Runs.test.tsx src/RunMonitor.test.tsx src/KB.test.tsx src/QuestionReader.test.tsx src/LiveOutput.test.tsx src/liveOutput.test.ts`，预期全通过。
-- [ ] **Step 5: 提交。** `git commit -m "feat: inspect refinement evidence and executable rule knowledge"`。
+- [x] **Step 4: 验证。** 上述命令加 `src/WorkflowWorkspace.test.tsx src/Runs.test.tsx src/RunMonitor.test.tsx src/KB.test.tsx src/QuestionReader.test.tsx src/LiveOutput.test.tsx src/liveOutput.test.ts`，预期全通过。
+- [x] **Step 5: 提交。** `git commit -m "feat: inspect refinement evidence and executable rule knowledge"`。
 
 ## Task 14: 跨模块验收、使用说明与交付
 

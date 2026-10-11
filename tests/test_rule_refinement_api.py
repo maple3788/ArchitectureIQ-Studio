@@ -141,3 +141,13 @@ def test_model_revision_change_invalidates_preview(tmp_path,monkeypatch):
     second=client.post('/api/studio/rule-refinement/preview',json=body).json()
     assert second['preview_hash']!=first['preview_hash']
     assert client.post('/api/studio/runs/'+args[2]['id']+'/round-decision',json={'round_index':1,'action':'continue'}).status_code==409
+
+
+def test_public_live_checkpoint_includes_accounted_budget(tmp_path,monkeypatch):
+    client,app,args,body,kb=api_fixture(tmp_path,monkeypatch)
+    root=app.state.jobs.directory(args[2]['id'])/'refinement'
+    (root/'result.json').unlink()
+    public=client.get('/api/studio/runs/'+args[2]['id']).json()
+    assert public['refinement']['budget']['model_calls']==args[3].count.value==2
+    assert public['refinement']['budget']['limits']['max_tokens']>0
+    assert 'operations' not in public['refinement']['budget']

@@ -9,6 +9,7 @@ from architecture_iq.kb.store import canonical_hash
 from architecture_iq.studio.jobs import JobStore
 from .acceptance import compare_candidate
 from .artifacts import RuleArtifactStore
+from .budget import BudgetLedger
 from .contracts import artifact_path
 from .pool import PoolStore
 
@@ -158,6 +159,7 @@ def public_refinement_job(job,jobs=None):
             cp,kb,score=accepted_rule_snapshot(jobs,job['id'])
             result['refinement']={**_pick(cp,{'revision','phase','kb_version','pool_version','attempt_index','generation_index','no_progress','fresh_passes','stop_reason'}),
                                   'best_kb':kb,'score':public_score(score) if score else None,
+                                  'budget':public_budget(BudgetLedger(root,config['limits']).snapshot()),
                                   'fresh_batches':[public_batch(b) for b in PoolStore(root,None).batches()]}
         if (root/'result.json').exists():
             saved=read_receipt(root/'result.json')

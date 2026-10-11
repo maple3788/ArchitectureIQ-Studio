@@ -1,3 +1,6 @@
+import {RuleRefinementRun} from './RuleRefinementRun';
+import {RuleEvaluation} from './RuleEvaluation';
+import type {KBRef} from './ruleRefinementTypes';
 import {RagRunView} from './RagRunView';
 import { useEffect, useState } from "react";
 import {
@@ -42,6 +45,7 @@ export function Runs({
   act,
   executionEnabled,
   initialSet,
+  ruleKB,
   selectedRun,
   onRun,
   onWorkflowRun,
@@ -50,10 +54,13 @@ export function Runs({
   act: Action;
   executionEnabled: boolean;
   initialSet?: string;
+  ruleKB?: KBRef;
   selectedRun?: string;
   onRun: (id: string) => void;
   onWorkflowRun?: (id: string) => void;
 }) {
+  const [evaluationMode,setEvaluationMode]=useState(ruleKB?"规则 KB 检查":"模型评测");
+  useEffect(()=>{if(ruleKB)setEvaluationMode("规则 KB 检查");},[ruleKB?.id,ruleKB?.version]);
   const runs = useResource<List<Run>>("/runs", version, 5000);
   const models = useResource<List<ModelProfile>>("/models", version);
   const sets = useResource<List<QuestionSet>>("/question-sets", version);
@@ -133,7 +140,8 @@ export function Runs({
           运行由服务器持久化
         </span>
       </div>
-      <div className="run-setup-grid">
+      <Tabs tabs={["模型评测","规则 KB 检查"]} value={evaluationMode} onChange={setEvaluationMode}/>
+      {evaluationMode === "规则 KB 检查" ? <RuleEvaluation kbRef={ruleKB} onStarted={id=>{onRun(id);setOpenRun(id);}}/> : <div className="run-setup-grid">
         <Card
           title="新建模型评测"
           subtitle="相同公开输入与题目顺序 · 一个或多个被测 LLM"
@@ -285,7 +293,7 @@ export function Runs({
           <span className="eyebrow">KB RESEARCH</span>
           <p>五角色研究使用工作流页面中的固定单模型配置。</p>
         </Card>
-      </div>
+      </div>}
       <Card
         title="运行历史"
         subtitle="刷新或离开页面不会取消已提交的服务器任务。"
@@ -298,6 +306,7 @@ export function Runs({
             <option value="all">全部类型</option>
             <option value="evaluation">模型评测</option>
             <option value="workflow">KB 研究</option>
+            <option value="rule_refinement">规则 KB 闭环</option><option value="rule_evaluation">规则评测</option>
             <option value="generation">题目生成</option>
             <option value="rag">RAG 作答</option>
           </select>
@@ -334,7 +343,7 @@ export function Runs({
                         </button>
                       </td>
                       <td>
-                        {r.kind === "workflow"
+                        {r.kind === "rule_refinement" ? "规则 KB 闭环" : r.kind === "rule_evaluation" ? "规则评测" : r.kind === "workflow"
                           ? "KB 研究"
                           : r.kind === "generation"
                             ? "题目生成"
@@ -415,6 +424,7 @@ export function RunDetail({
   const [recordTab, setRecordTab] = useState("实际请求");
   const records = data?.records || [];
   const record = records[recordIndex];
+  if(data&&["rule_refinement","rule_evaluation"].includes(data.kind))return <Drawer title={runLabel(data)} subtitle="持久化规则研究与检查记录" onClose={onClose}><ErrorBox error={error}/><RunConnection lastSyncedAt={lastSyncedAt} error={error}/>{data.kind==="rule_refinement"&&onWorkflowRun&&<button onClick={()=>onWorkflowRun(id)}>在 Harness 中查看</button>}<RuleRefinementRun run={data} act={act}/></Drawer>;
 
   return (
     <Drawer

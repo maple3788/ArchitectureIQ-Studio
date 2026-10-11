@@ -1,3 +1,4 @@
+import {RuleRefinementRun} from './RuleRefinementRun';
 import { useEffect, useState, type ReactNode } from "react";
 import { items } from "./api";
 import { ErrorBox, Loading, Empty, Tabs, useResource } from "./ui";
@@ -14,7 +15,7 @@ export function WorkflowWorkspace({ children, version, selectedRun, act }: {
   const [mode, setMode] = useState(selectedRun ? "运行追踪" : "编辑工作流");
   const [runId, setRunId] = useState(selectedRun || "");
   const runs = useResource<List<Run>>("/runs", version, 5000);
-  const workflowRuns = items(runs.data).filter(run => run.kind === "workflow");
+  const workflowRuns = items(runs.data).filter(run => ["workflow","rule_refinement"].includes(run.kind));
   const effectiveId = runId || workflowRuns[0]?.id;
   const monitor = useRunMonitor(mode === "运行追踪" ? effectiveId : undefined);
   useEffect(() => {
@@ -49,6 +50,6 @@ export function WorkflowWorkspace({ children, version, selectedRun, act }: {
         {monitor.loading && <Loading />}
       </> : runs.loading ? <Loading /> : <Empty title="还没有工作流运行">提交研究后，可在这里跟踪每个节点；查看历史记录不会启动新的调用。</Empty>}
     </section>}
-    <LiveRunContext.Provider value={{run:mode === "运行追踪" ? monitor.data : undefined, syncState:{error:monitor.error,lastSyncedAt:monitor.lastSyncedAt},act}}>{children}</LiveRunContext.Provider>
+    <LiveRunContext.Provider value={{run:mode === "运行追踪" ? monitor.data : undefined, syncState:{error:monitor.error,lastSyncedAt:monitor.lastSyncedAt},act}}>{mode === "运行追踪" && monitor.data?.kind === "rule_refinement" ? <RuleRefinementRun run={monitor.data} act={act}/> : children}</LiveRunContext.Provider>
   </div>;
 }

@@ -1,3 +1,4 @@
+import type {KBRef} from './ruleRefinementTypes';
 import {Rag} from './Rag';
 import {DataWorkspace} from './DataWorkspace';
 import { useEffect, useRef, useState } from "react";
@@ -60,6 +61,7 @@ export default function App() {
   const locked = useRef(false);
   const [sidebar, setSidebar] = useState(false);
   const [ragQuestion,setRagQuestion]=useState<string>();
+  const [ruleKB,setRuleKB]=useState<KBRef>();
   const [setId, setSetId] = useState<string>();
   const [runId, setRunId] = useState<string>();
   const [workflowRunId, setWorkflowRunId] = useState<string>();
@@ -272,13 +274,14 @@ export default function App() {
               version={version}
               act={act}
               executionEnabled={executionEnabled}
+              ruleKB={ruleKB}
               initialSet={setId}
               selectedRun={runId}
               onRun={onRun}
               onWorkflowRun={onWorkflowRun}
             />
           ) : (
-            <KB version={version} />
+            <KB version={version} onEvaluate={ref=>{setRuleKB(ref);navigate("runs");}} />
           )}
         </main>
         <footer className="app-footer">

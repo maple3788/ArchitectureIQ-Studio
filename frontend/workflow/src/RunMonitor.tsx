@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import {retainRuleRun} from './ruleRefinementView';
+import { useEffect, useState, useRef } from "react";
 import { Pause, Play } from "lucide-react";
 import { api } from "./api";
 import { formatTimestamp } from "./time";
@@ -17,7 +18,10 @@ export function useRunMonitor(id?: string) {
   const [lastSyncedAt, setLastSyncedAt] = useState<number>();
   useEffect(() => { setLastSyncedAt(undefined); }, [id]);
   useEffect(() => { if (resource.data) setLastSyncedAt(Date.now()); }, [resource.data]);
-  return { ...resource, data: resource.data?.id === id ? resource.data : undefined, lastSyncedAt };
+  const retained=useRef<Run|undefined>(undefined);
+  if(retained.current?.id!==id)retained.current=undefined;
+  if(resource.data && resource.data.id===id)retained.current=retainRuleRun(retained.current,resource.data);
+  return { ...resource, data: retained.current, lastSyncedAt };
 }
 
 export function RunConnection({ lastSyncedAt, error }: { lastSyncedAt?: number; error?: string }) {
@@ -32,7 +36,7 @@ export function RunControls({ run, act }: { run: Run; act: Action }) {
   const [pending, setPending] = useState(false);
   const pause = ["running", "queued", "pausing"].includes(run.status);
   const resume = run.status === "paused";
-  if (!pause && !resume) return null;
+  if (run.parent_id || ["rule_refinement","rule_evaluation"].includes(run.kind) || !pause && !resume) return null;
   return <button disabled={pending || run.status === "pausing"} onClick={async () => {
     setPending(true);
     try {

@@ -26,7 +26,7 @@ export function runLabel(run?: Json): string {
   if (!run) return '运行记录';
   const config = run.config ?? {};
   const method = config.method?.id ?? config.method_id ?? config.workflow?.settings?.method_id;
-  const fallback = method === 'basic_learning' ? '单题学习' : ({workflow:'KB 研究', evaluation:'模型评测', generation:'题目生成',rag:'RAG 作答'}[String(run.kind)] ?? '运行记录');
+  const fallback = method === 'basic_learning' ? '单题学习' : ({workflow:'KB 研究', evaluation:'模型评测', generation:'题目生成',rag:'RAG 作答',rule_refinement:'规则 KB 闭环',rule_evaluation:'规则评测'}[String(run.kind)] ?? '运行记录');
   const title = [run.name, config.name, config.workflow?.name, config.method?.name].map(name=>readableName(name, '')).find(Boolean) || fallback;
   return run.created_at ? `${title} · ${formatTimestamp(run.created_at)}` : title;
 }
