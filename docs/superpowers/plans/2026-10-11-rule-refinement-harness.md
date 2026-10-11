@@ -185,7 +185,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `compare_candidate(before: dict, after: dict, *, protected_keys: list[str]) -> dict`；`advance_protection(protected_keys: list[str], accepted_score: dict) -> list[str]`。两者纯函数；runner 负责保存 Decision 和接受指针。
 
-- [ ] **Step 1: 写失败测试。** `test_any_protected_regression_rejects_even_with_higher_total`、`test_same_score_repairs_follow_lexicographic_order`、`test_wrong_to_uncovered_is_not_progress`、`test_pool_mismatch_rejected_before_comparison`：
+- [x] **Step 1: 写失败测试。** `test_any_protected_regression_rejects_even_with_higher_total`、`test_same_score_repairs_follow_lexicographic_order`、`test_wrong_to_uncovered_is_not_progress`、`test_pool_mismatch_rejected_before_comparison`：
   ```python
   assert regression["accepted"] is False
   assert fewer_conflicts_same_answers["accepted"] is True
@@ -194,10 +194,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert rejected_only_correct_key not in protected_after
   ```
   相同执行 hash 为 no_progress；正确题数优先，再按 conflicts↓、wrong_assertions↓、answered↑，较高优先级变差不得被低优先级掩盖；新增批次原本答对的题立即受保护，已接受规则零命中不可冒充证据。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_acceptance.py -q`。
-- [ ] **Step 3: 实现接口。** 强制同 pool/GT/predictor 身份且全池评分完成，核验保护集合属于本池；先检验保护，再比较确定的优先序。整题正确数不变时额外要求 answered 不减少。保存稳定拒绝 reason 和题目 key，不能隐式放宽原则。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_rule_refinement_pool.py tests/test_rule_refinement_scoring.py`，预期全通过。
-- [ ] **Step 5: 提交。** `git commit -m "feat: accept rule updates only after nonregressing pool checks"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_acceptance.py -q`。
+- [x] **Step 3: 实现接口。** 强制同 pool/GT/predictor 身份且全池评分完成，核验保护集合属于本池；先检验保护，再比较确定的优先序。整题正确数不变时额外要求 answered 不减少。保存稳定拒绝 reason 和题目 key，不能隐式放宽原则。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_rule_refinement_pool.py tests/test_rule_refinement_scoring.py`，预期全通过。
+- [x] **Step 5: 提交。** `git commit -m "feat: accept rule updates only after nonregressing pool checks"`。
 
 ## Task 6: 全程预算与尝试账本
 
