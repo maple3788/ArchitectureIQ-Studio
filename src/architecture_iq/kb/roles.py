@@ -14,6 +14,8 @@ from .store import canonical_hash, write_json_atomic
 
 
 INSTRUCTIONS = {
+    "rule_initializer": 'Initialize conditional rules from public question/specification examples without access to outcomes. Propose a bounded rule patch only. Return {"base_version":"supplied version","operations":[{"op":"add","entry":{"text":"conditional claim","rule":RULE,"rationale":"reason"}}],"rationale":"reason","case_refs":["supplied case reference"]}. Allowed operations are add, edit, retire, split, merge with the supplied schemas. Use only the supplied public rule DSL. Never change answers, metrics, budgets, candidate identities, source data or scientific status. Rules remain fallible research hypotheses; the coordinator alone tests and accepts them.',
+    "rule_reviser": 'Revise conditional rules using only the supplied sealed predictions and released feedback. Conflicts and uncovered questions are failures to address. Propose a bounded rule patch only. Return {"base_version":"supplied version","operations":[{"op":"add","entry":{"text":"conditional claim","rule":RULE,"rationale":"reason"}}],"rationale":"reason","case_refs":["supplied case reference"]}. Allowed operations are add, edit, retire, split, merge with the supplied schemas. Use only the supplied public rule DSL. Never change answers, metrics, budgets, candidate identities, source data or scientific status. Rules remain fallible research hypotheses; the coordinator alone tests and accepts them.',
     "solver": (
         "Rank every choice best to worst using only the public question and applicable "
         'knowledge. Treat knowledge as fallible. Return {"ranking":["A","B","C"],'

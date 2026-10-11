@@ -224,7 +224,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `build_revision_payload(kb: dict, score: dict, *, seen_case_refs: list[str], max_input_bytes: int, grouping: list[str]) -> dict` 返回材料、所选 case_refs、剩余数量；`propose_patch(caller: RoleCaller, ledger: BudgetLedger, *, attempt_id: str, kb: dict, payload: dict, initialize: bool = False) -> dict` 返回提案/拒绝原因/回执引用，不能写接受指针。现有 `create_client` 新增可选 keyword `timeout_s: float | None = None`，None 保持原 900 秒；新调用使用 min(900, 剩余总时长)，超时保留 uncertain 回执，不自动重发。
 
-- [ ] **Step 1: 写失败测试。** `test_conflicts_and_rule_counterexamples_share_revision_queue`、`test_context_chunking_preserves_full_index_and_seen_ledger`、`test_invalid_patch_still_charged_once`、`test_lost_response_never_reissues_request`：
+- [x] **Step 1: 写失败测试。** `test_conflicts_and_rule_counterexamples_share_revision_queue`、`test_context_chunking_preserves_full_index_and_seen_ledger`、`test_invalid_patch_still_charged_once`、`test_lost_response_never_reissues_request`：
   ```python
   assert {"conflict", "rule_counterexample"} <= sent_problem_types
   assert receipt["seen_case_refs"] == payload["case_refs"]
@@ -232,10 +232,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert fake_client.call_count == 1  # 包括相同 attempt 恢复
   ```
   初始化材料只有公开题面/规格和可用 DSL；现有题 GT 首先经确定性基线封存后才可出现在修订材料。测试输出截断、文本声称通过但规则非法、改变 GT/预算的字段、case_refs 不存在、base_version 过期、token 预算不足导致零调用、请求超时不超过剩余时长且超时计费不重试。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_revision.py -q`。
-- [ ] **Step 3: 实现接口。** 复用禁用自动重试的客户端及 RoleCaller 封存，不伪造模型身份；该运行所有新角色调用统一 `round_index=0` 作为累计桶，真实尝试序号单独记入事件。完整问题索引存为产物，超上下文时按类型→规则→family 确定性分组，优先未展示案例；当前调用只附可容纳的索引页和案例，显示“本次/全部”数量。首版每个修订尝试一次模型调用，后续尝试轮转未展示组；必需 KB/提示词也装不下则明确停止，不截断规则。无效/重复补丁保留回执，仍计尝试和 no_progress。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_roles.py tests/test_studio_api_models.py`，预期全通过，旧角色 prompt/hash 不变；fake provider 中的凭据 sentinel 不得进入产物或事件。
-- [ ] **Step 5: 提交。** `git commit -m "feat: propose bounded rule revisions from persisted feedback"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_revision.py -q`。
+- [x] **Step 3: 实现接口。** 复用禁用自动重试的客户端及 RoleCaller 封存，不伪造模型身份；该运行所有新角色调用统一 `round_index=0` 作为累计桶，真实尝试序号单独记入事件。完整问题索引存为产物，超上下文时按类型→规则→family 确定性分组，优先未展示案例；当前调用只附可容纳的索引页和案例，显示“本次/全部”数量。首版每个修订尝试一次模型调用，后续尝试轮转未展示组；必需 KB/提示词也装不下则明确停止，不截断规则。无效/重复补丁保留回执，仍计尝试和 no_progress。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_kb_workflow_roles.py tests/test_studio_api_models.py`，预期全通过，旧角色 prompt/hash 不变；fake provider 中的凭据 sentinel 不得进入产物或事件。
+- [x] **Step 5: 提交。** `git commit -m "feat: propose bounded rule revisions from persisted feedback"`。
 
 ## Task 8: canonical 新题子任务与安全恢复
 

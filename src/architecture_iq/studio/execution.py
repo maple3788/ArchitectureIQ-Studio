@@ -122,13 +122,15 @@ def preview_evaluation(config: dict) -> dict:
     }
 
 
-def create_client(profile: dict, observer, *, stream: bool = False, chunk_observer=None, credential_root: Path | None = None):
+def create_client(profile: dict, observer, *, stream: bool = False, chunk_observer=None, credential_root: Path | None = None, timeout_s: float | None = None):
+    if timeout_s is not None and (type(timeout_s) not in (int, float) or not 0 < timeout_s <= 900):
+        raise ValueError("Client timeout must be positive and at most 900 seconds")
     LLMClient, _, _ = _tools()
     credential = read_credential(profile, credential_root)
     client = LLMClient(
         base_url=profile["base_url"],
         api_key=credential,
-        timeout_s=900,
+        timeout_s=900 if timeout_s is None else timeout_s,
         max_retries=0,
         request_observer=observer,
         stream=stream,
