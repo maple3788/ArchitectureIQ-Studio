@@ -27,10 +27,12 @@ it('opens Data by default while preserving existing named routes',async()=>{
  render(<App/>);
  expect(await screen.findByRole('heading',{name:'我的 Datasets'})).toBeTruthy();
  const dataNav=within(screen.getByRole('navigation',{name:'Data 工作空间'}));
+ fireEvent.click(dataNav.getByText('更多'));
  fireEvent.click(dataNav.getByRole('button',{name:'生成任务'}));
  expect(await screen.findByRole('heading',{name:'构建研究题目'})).toBeTruthy();
  expect(location.hash).toBe('#generation');
- fireEvent.click(dataNav.getByRole('button',{name:'题源与题集'}));
+ fireEvent.click(dataNav.getByText('更多'));
+ fireEvent.click(dataNav.getByRole('button',{name:'题源管理'}));
  expect(await screen.findByRole('button',{name:'管理题源'})).toBeTruthy();
  expect(location.hash).toBe('#questions');
  fireEvent.click(dataNav.getByRole('button',{name:'总题库'}));

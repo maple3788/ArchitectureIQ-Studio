@@ -46,10 +46,10 @@ def register_dataset_routes(api, *, catalog, bank, datasets, allowed_roots):
 
     @api.get(prefix + '/datasets')
     def list_datasets(request: Request, search: str = '', family: str = '', archived: bool = False,
-                      offset: int = 0, limit: int = 25):
+                      offset: int = 0, limit: int = 25, grouped: bool = False):
         def operation():
-            query_fields(request, {'search', 'family', 'archived', 'offset', 'limit'})
-            return datasets.list(search=search, family=family, archived=archived, offset=offset, limit=limit)
+            query_fields(request, {'search', 'family', 'archived', 'offset', 'limit', 'grouped'})
+            return datasets.list(search=search, family=family, archived=archived, offset=offset, limit=limit, grouped=grouped)
         return data_call(operation)
 
     @api.post(prefix + '/datasets')

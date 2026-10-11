@@ -29,6 +29,6 @@ it('opens a persisted rule run through Harness and never starts on reconnect',as
 });
 it('carries a frozen rule KB from knowledge reading into a model-free Task',async()=>{
  const record={id:'kb',version:'v',kind:'research_rules',name:'我的研究规则',snapshot:{version:'v',rules:[]},sources:[]};vi.stubGlobal('fetch',async(path:string)=>new Response(JSON.stringify(path.endsWith('/kb')?{items:[record]}:{items:[],total:0})));
- const onEvaluate=vi.fn();const view=render(<KB version={0} onEvaluate={onEvaluate}/>);fireEvent.click(await screen.findByRole('button',{name:'查看记录'}));fireEvent.click(await screen.findByRole('button',{name:'在 Task 中检查此规则 KB'}));expect(onEvaluate).toHaveBeenCalledWith({id:'kb',version:'v'});view.unmount();
+ const onEvaluate=vi.fn();const view=render(<KB version={0} onEvaluate={onEvaluate}/>);fireEvent.click(await screen.findByRole('button',{name:'阅读 我的研究规则'}));fireEvent.click(await screen.findByRole('button',{name:'在 Task 中检查此规则 KB'}));expect(onEvaluate).toHaveBeenCalledWith({id:'kb',version:'v'});view.unmount();
  render(<Runs version={0} act={act} executionEnabled={false} ruleKB={{id:'kb',version:'v'}} onRun={()=>{}}/>);await screen.findByLabelText('待评测规则 KB');expect(screen.queryByRole('button',{name:'提交模型评测'})).toBeNull();expect(screen.getByRole('button',{name:'开始规则评测'})).toBeTruthy();
 });

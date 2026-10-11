@@ -77,3 +77,35 @@ it("distinguishes missing scope from an existing condition that cannot be summar
     within(show(undefined)).getByText(/未记录额外的题目条件/),
   ).toBeTruthy();
 });
+
+it('groups source clauses into one claim without losing per-clause status and evidence',()=>{
+ render(<KnowledgeSnapshot snapshot={{version:'v1',claims:[
+  {id:'K1.clause-1',source_claim_id:'K1',text:'同一原始主张',status:'replicated_in_scope',enabled:true,evidence_ids:['e1'],rule:{scope:['width','ge',64]}},
+  {id:'K1.clause-2',source_claim_id:'K1',text:'同一原始主张',status:'refuted',enabled:false,evidence_ids:['e2'],rule:{scope:['depth','lt',4]}},
+  {id:'K2',text:'相同编号以外的独立主张',status:'proposed',enabled:false,evidence_ids:[]}
+ ],evidence:[{id:'e1',outcome:'support'},{id:'e2',outcome:'refute'}]}}/>);
+ expect(screen.getAllByRole('article')).toHaveLength(2);
+ expect(screen.getAllByText('同一原始主张',{exact:true})).toHaveLength(1);
+ expect(screen.getByText('2 条主张 · 3 个规则子项')).toBeTruthy();
+ expect(screen.getByText('已在记录范围内验证')).toBeTruthy();
+ expect(screen.getByText('已被反驳')).toBeTruthy();
+ const first=screen.getAllByRole('article')[0];
+ for(const summary of within(first).getAllByText('适用于什么条件 · 证据'))fireEvent.click(summary);
+ expect(within(first).getByText('宽度 至少 64')).toBeTruthy();
+ expect(within(first).getByText('层数 小于 4')).toBeTruthy();
+ expect(within(first).getByText(/支持 1 · 反驳 0/)).toBeTruthy();
+ expect(within(first).getByText(/支持 0 · 反驳 1/)).toBeTruthy();
+});
+it('keeps other clause statuses visible when a grouped claim matches a filter',()=>{
+ render(<KnowledgeSnapshot snapshot={{claims:[
+  {id:'K1-a',source_claim_id:'K1',text:'共有正文',status:'replicated_in_scope',enabled:true},
+  {id:'K1-b',source_claim_id:'K1',text:'另一个分支解释',status:'refuted',enabled:false},
+  {id:'K2',text:'无关待验证主张',status:'proposed',enabled:false}
+ ]}}/>);
+ fireEvent.change(screen.getByRole('combobox',{name:'知识使用状态'}),{target:{value:'usable'}});
+ expect(screen.getAllByRole('article')).toHaveLength(1);
+ expect(screen.getByText('共有正文')).toBeTruthy();
+ expect(screen.getByText('另一个分支解释')).toBeTruthy();
+ expect(screen.getByText('已被反驳')).toBeTruthy();
+ expect(screen.queryByText('无关待验证主张')).toBeNull();
+});

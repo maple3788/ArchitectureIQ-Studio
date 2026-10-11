@@ -52,6 +52,26 @@ def test_manifest_and_preregistration_content_are_verified(tmp_path):
     assert 'changed after registration' not in str(failed)
 
 
+def test_library_grouping_keeps_version_selection_and_frozen_snapshots_unchanged(tmp_path):
+    from architecture_iq.studio.rule_library import bundled_rule_inventory, LIBRARY_ROOT
+    from shutil import copytree
+    root = tmp_path / 'rules'
+    copytree(LIBRARY_ROOT, root)
+    items = bundled_rule_inventory(root)['items']
+    assert len({item['library']['id'] for item in items}) == 1
+    assert [item['library']['version_label'] for item in items] == ['v9', 'v10']
+    assert [item['library']['version_order'] for item in items] == [9, 10]
+    assert items[0]['library']['name'] == '架构与优化器规则'
+    manifest_path = root / 'library_manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    for entry in manifest['versions']:
+        entry.pop('library')
+    manifest_path.write_text(json.dumps(manifest))
+    ungrouped = bundled_rule_inventory(root)['items']
+    assert [(item['id'], item['version'], item['snapshot']) for item in items] == [
+        (item['id'], item['version'], item['snapshot']) for item in ungrouped]
+
+
 def test_context_preview_is_separate_from_program_answer_and_reads_no_feedback(tmp_path, monkeypatch):
     from test_rule_refinement_api import api_fixture
     client, app, _, body, _ = api_fixture(tmp_path, monkeypatch)

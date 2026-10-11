@@ -98,16 +98,21 @@ export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
   const claims: any[] = Array.isArray(snapshot?.claims) ? snapshot.claims : [];
   const usable = (c: any) =>
     c.enabled === true && c.status === "replicated_in_scope";
-  const shown = claims.filter(
-    (c) =>
-      (filter !== "usable" || usable(c)) &&
-      (filter !== "research" || !usable(c)) &&
-      `${c.id} ${c.text ?? ""}`.toLowerCase().includes(search.toLowerCase()),
-  );
+  const grouped = new Map<string, any[]>();
+  claims.forEach((claim, index) => {
+    const id = claim.source_claim_id || claim.id || `record-${index}`;
+    grouped.set(id, [...(grouped.get(id) ?? []), claim]);
+  });
+  const groups = [...grouped].map(([id, clauses]) => ({id, clauses}));
+  const shown = groups.filter(group => group.clauses.some(c =>
+    (filter !== "usable" || usable(c)) &&
+    (filter !== "research" || !usable(c)) &&
+    `${group.id} ${c.id} ${c.text ?? ""}`.toLowerCase().includes(search.toLowerCase()),
+  ));
   return (
     <div className="knowledge-reader">
       <div className="knowledge-counts">
-        <strong>{claims.length} 条知识记录</strong>
+        <strong>{groups.length} 条主张 · {claims.length} 个规则子项</strong>
         <span>{claims.filter(usable).length} 条已验证且启用</span>
         <span>
           {claims.filter((c) => !usable(c)).length} 条暂不用于正式解题
@@ -146,23 +151,28 @@ export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
           {claims.length ? "没有符合筛选的知识。" : "这个版本尚无知识条目。"}
         </p>
       )}
-      {shown.slice(0, limit).map((claim, index) => {
+      {shown.slice(0, limit).map((group) => {
+        const sameText = group.clauses.every(claim => claim.text === group.clauses[0].text);
+        return <article key={group.id} className="knowledge-claim">
+          <header><strong title={group.id}>知识 {groups.indexOf(group) + 1}</strong>{group.clauses.length > 1 && <span>{group.clauses.length} 个条件分支</span>}</header>
+          {sameText && <p className="knowledge-statement">{group.clauses[0].text || "未提供知识正文"}</p>}
+          {group.clauses.map((claim, index) => {
         const evidence = (Array.isArray(snapshot.evidence) ? snapshot.evidence : []).filter((e: any) =>
           claim.evidence_ids?.includes(e.id),
         );
         const scope = claim.rule?.scope,
           condition = conditionText(scope);
         return (
-          <article key={`${claim.id}-${index}`} className="knowledge-claim">
+          <section key={`${claim.id}-${index}`} className="knowledge-clause">
             <header>
-              <strong title={claim.id}>知识 {claims.indexOf(claim) + 1}</strong>
+              {group.clauses.length > 1 && <strong title={claim.id}>分支 {index + 1}</strong>}
               <span>
                 {statuses[claim.status] ?? claim.status ?? "状态未提供"}
               </span>
             </header>
-            <p className="knowledge-statement">
+            {!sameText && <p className="knowledge-statement">
               {claim.text || "未提供知识正文"}
-            </p>
+            </p>}
             <small>
               {usable(claim)
                 ? "允许在匹配范围内检索使用"
@@ -228,12 +238,13 @@ export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
                 <JsonView value={{ claim, evidence }} />
               </details>
             </details>
-          </article>
+          </section>
         );
+      })}</article>;
       })}
       {shown.length > limit && (
         <button onClick={() => setLimit((v) => v + 8)}>
-          再看 {Math.min(8, shown.length - limit)} 条知识
+          再看 {Math.min(8, shown.length - limit)} 条主张
         </button>
       )}
       <details className="knowledge-origin">

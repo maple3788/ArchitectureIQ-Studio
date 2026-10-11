@@ -16,7 +16,7 @@ export function DataWorkspace({version,onRag,bootstrap,act,onRun,tool,onTool,chi
  return <div className="data-workspace"><nav className="data-subnav module-subnav" aria-label="Data 工作空间">
  <button aria-current={!tool&&browseView!=='bank'?'page':undefined} onClick={()=>{setLocation({view:'datasets'});onTool?.();}}>Datasets</button>
  <button aria-current={!tool&&browseView==='bank'?'page':undefined} onClick={()=>{setLocation({view:'bank',filters:{},offset:0});onTool?.();}}>总题库</button>
- {onTool&&<><button aria-current={tool==='generation'?'page':undefined} onClick={()=>onTool('generation')}>生成任务</button><button aria-current={tool==='questions'?'page':undefined} onClick={()=>onTool('questions')}>题源与题集</button></>}
+ {onTool&&<details className="data-menu data-tools" key={tool||'browse'}><summary>更多</summary><div className="data-menu-items"><button aria-current={tool==='generation'?'page':undefined} onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onTool('generation');}}>生成任务</button><button aria-current={tool==='questions'?'page':undefined} onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onTool('questions');}}>题源管理</button></div></details>}
  </nav>
  {tool?children:<>
  {location.view==='datasets'&&<DatasetLibrary version={version} onOpen={ref=>setLocation({view:'dataset',ref,filters:{},offset:0})}/>}

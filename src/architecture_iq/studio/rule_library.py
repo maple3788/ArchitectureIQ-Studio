@@ -67,6 +67,16 @@ def _compile(manifest_text: str, documents: tuple[tuple[str, str], ...]) -> list
                           'summary': f'{len(claims)} 条来源规律 · {replicated} 条来源标记范围内复现；本平台尚未重新验证。',
                           'counts': counts, 'snapshot': snapshot, 'version': snapshot['version'],
                           'source': relative, 'sources': [source], 'source_count': 1, 'updated_at': 0})
+            # Library presentation belongs outside the frozen research snapshot.
+            # Selecting a version still resolves its original item id/version.
+            if 'library' in entry:
+                library = entry['library']
+                if (not isinstance(library, dict) or set(library) != {'id', 'name', 'version_label', 'version_order'}
+                        or any(not isinstance(library[key], str) or not library[key].strip()
+                               for key in ('id', 'name', 'version_label'))
+                        or type(library['version_order']) is not int or library['version_order'] < 1):
+                    raise ValueError('Invalid library presentation metadata')
+                items[-1]['library'] = deepcopy(library)
     return items
 
 

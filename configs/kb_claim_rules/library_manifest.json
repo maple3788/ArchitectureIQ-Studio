@@ -13,6 +13,7 @@
       "id": "kb-v9",
       "label": "KB v9",
       "name": "KB v9 · 架构规则",
+      "library": {"id": "builtin:architecture-rules", "name": "架构与优化器规则", "version_label": "v9", "version_order": 9},
       "file": "kb_v9_revision.json",
       "protocol": "hypotheses_v2_confirm.json",
       "parent": null
@@ -21,6 +22,7 @@
       "id": "kb-v10",
       "label": "KB v10",
       "name": "KB v10 · 架构与优化器规则",
+      "library": {"id": "builtin:architecture-rules", "name": "架构与优化器规则", "version_label": "v10", "version_order": 10},
       "file": "kb_v10_revision.json",
       "protocol": "hypotheses_v3_confirm.json",
       "parent": "kb-v9"

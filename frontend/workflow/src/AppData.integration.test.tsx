@@ -31,7 +31,8 @@ it.each([false, true])('keeps the Dataset builder through App refreshes (offline
   });
   render(<App/>);
   fireEvent.click(await screen.findByRole('button', {name: '打开 Dataset A'}));
-  fireEvent.click(await screen.findByRole('button', {name: '构建题目'}));
+  fireEvent.click(await screen.findByText('添加题目'));
+  fireEvent.click(screen.getByRole('button', {name: '构建题目'}));
   fireEvent.change(await screen.findByLabelText('请求题目数量'), {target: {value: '7'}});
   fireEvent.click(screen.getByRole('button', {name: '冻结 spec 预览'}));
   await waitFor(() => expect(bootstraps).toBe(2));

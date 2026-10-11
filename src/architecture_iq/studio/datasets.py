@@ -175,10 +175,54 @@ class DatasetStore:
             'count': len(record['keys']), 'pair_count': len(record['pairs']), 'families': families,
             'updated_at': record['created_at']}
 
-    def list(self, *, search: str = '', family: str = '', archived: bool = False, offset: int = 0, limit: int = 25) -> dict:
+    @staticmethod
+    def _origins(conn):
+        """Resolve migration receipts without editing immutable collection bodies."""
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_origins'").fetchone():
+            return {}
+        known = {}
+        for kind, table in (('source', 'sources'), ('set', 'question_sets')):
+            for row in conn.execute(f'SELECT id FROM {table}'):
+                known[_hash({'kind': kind, 'id': row['id']})] = kind
+        return {row['collection_id']: {'kind': known.get(row['origin'], 'imported')}
+                for row in conn.execute('SELECT origin,collection_id FROM collection_origins')}
+
+    @staticmethod
+    def _member_identity(record):
+        # Empty drafts can have different purposes; keep their separate identity.
+        if not record['keys']:
+            return record['collection_id']
+        # Display grouping ignores member order, but never the question revision,
+        # single/pair mode, or the full frozen pair manifest. Actual reads continue
+        # to use each collection's original ordered, immutable revision.
+        return _hash({'mode': record['selection_mode'], 'keys': sorted(record['keys']),
+                      'pairs': sorted(record['pairs'], key=_hash)})
+
+    def list(self, *, search: str = '', family: str = '', archived: bool = False, offset: int = 0,
+             limit: int = 25, grouped: bool = False) -> dict:
         validate_page(offset, limit)
         with closing(self.catalog._connect()) as conn:
             records = [self._get(conn, row['id']) for row in conn.execute('SELECT id FROM collections ORDER BY id').fetchall()]
+            origins = self._origins(conn) if grouped else {}
+        if grouped:
+            groups = {}
+            for record in records:
+                if record['archived'] != archived:
+                    continue
+                summary = self._summary(record) | {'origin': origins.get(record['collection_id'], {'kind': 'created'})}
+                groups.setdefault(self._member_identity(record), []).append(summary)
+            items = []
+            for members in groups.values():
+                if not any(search.casefold() in (r['name'] + ' ' + r['description']).casefold() for r in members):
+                    continue
+                if family and not any(family in r['families'] for r in members):
+                    continue
+                members.sort(key=lambda r: (r['updated_at'], r['collection_id']), reverse=True)
+                members.sort(key=lambda r: {'created': 0, 'source': 1, 'imported': 2, 'set': 3}[r['origin']['kind']])
+                items.append({**members[0], 'equivalent_datasets': members})
+            items.sort(key=lambda r: (r['origin']['kind'] == 'set', r['name'].casefold(), r['collection_id']))
+            return {'items': items[offset:offset + limit], 'total': len(items),
+                    'dataset_total': sum(len(r['equivalent_datasets']) for r in items), 'offset': offset, 'limit': limit}
         items = [self._summary(r) for r in records if r['archived'] == archived
                  and search.casefold() in (r['name'] + ' ' + r['description']).casefold()]
         items = [r for r in items if not family or family in r['families']]
