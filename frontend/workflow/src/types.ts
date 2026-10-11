@@ -106,7 +106,7 @@ export type MethodDefinition = {
   id: string; version: string | number; name: string; description: string;
   paper_url?: string | null; adaptation: string; status: string;
   learning_protocol: string; experience_mode: 'off' | 'expel_inspired' | 'basic_learning';
-  steps: MethodStep[]; hash: string;
+  steps: MethodStep[]; hash: string; data_modes?: ('single' | 'pairs')[];
 };
 export type RoundDecision = {
   round_index: number; kb_version: string; available_actions: ('continue' | 'finish' | 'evaluate')[];

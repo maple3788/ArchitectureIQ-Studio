@@ -1,0 +1,13 @@
+import type {Workflow,Json} from './types';
+import type {DatasetRef,Selection} from './dataTypes';
+export type KBRef={id:string;version:string};
+export type RuleRevision={rule_id:string;revision:string;parents:Json[];text:string;rationale:string;rule:Json;state:string;source_refs:Json[]};
+export type RuleKB={kind:string;schema_version:number;version:string;parent_version:string|null;rules:RuleRevision[];executable_hash:string;import_issues:Json[]};
+export type PublicCase={ref:{key:string;hash:string};question:Json;dataset_spec:Json;candidate_specs:Json[];objective:string};
+export type RulePrediction={question_ref:PublicCase['ref'];kb_version:string;status:string;answer_id?:string;edges:Json[];paths:Json[];issues?:Json[]};
+export type RuleMatch={items:RulePrediction[];cases:PublicCase[];total:number;matched_count:number;offset:number;limit:number};
+export type RefinementRequest={workflow:Workflow;dataset_ref:DatasetRef;selection:Selection;initial_kb_ref?:KBRef};
+export type RulePreview={preview_hash:string;can_run:boolean;blockers:{code:string;message:string}[];counts:{questions:number;pairs:number};cost?:Json;limits?:Json;independence?:string};
+export type EvaluationRequest={kb_ref:KBRef;dataset_ref:DatasetRef;selection:Selection;phase:'development'|'final'};
+export type RuleScore={selected_count:number;scorable_count:number;unscorable_count:number;correct_count:number;answered_count:number;conflict_count:number;wrong_assertions:number;all_pass:boolean;accuracy:number;coverage:number;per_question:Json[];per_rule:Json[];problems:Json[];[key:string]:any};
+export type RuleArtifact={id:string;kind:string;label:string;value?:Json};

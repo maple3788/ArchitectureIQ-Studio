@@ -248,6 +248,7 @@ export default function App() {
           ) : page === "workflow" ? (
             <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act}>
               <Workflow
+                bootstrap={data}
                 rolePrompts={data?.role_prompts}
                 version={version}
                 act={act}

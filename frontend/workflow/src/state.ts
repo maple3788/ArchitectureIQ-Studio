@@ -7,7 +7,7 @@ export function toggleKeys(keys: string[], page: string[], checked: boolean) {
 export function parseWorkflow(text: string): Workflow {
   const value = JSON.parse(text);
   if (
-    value?.schema_version !== 1 ||
+    (value?.schema_version !== 1 && !(value?.schema_version === 2 && value?.settings?.method_id === "rule_refinement")) ||
     typeof value.name !== "string" ||
     !Array.isArray(value.nodes) ||
     !Array.isArray(value.edges) ||
@@ -15,7 +15,7 @@ export function parseWorkflow(text: string): Workflow {
     typeof value.settings !== "object" ||
     Array.isArray(value.settings)
   )
-    throw new Error("请选择 schema_version: 1 的 Workflow JSON。");
+    throw new Error("请选择受支持的 Workflow JSON（v1 或规则研究 v2）。");
   if (
     !value.nodes.every(
       (node: any) =>

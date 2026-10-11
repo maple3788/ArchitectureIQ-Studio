@@ -1,3 +1,5 @@
+import {RuleRefinementEditor} from './RuleRefinementEditor';
+import type {Bootstrap} from './types';
 import { questionLabel, readableName } from "./displayNames";
 import { useEffect, useState, useRef } from "react";
 import { useWorkflowDraft } from "./SharedWorkflowDraft";
@@ -289,6 +291,7 @@ export function Workflow({
   act,
   executionEnabled,
   rolePrompts,
+  bootstrap,
   onRun,
   onModels,
 }: {
@@ -296,6 +299,7 @@ export function Workflow({
   act: Action;
   executionEnabled: boolean;
   rolePrompts?: Record<string, string>;
+  bootstrap?: Bootstrap;
   onRun: (id: string) => void;
   onModels?: () => void;
 }) {
@@ -734,7 +738,7 @@ export function Workflow({
   };
   const switchMethod=async(identifier:string)=>{
     if(!workflow||identifier===workflow.settings.method_id)return;
-    if(identifier!=='basic_learning'&&workflow.settings.method_id!=='basic_learning'){
+    if(!['basic_learning','rule_refinement'].includes(identifier)&&!['basic_learning','rule_refinement'].includes(workflow.settings.method_id)){
       const method=methods.data?.items.find(m=>m.id===identifier);if(!method)return;
       const settings={...workflow.settings};delete settings.experience_mode;
       setWorkflow({...workflow,settings:{...settings,method_id:method.id,method_version:method.version,learning_protocol:method.learning_protocol}});return;
@@ -745,6 +749,7 @@ export function Workflow({
     if(identifier==='basic_learning'){
       setAdvancedBackup(workflow);
     }
+    if(identifier==='rule_refinement'){setAdvancedBackup(workflow);setWorkflow(next);setPreview(undefined);return;}
     const retained:Record<string,any>={};
     if(workflow.settings.model_id)retained.model_id=workflow.settings.model_id;
     if(identifier!=='basic_learning'||(questionCount===1&&chosenSet?.selection_mode!=='pairs'))retained.question_set_id=workflow.settings.question_set_id;
@@ -798,6 +803,11 @@ export function Workflow({
     !executionEnabled?'当前服务为只读 / 预览模式，请连接服务器执行服务':undefined,
     previewLoading?'正在生成冻结预览':!previewReady?(previewAttempted?'配置已变化或预览未成功，请重新预览':'尚未预览当前配置'):undefined,
   ].filter((reason):reason is string=>!!reason);
+  if(workflow.schema_version===2&&workflow.settings.method_id==='rule_refinement')return <div className="workflow-page">
+    <div className="workflow-title"><input className="workflow-name" aria-label="工作流名称" value={workflow.name} onChange={e=>setWorkflow({...workflow,name:e.target.value})}/><div className="actions"><Field label="切换学习方法"><select value="rule_refinement" onChange={e=>void switchMethod(e.target.value)}>{(methods.data?.items??[]).map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}</select></Field><button onClick={exportJson}>导出 JSON</button><label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label>{advancedBackup&&<button onClick={()=>setWorkflow(advancedBackup)}>恢复原高级草稿</button>}</div></div>
+    <section className="shared-draft" aria-label="服务器共享草稿"><p role="status">{shared.status==='saved'?'已保存到服务器':shared.status==='conflict'?'另一窗口已更新配置':shared.status==='offline'?'服务器连接中断，修改尚未同步':'正在同步草稿…'}</p><ErrorBox error={shared.error||error}/>{shared.status==='conflict'&&<div className="actions"><button onClick={()=>void shared.acceptRemote()}>使用服务器版本</button><button onClick={()=>void shared.keepLocal()}>保留我的修改</button><button onClick={exportJson}>导出我的草稿</button></div>}{shared.status==='offline'&&<button onClick={()=>void shared.retry()}>重试同步</button>}</section>
+    <RuleRefinementEditor workflow={workflow} onChange={setWorkflow} bootstrap={{...(bootstrap||{stats:{},capabilities:{},service:{host:'',state_root:'',execution_enabled:executionEnabled}}),models:items(models.data),service:{...(bootstrap?.service||{host:'',state_root:''}),execution_enabled:executionEnabled}}} onStarted={onRun} synced={shared.status==='saved'}/>
+  </div>;
   return (
     <div className={`workflow-page stage-editor ${showBasic?'is-basic':''}`}>
       <div className="workflow-title">

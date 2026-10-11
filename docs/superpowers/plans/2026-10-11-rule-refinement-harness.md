@@ -346,7 +346,7 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
 
 **Interfaces:** `RuleRefinementEditor({workflow,onChange,bootstrap,onStarted})`、`RuleRefinementCanvas({workflow,onChange,validation,run?})`；onChange 接收完整 v2 Workflow，onStarted(runId: string)。types 镜像共享契约；API `matchRules(request)`、`previewRefinement(request)`、`startRefinement(request, idempotencyKey)` 使用 Task 11 路由。Dataset 选择器沿用固定修订预览，不将多题变成 Basic 首题。
 
-- [ ] **Step 1: 写失败测试。** 四块配置、选择单题/完整题对 Dataset、规则匹配无模型、只在初始化/修订节点选择模型、编译失败禁止提交、改模型/KB/生成参数使预览失效、CAS 冲突保留本地草稿。关键交互断言：
+- [x] **Step 1: 写失败测试。** 四块配置、选择单题/完整题对 Dataset、规则匹配无模型、只在初始化/修订节点选择模型、编译失败禁止提交、改模型/KB/生成参数使预览失效、CAS 冲突保留本地草稿。关键交互断言：
   ```tsx
   expect(screen.queryByLabelText("作答模型")).not.toBeInTheDocument();
   expect(screen.getByLabelText("最大修订尝试")).toHaveValue(12);
@@ -354,11 +354,11 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
   expect(screen.getByRole("button", {name: "开始研究"})).toBeDisabled(); // 资源上限未填写
   ```
   测试 group_cases 增删/拖线/重排改变实际请求、protected port 禁止错误连接、布局变化不失去材料选择；schema v1 导入/导出/方法切换和旧草稿恢复仍工作。
-- [ ] **Step 2: 红灯。** `npm --prefix frontend/workflow test -- src/RuleRefinementEditor.test.tsx src/RuleRefinementCanvas.test.tsx`。
-- [ ] **Step 3: 实现 UI。** 研究 Dataset、初始规则 KB、修订模型/提示词、新题方案与限制四块；主要动作是“匹配预览”和“开始研究”。默认 12/3/3/16/48/2，资源上限空值必须填写并预检；配对数量展示 8 对/16 道及真实 GT 工作量。画布显示内外循环分组、可读节点及端口，参数在选中节点侧栏配置；避免所有内容都变成等宽按钮列表。
+- [x] **Step 2: 红灯。** `npm --prefix frontend/workflow test -- src/RuleRefinementEditor.test.tsx src/RuleRefinementCanvas.test.tsx`。
+- [x] **Step 3: 实现 UI。** 研究 Dataset、初始规则 KB、修订模型/提示词、新题方案与限制四块；主要动作是“匹配预览”和“开始研究”。默认 12/3/3/16/48/2，资源上限空值必须填写并预检；配对数量展示 8 对/16 道及真实 GT 工作量。画布显示内外循环分组、可读节点及端口，参数在选中节点侧栏配置；避免所有内容都变成等宽按钮列表。
   新方法切换获取新模板，不沿用旧科学图；方法可选性由 data_modes/capabilities 判断，去掉对新方法的 paired_ 名称推断。parseWorkflow/draft/layout 显式支持 v2，并保留旧 JSON 不变。初始化知识使用独立研究规则选择器，不能放宽旧 InitialKBField 正式 KB 筛选。提交用稳定幂等键，浏览器刷新只恢复草稿/读取状态，不执行新任务。
-- [ ] **Step 4: 验证。** 上述命令加 `src/Workflow.test.tsx src/DatasetInputPicker.test.tsx src/useSharedWorkflowDraft.test.tsx src/state.test.ts src/workflowLayout.test.ts`，预期全通过；`npm --prefix frontend/workflow run build` 通过。
-- [ ] **Step 5: 提交。** `git commit -m "feat: configure rule refinement in the Harness canvas"`。
+- [x] **Step 4: 验证。** 上述命令加 `src/Workflow.test.tsx src/DatasetInputPicker.test.tsx src/useSharedWorkflowDraft.test.tsx src/state.test.ts src/workflowLayout.test.ts`，预期全通过；`npm --prefix frontend/workflow run build` 通过。
+- [x] **Step 5: 提交。** `git commit -m "feat: configure rule refinement in the Harness canvas"`。
 
 ## Task 13: 实际运行、规则阅读和题目适用性
 

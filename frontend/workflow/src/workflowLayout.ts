@@ -11,6 +11,7 @@ const main = ['input','solver','commit','reveal','discoverer','skeptic','experim
 export const stageWidth = 236;
 
 export function migrateWorkflowLayout(workflow: Workflow): Workflow {
+  if (workflow.schema_version === 2) return workflow;
   const core = main.flatMap(id => {
     const node = workflow.nodes.find(n => n.id === id);
     return node ? [node] : [];

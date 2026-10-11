@@ -1,0 +1,12 @@
+import {api} from './api';
+import type {Run} from './types';
+import type {RefinementRequest,RulePreview,RuleMatch,KBRef,EvaluationRequest,RuleArtifact} from './ruleRefinementTypes';
+const root='/rule-refinement';
+export const matchRules=(request:Omit<RefinementRequest,'workflow'|'initial_kb_ref'>&{kb_ref:KBRef},offset=0)=>api<RuleMatch>(`${root}/match?offset=${offset}&limit=25`,request);
+export const previewRefinement=(request:RefinementRequest)=>api<RulePreview>(root+'/preview',request);
+export const startRefinement=(request:RefinementRequest&{preview_hash:string},key:string)=>api<Run>(root+'/runs',request,undefined,{'Idempotency-Key':key});
+export const previewRuleEvaluation=(request:EvaluationRequest)=>api<RulePreview>(root+'/evaluations/preview',request);
+export const startRuleEvaluation=(request:EvaluationRequest&{preview_hash:string},key:string)=>api<Run>(root+'/evaluations',request,undefined,{'Idempotency-Key':key});
+export const getRuleArtifact=(runId:string,id:string)=>api<RuleArtifact>(`${root}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(id)}`);
+export const controlRefinement=(runId:string,action:string)=>api(`${root}/runs/${encodeURIComponent(runId)}/control`,{action});
+export const recoverRefinement=(runId:string)=>api<Run>(`${root}/runs/${encodeURIComponent(runId)}/recover`,{});

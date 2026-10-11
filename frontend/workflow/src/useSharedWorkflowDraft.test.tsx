@@ -1,3 +1,4 @@
+import ruleWorkflow from './ruleWorkflowFixture.json';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useSharedWorkflowDraft } from './useSharedWorkflowDraft';
@@ -337,4 +338,16 @@ it('saves the active workflow and advanced backup together and synchronizes both
   const currentBackup = b.result.current.advancedBackup;
   await advance(2500);
   expect(b.result.current.advancedBackup).toBe(currentBackup);
+});
+
+it('retains a v2 material graph through a shared-draft conflict and recovery', async () => {
+  const api = server();const hook=renderHook(useSharedWorkflowDraft);await settle();
+  act(()=>hook.result.current.setWorkflow({...ruleWorkflow,name:'本地规则研究'}));
+  api.change('另一窗口的方案');await advance();
+  expect(hook.result.current.status).toBe('conflict');
+  expect(hook.result.current.workflow?.schema_version).toBe(2);
+  expect(hook.result.current.workflow?.edges).toEqual(ruleWorkflow.edges);
+  await act(async()=>{await hook.result.current.keepLocal();});
+  expect(api.current.workflow.name).toBe('本地规则研究');
+  expect(api.current.workflow.nodes).toEqual(ruleWorkflow.nodes);
 });

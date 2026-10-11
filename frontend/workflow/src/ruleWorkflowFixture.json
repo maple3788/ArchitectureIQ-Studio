@@ -1,0 +1,201 @@
+{
+  "schema_version": 2,
+  "name": "规则 KB 闭环",
+  "nodes": [
+    {
+      "id": "input",
+      "type": "question_input",
+      "label": "研究题池",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "config": {
+        "dataset_binding": null,
+        "data_mode": "single"
+      }
+    },
+    {
+      "id": "initialize",
+      "type": "rule_initializer",
+      "label": "初始规则",
+      "position": {
+        "x": 270,
+        "y": 0
+      },
+      "config": {
+        "mode": "import",
+        "source": null,
+        "model_id": "",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "verify",
+      "type": "rule_verify",
+      "label": "程序验证",
+      "position": {
+        "x": 540,
+        "y": 0
+      },
+      "config": {}
+    },
+    {
+      "id": "revise",
+      "type": "rule_reviser",
+      "label": "修订规则",
+      "position": {
+        "x": 810,
+        "y": 0
+      },
+      "config": {
+        "model_id": "",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "accept",
+      "type": "rule_accept",
+      "label": "不退步验收",
+      "position": {
+        "x": 0,
+        "y": 240
+      },
+      "config": {}
+    },
+    {
+      "id": "challenge",
+      "type": "rule_challenge",
+      "label": "新题挑战",
+      "position": {
+        "x": 270,
+        "y": 240
+      },
+      "config": {}
+    },
+    {
+      "id": "save",
+      "type": "rule_save",
+      "label": "保存最好 KB",
+      "position": {
+        "x": 540,
+        "y": 240
+      },
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "input-initialize-public_cases",
+      "source": "input",
+      "target": "initialize",
+      "source_handle": "public_cases",
+      "target_handle": "public_cases",
+      "mapping": {
+        "public_cases": "public_cases"
+      },
+      "condition": "always"
+    },
+    {
+      "id": "input-verify-public_cases",
+      "source": "input",
+      "target": "verify",
+      "source_handle": "public_cases",
+      "target_handle": "public_cases",
+      "mapping": {
+        "public_cases": "public_cases"
+      },
+      "condition": "always"
+    },
+    {
+      "id": "initialize-verify-rule_kb",
+      "source": "initialize",
+      "target": "verify",
+      "source_handle": "rule_kb",
+      "target_handle": "rule_kb",
+      "mapping": {
+        "rule_kb": "rule_kb"
+      },
+      "condition": "always"
+    },
+    {
+      "id": "verify-accept-sealed_feedback",
+      "source": "verify",
+      "target": "accept",
+      "source_handle": "sealed_feedback",
+      "target_handle": "sealed_feedback",
+      "mapping": {
+        "sealed_feedback": "sealed_feedback"
+      },
+      "condition": "always"
+    },
+    {
+      "id": "revise-accept-patch",
+      "source": "revise",
+      "target": "accept",
+      "source_handle": "patch",
+      "target_handle": "patch",
+      "mapping": {
+        "patch": "patch"
+      },
+      "condition": "always"
+    },
+    {
+      "id": "accept-challenge-rule_kb",
+      "source": "accept",
+      "target": "challenge",
+      "source_handle": "rule_kb",
+      "target_handle": "rule_kb",
+      "mapping": {
+        "rule_kb": "rule_kb"
+      },
+      "condition": "pool_passed"
+    },
+    {
+      "id": "accept-save-decision",
+      "source": "accept",
+      "target": "save",
+      "source_handle": "decision",
+      "target_handle": "decision",
+      "mapping": {
+        "decision": "decision"
+      },
+      "condition": "stopped"
+    },
+    {
+      "id": "challenge-save-decision",
+      "source": "challenge",
+      "target": "save",
+      "source_handle": "decision",
+      "target_handle": "decision",
+      "mapping": {
+        "decision": "decision"
+      },
+      "condition": "target_reached"
+    },
+    {
+      "id": "verify-revise-sealed_feedback",
+      "source": "verify",
+      "target": "revise",
+      "source_handle": "sealed_feedback",
+      "target_handle": "sealed_feedback",
+      "mapping": {
+        "sealed_feedback": "sealed_feedback"
+      },
+      "condition": "needs_revision"
+    }
+  ],
+  "settings": {
+    "method_id": "rule_refinement",
+    "method_version": "1",
+    "limits": {
+      "max_revision_attempts": 12,
+      "max_no_progress": 3,
+      "max_generation_attempts": 3,
+      "questions_per_batch": 16,
+      "max_new_questions": 48,
+      "required_fresh_passes": 2
+    },
+    "generation": {}
+  }
+}
