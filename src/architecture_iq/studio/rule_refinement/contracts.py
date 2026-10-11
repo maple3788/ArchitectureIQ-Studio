@@ -121,3 +121,17 @@ def validate_pool(value: dict) -> None:
         if member["ref"]["key"] in keys or member["case"].get("ref") != member["ref"]:
             raise ValueError("Duplicate or mismatched pool member")
         keys.add(member["ref"]["key"])
+
+
+class RefinementCheckpoint(TypedDict):
+    revision: int
+    phase: str
+    kb_version: str
+    pool_version: str
+    score_ref: str | None
+    protected_keys: list[str]
+    attempt_index: int
+    no_progress: int
+    fresh_passes: int
+    pending_operation: dict | None
+    artifact_refs: list[str]

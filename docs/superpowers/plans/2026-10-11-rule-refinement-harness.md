@@ -287,7 +287,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `execute_refinement(jobs: JobStore, identifier: str, config: dict, *, catalog: Catalog, client_factory: Callable = create_client, clock: Callable = time.time) -> dict`；`request_refinement_control(jobs: JobStore, identifier: str, action: str) -> dict`（pause/resume/stop）；`recover_refinement(jobs: JobStore, identifier: str) -> dict`。后者只调和封存产物并重新启动安全 checkpoint，不改变冻结定义；`RefinementCheckpoint` 在 contracts.py 定义 `{revision,phase,kb_version,pool_version,score_ref,protected_keys,attempt_index,no_progress,fresh_passes,pending_operation,artifact_refs}`。
 
-- [ ] **Step 1: 写失败测试。** mock 模型返回预设合法补丁、mock 生成返回 Catalog fixture，完整经过初始题错→修订通过→新批失败入池→修订→两批首测通过；此场景显式把 generation cap 设为 3。断言：
+- [x] **Step 1: 写失败测试。** mock 模型返回预设合法补丁、mock 生成返回 Catalog fixture，完整经过初始题错→修订通过→新批失败入池→修订→两批首测通过；此场景显式把 generation cap 设为 3。断言：
   ```python
   assert result["outcome"] == "target_reached"
   assert len(result["fresh_batches"]) == 3
@@ -296,13 +296,13 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert all(batch["first_score"] == saved_first[batch["id"]] for batch in result["fresh_batches"])
   ```
   `test_stops_after_three_invalid_or_nonimproving_proposals`、`test_rejected_proposal_does_not_reset_fresh_streak`、`test_accepted_change_resets_streak`、`test_all_limit_reasons_keep_best_kb`、`test_empty_initialization_cannot_pass` 覆盖默认 12/3/3/16/48/2；初始化失败也有明确限制。恢复测试分别在预测封存、评分完成、提案回执、决定封存、指针更新、子任务完成、首测落盘、扩池落盘后注入崩溃，检查每个操作/事件/预算只提交一次。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_runner.py tests/test_rule_refinement_recovery.py -q`。
-- [ ] **Step 3: 实现状态机。** 阶段为 initialize→baseline→revise→candidate_check→accept/reject→challenge→first_test→promote→baseline/finish；accepted 指针、保护集合和 no_progress 在一个 CAS checkpoint 中提交。初始化使用 Task 7 的 initialize 模式，失败尝试计入修订尝试上限但单列类型；没有已接受规则时仍保存空基线与失败记录。扩池后对旧 KB 重新取得完整 baseline；已封存同身份分片可复用，但保存新的完整同池 score 后才允许验收。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_runner.py tests/test_rule_refinement_recovery.py -q`。
+- [x] **Step 3: 实现状态机。** 阶段为 initialize→baseline→revise→candidate_check→accept/reject→challenge→first_test→promote→baseline/finish；accepted 指针、保护集合和 no_progress 在一个 CAS checkpoint 中提交。初始化使用 Task 7 的 initialize 模式，失败尝试计入修订尝试上限但单列类型；没有已接受规则时仍保存空基线与失败记录。扩池后对旧 KB 重新取得完整 baseline；已封存同身份分片可复用，但保存新的完整同池 score 后才允许验收。
   当前池 all_pass 后才能出新题；批次必须完整、独立、首次 all_pass 且扩池后仍 all_pass 才增加 streak；失败、不足或重复挑战使 streak 归零，接受任何 KB 变动也归零，拒绝提案不改 KB。预算耗尽前优先检查已经达到的成功条件；无条件可继续时明确停止。
   新增 job kind `rule_refinement`，worker 分派在受授权执行门禁内；同一 run 只许一个 worker 锁。新增恢复路径只适用于本协议，验证 source/config/model/pool/全部 receipt 身份，pending 外部调用先调和，无法确定则停止 uncertain。不要放宽旧 JobStore.control 的 dead-worker 规则。pause 等待安全边界且仍检查 deadline；stop 幂等并保存最好版本，浏览器刷新不能触发恢复。
   事件写 `protocol,node_id,stage_id,step_id,attempt_id,kb_version,pool_version,artifact_refs`；模型增量用现有 append_stream 独立游标，确定性节点只发事实事件。终结阶段保存 RunResult；failed/uncertain 的 Job 状态仍保留，资源耗尽等正常停止可为 complete，但 outcome=stopped。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_studio_jobs.py tests/test_studio_execution.py tests/test_studio_streaming.py`，预期全通过；两个恢复请求竞争只产生一个 worker，旧 source mismatch 仍拒绝。
-- [ ] **Step 5: 提交。** `git commit -m "feat: orchestrate resumable bounded rule refinement"`。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_studio_jobs.py tests/test_studio_execution.py tests/test_studio_streaming.py`，预期全通过；两个恢复请求竞争只产生一个 worker，旧 source mismatch 仍拒绝。
+- [x] **Step 5: 提交。** `git commit -m "feat: orchestrate resumable bounded rule refinement"`。
 
 ## Task 11: API、公开边界与独立 Task 检查
 

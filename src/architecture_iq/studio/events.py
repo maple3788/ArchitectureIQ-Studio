@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 NODE_STEPS = {
+    'initialize': ('harness', 'rule_initialize'), 'verify': ('harness', 'rule_verify'),
+    'revise': ('harness', 'rule_revise'), 'accept': ('harness', 'rule_accept'),
+    'challenge': ('harness', 'rule_challenge'), 'save': ('kb', 'rule_save'),
     'retrieval': ('harness', 'retrieve'), 'input': ('data', 'assemble'), 'solver': ('harness', 'solve'),
     'commit': ('harness', 'commit'), 'reveal': ('harness', 'feedback'),
     'discoverer': ('harness', 'hypothesize'), 'skeptic': ('harness', 'skeptic'),

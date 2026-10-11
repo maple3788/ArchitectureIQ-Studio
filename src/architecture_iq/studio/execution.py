@@ -668,6 +668,9 @@ def worker(state: Path, identifier: str) -> None:
                 )
             if job["kind"] == "evaluation":
                 result = execute_evaluation(store, identifier, job["config"])
+            elif job["kind"] == "rule_refinement":
+                from .rule_refinement.runner import execute_refinement
+                result = execute_refinement(store, identifier, job["config"], catalog=Catalog(state))
             elif job["kind"] == "workflow":
                 result = execute_workflow(store, identifier, job["config"])
             elif job["kind"] == "rag":
@@ -688,8 +691,11 @@ def worker(state: Path, identifier: str) -> None:
             else:
                 raise ValueError("Archived runs cannot execute")
             write_json_atomic(directory / "result.json", result)
-            store.update(identifier, status="complete", error=None)
-            store.event(identifier, {"type": "complete"})
+            status = ({"uncertain": "uncertain", "execution_failure": "failed"}.get(result.get("stop_reason"), "complete")
+                      if job["kind"] == "rule_refinement" else "complete")
+            store.update(identifier, status=status, error=None if status == "complete" else result.get("stop_reason"))
+            store.event(identifier, {"type": "complete", **({"outcome": result["outcome"], "stop_reason": result["stop_reason"]}
+                                                        if job["kind"] == "rule_refinement" else {})})
         except Exception as exc:
             pending = [
                 r
