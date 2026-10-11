@@ -70,10 +70,11 @@ def _checkpoint(root,previous,changes):
 
 def _sync_events(jobs,identifier,root):
     with exclusive_lock(root/'events.lock'):
+        committed=read_receipt(root/'checkpoint.json')['revision']
         seen={e.get('refinement_event_id') for e in jobs.events(identifier)}
         for path in sorted((root/'checkpoints').glob('*.json')):
             cp=read_receipt(path);key='checkpoint-'+str(cp['revision'])
-            if key in seen:continue
+            if cp['revision']>committed or key in seen:continue
             phase=cp['phase'];node=PHASE_NODES[phase];op=cp.get('pending_operation') or {}
             event=dict(type='stage',state='complete' if phase=='finish' else 'running',protocol=PROTOCOL,
                        node_id=node,stage_id='kb' if phase=='finish' else 'harness',step_id='rule_'+phase,

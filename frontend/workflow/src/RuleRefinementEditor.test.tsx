@@ -8,7 +8,7 @@ vi.mock('./RuleRefinementCanvas',()=>({RuleRefinementCanvas:()=> <div>材料画�
 vi.mock('./DatasetInputPicker',()=>({DatasetInputPicker:({onApply,selectionMode}:any)=><button onClick={()=>onApply({dataset_binding:{collection_id:'ds',revision:'rev',keys:['q1','q2'],hashes:['h1','h2'],selection:{},pair_keys:selectionMode==='pairs'?['p1']:[]}})}>应用整库</button>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const bootstrap:any={service:{execution_enabled:true},models:[{id:'m',name:'修订服务',enabled:true}],capabilities:{profiles:[{name:'v1.4',budgets:[4096],families:[{name:'univariate_regression',form_schema:{editable_fields:[]}}]}]}};
-function setup(complete=false){
+function setup(complete=false,omitDefaults=false){
  const calls:any[]=[];
  vi.stubGlobal('fetch',async(path:string,init:any)=>{const body=init?.body&&JSON.parse(init.body);calls.push({path,body,headers:init?.headers});let value:any={};
  if(path.endsWith('/kb'))value={items:[{id:'kb',version:'v',name:'研究规则',kind:'research_rules'}]};
@@ -17,6 +17,7 @@ function setup(complete=false){
  if(path.endsWith('/runs'))value={id:'run'};
  return new Response(JSON.stringify(value));});
  const flow:Workflow=structuredClone(fixture);if(complete){Object.assign(flow.settings.limits,{max_model_calls:20,max_tokens:10000,max_candidate_seed_runs:500,wall_time_seconds:600});flow.nodes[0].config.dataset_binding={collection_id:'ds',revision:'rev',keys:['q1','q2'],hashes:[],selection:{},pair_keys:[]} as any;flow.nodes[1].config.source={id:'kb',version:'v'} as any;flow.nodes[3].config.model_id='m';}
+ if(omitDefaults)flow.settings.limits={max_model_calls:20,max_tokens:10000,max_candidate_seed_runs:500,wall_time_seconds:600};
  const onStarted=vi.fn();function Harness(){const [workflow,onChange]=useState<Workflow>(flow);return <RuleRefinementEditor workflow={workflow} onChange={onChange} bootstrap={bootstrap} onStarted={onStarted}/>;}render(<Harness/>);return {calls,onStarted};
 }
 it('shows four configuration blocks, default stop limits and no answer model',async()=>{
@@ -35,3 +36,5 @@ it('freezes a preview and invalidates it on model or budget changes',async()=>{
  fireEvent.change(screen.getByLabelText('最大模型调用'),{target:{value:'21'}});expect((screen.getByRole('button',{name:'开始研究'}) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'检查运行配置'}));await waitFor(()=>expect((screen.getByRole('button',{name:'开始研究'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'开始研究'}));await waitFor(()=>expect(onStarted).toHaveBeenCalledWith('run'));expect(calls.find(c=>c.path.endsWith('/runs')).headers['Idempotency-Key']).toBeTruthy();
 });
+
+it('shows server default iteration limits for a valid imported draft with only resource caps',async()=>{setup(false,true);await screen.findByRole('option',{name:/研究规则/});expect((screen.getByLabelText('最大修订尝试') as HTMLInputElement).value).toBe('12');expect(screen.getByText(/每批 16 道/)).toBeTruthy();});

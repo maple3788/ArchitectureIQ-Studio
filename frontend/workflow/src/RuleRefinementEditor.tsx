@@ -18,7 +18,7 @@ export function RuleRefinementEditor({workflow,onChange,bootstrap,onStarted,sync
  const inventory=useResource<{items:Json[]}>('/kb');const rules=items(inventory.data).filter(k=>['research_rules','formal'].includes(k.kind));
  const input=workflow.nodes.find(n=>n.id==='input')!,init=workflow.nodes.find(n=>n.id==='initialize')!,revise=workflow.nodes.find(n=>n.id==='revise')!;
  const binding=input.config.dataset_binding,paired=input.config.data_mode==='pairs',kb=init.config.source?.id?init.config.source:undefined;
- const limits=workflow.settings.limits,gen=workflow.settings.generation||{};
+ const limits={max_revision_attempts:12,max_no_progress:3,max_generation_attempts:3,questions_per_batch:16,max_new_questions:48,required_fresh_passes:2,...workflow.settings.limits},gen=workflow.settings.generation||{};
  const signature=generationSignature(workflow),current=useRef(signature);current.current=signature;
  const request=():RefinementRequest=>{if(!binding)throw Error('请先选择 Dataset 固定修订');return {workflow,dataset_ref:{collection_id:binding.collection_id,revision:binding.revision},selection:binding.selection||{}};};
  const validPreview=preview?.signature===signature?preview:undefined;

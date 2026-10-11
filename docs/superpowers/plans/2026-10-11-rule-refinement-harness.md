@@ -24,7 +24,7 @@
 - “状态来自持久化事件/SSE。”确定性节点不显示伪造的模型回答；研究通过不提升为 `replicated_in_scope`。
 - 实现和测试仅在本仓库。真实 LLM 和生成代码 GT 只在授权 Linux 执行服务器运行，连接资料保留在私有配置；本地测试全部 mock 外部执行。复用 spec → generated code → execution → stored results，不增加训练逻辑。
 - 不提交运行状态、源数据、凭据、模型权重、构建缓存；不修改历史源码指纹以恢复旧运行，不引入迁移备份目录运行依赖。
-- 用户已指定在当前对话逐项实施；本次仅交付计划。审阅后沿用当前对话执行方式，不重复要求用户选择工作方式。
+- 用户已确认计划并授权在当前对话逐项实施、测试和同步 GitHub；沿用当前执行方式。
 
 ## Review Focus
 
@@ -386,11 +386,11 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
 
 **Interfaces:** 只通过公开 API/worker 和现有 UI 入口验收；不新增第二套控制器。文档讲清研究用途、默认停止条件、模型参与位置、首测与回归区别、暂停恢复以及纯规则 Task 检查。
 
-- [ ] **Step 1: 写贯穿失败测试。** mock 模型和 canonical 生成，在 API 层完成 Dataset→KB→规则预测→冲突修订→不退步验收→新题失败入池→两批连续通过；检查每一版评分和原始首测仍存在、调用/GT/题目数量与账本一致、全部预测先于任何反馈揭示。第二条贯穿测试中途断开 UI、重启控制器、重复提交，外部调用次数不增加；第三条验证最终 Task 反馈不改变任何研究产物。
-- [ ] **Step 2: 运行新增贯穿测试。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_integration.py -q`；`npm --prefix frontend/workflow test -- src/RuleRefinement.integration.test.tsx`。新增断言应先暴露未接通处，修复后全部 PASS，不能用删除断言完成验收。
-- [ ] **Step 3: 一次完整回归。** 再核对 Git 根及准确解释器来源，运行 `PYTHONPATH=src .venv/bin/python -m pytest tests -q`、`npm --prefix frontend/workflow test`、`npm --prefix frontend/workflow run build`、`git diff --check`。预期全部通过；只在新改动或未解决失败出现时重复相应检查。必须包含 scientific/paired/Basic/RAG、旧草稿、封存 hash、模型 API、Data 生成和源健康测试。
-- [ ] **Step 4: 实际页面检查与受限远端试验。** 本地启动构建页面，用合成/已存资料验证配置、无模型匹配、读题、规则阅读、恢复状态及 1280px/窄屏布局；真实调用仍关闭。如当时工具不能访问本地 UI，记录限制并交付构建及集成测试证据，不绕开权限，也不声称完成视觉验证。远端真实试验须在授权服务器按用户届时已提供的模型/数据/正预算执行；未确定这些值前停留在本地 mocked 验收，不把 mock 成绩宣传为真实模型效果。真实试验最小范围与资源上限先形成可复核配置再执行，不运行默认全量 48 道挑战来“顺便验证”。
-- [ ] **Step 5: 完成文档和提交。** `git commit -m "test: verify the rule refinement research loop end to end"`；检查 diff 只含源码、测试、设计与说明，没有 state、题源、凭据、构建产物或私有服务器地址。按既有用户授权在验证和最终代码审查通过后同步 GitHub；如仍有其他任务在清理公开内容，先核实已完成再同步，不覆盖其修改。记录提交与实际测试结果，不修改旧运行指纹来演示恢复。
+- [x] **Step 1: 写贯穿失败测试。** mock 模型和 canonical 生成，在 API 层完成 Dataset→KB→规则预测→冲突修订→不退步验收→新题失败入池→两批连续通过；检查每一版评分和原始首测仍存在、调用/GT/题目数量与账本一致、全部预测先于任何反馈揭示。第二条贯穿测试中途断开 UI、重启控制器、重复提交，外部调用次数不增加；第三条验证最终 Task 反馈不改变任何研究产物。
+- [x] **Step 2: 运行新增贯穿测试。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_integration.py -q`；`npm --prefix frontend/workflow test -- src/RuleRefinement.integration.test.tsx`。新增断言应先暴露未接通处，修复后全部 PASS，不能用删除断言完成验收。
+- [x] **Step 3: 一次完整回归。** 再核对 Git 根及准确解释器来源，运行 `PYTHONPATH=src .venv/bin/python -m pytest tests -q`、`npm --prefix frontend/workflow test`、`npm --prefix frontend/workflow run build`、`git diff --check`。预期全部通过；只在新改动或未解决失败出现时重复相应检查。必须包含 scientific/paired/Basic/RAG、旧草稿、封存 hash、模型 API、Data 生成和源健康测试。
+- [x] **Step 4: 实际页面检查与受限远端试验。** 本地启动构建页面，用合成/已存资料验证配置、无模型匹配、读题、规则阅读、恢复状态及 1280px/窄屏布局；真实调用仍关闭。如当时工具不能访问本地 UI，记录限制并交付构建及集成测试证据，不绕开权限，也不声称完成视觉验证。远端真实试验须在授权服务器按用户届时已提供的模型/数据/正预算执行；未确定这些值前停留在本地 mocked 验收，不把 mock 成绩宣传为真实模型效果。真实试验最小范围与资源上限先形成可复核配置再执行，不运行默认全量 48 道挑战来“顺便验证”。
+- [x] **Step 5: 完成文档和提交。** `git commit -m "test: verify the rule refinement research loop end to end"`；检查 diff 只含源码、测试、设计与说明，没有 state、题源、凭据、构建产物或私有服务器地址。按既有用户授权在验证和最终代码审查通过后同步 GitHub；如仍有其他任务在清理公开内容，先核实已完成再同步，不覆盖其修改。记录提交与实际测试结果，不修改旧运行指纹来演示恢复。
 
 ## 实施里程碑与审阅结果
 
@@ -399,4 +399,4 @@ run 列表/详情及文本 SSE 沿用已有 `/runs` 路由，通过 kind 分派�
 - Task 11–13：可用的 Harness 配置、运行阅读、KB 适用题目与独立 Task 入口。
 - Task 14：兼容性回归、实际页面核验、文档和 GitHub 交付；远端真实试验单独记录使用范围和结果。
 
-本计划未改变已确认的验收原则和默认停止条件。实施前需审阅这份书面计划；沿用在当前对话逐项实施的选择。计划中的复选框仅在相应实现及验证完成后勾选，当前均未执行。
+本计划已获用户确认并逐项实施。完整回归通过 963 项 Python 测试和 272 项前端测试，生产构建通过；已用独立合成资料检查 1280px 与 390px 页面、无模型匹配、首测历史、知识与适用题目阅读、纯规则 Task 入口。真实 LLM/GT 未执行，mock 成绩不代表真实模型效果。GitHub 同步在最终审查之后执行。
