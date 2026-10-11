@@ -3,20 +3,13 @@ import {Rag} from './Rag';
 import {DataWorkspace} from './DataWorkspace';
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   BookOpen,
-  ChevronDown,
-  CircleHelp,
   Command,
   Database,
   FlaskConical,
-  Layers3,
   LoaderCircle,
   Menu,
-  Network,
   RefreshCw,
-  Server,
-  Settings2,
   ShieldCheck,
   Workflow as FlowIcon,
   X,
@@ -30,26 +23,22 @@ import { Generation } from "./Generation";
 import { KB } from "./KB";
 import { ErrorBox, useResource } from "./ui";
 import type { Bootstrap } from "./types";
-const navigation = [
-  {id:"data",name:"Data · 题库",en:"Datasets & questions",icon:Database},
-  {id:"rag",name:"RAG 作答",en:"Question-aware retrieval",icon:BookOpen},
-  { id: "questions", name: "题库", en: "Question catalog", icon: Database },
-  { id: "workflow", name: "工作流", en: "Workflow canvas", icon: FlowIcon },
-  { id: "models", name: "模型", en: "Model registry", icon: Layers3 },
-  {
-    id: "generation",
-    name: "生成任务",
-    en: "Generation jobs",
-    icon: FlaskConical,
-  },
-  { id: "runs", name: "测试运行", en: "Evaluation & history", icon: Network },
-  { id: "kb", name: "KB 知识库", en: "Knowledge base", icon: BookOpen },
+const modules = [
+  {id: "data", name: "Data", entry: "data", pages: ["data", "questions", "generation"], icon: Database},
+  {id: "harness", name: "Harness", entry: "workflow", pages: ["workflow", "models"], icon: FlowIcon},
+  {id: "kb", name: "KB", entry: "kb", pages: ["kb"], icon: BookOpen},
+  {id: "task", name: "Task", entry: "rag", pages: ["rag", "runs"], icon: FlaskConical},
 ];
+const modulePages = {
+  harness: [{id: "workflow", name: "工作流"}, {id: "models", name: "模型配置"}],
+  task: [{id: "rag", name: "RAG 作答"}, {id: "runs", name: "评测与记录"}],
+};
+const pageFromHash = () => {
+  const id = location.hash.slice(1);
+  return modules.some(module => module.pages.includes(id)) ? id : id ? undefined : "data";
+};
 export default function App() {
-  const [page, setPage] = useState(() => {
-    const id = location.hash.slice(1);
-    return navigation.some((n) => n.id === id) ? id : "data";
-  });
+  const [page, setPage] = useState(() => pageFromHash() || "data");
   const [version, setVersion] = useState(0);
   const bootstrap = useResource<Bootstrap>("/bootstrap", version);
   const [lastBootstrap, setLastBootstrap] = useState<Bootstrap>();
@@ -65,6 +54,17 @@ export default function App() {
   const [setId, setSetId] = useState<string>();
   const [runId, setRunId] = useState<string>();
   const [workflowRunId, setWorkflowRunId] = useState<string>();
+  useEffect(() => {
+    const syncPage = () => {
+      const nextPage = pageFromHash();
+      // RAG citations use fragment anchors within the current run.
+      if (!nextPage) return;
+      setPage(nextPage);
+      setSidebar(false);
+    };
+    window.addEventListener("hashchange", syncPage);
+    return () => window.removeEventListener("hashchange", syncPage);
+  }, []);
   const navigate = (id: string) => {
     setPage(id);
     location.hash = id;
@@ -101,9 +101,10 @@ export default function App() {
   };
   const onSet = (id: string) => {
     setSetId(id);
-    setToast({ message: "题集已保存，可在测试运行中选择并执行。" });
+    setToast({ message: "题集已保存，可在 Task 的评测与记录中选择并执行。" });
   };
-  const current = navigation.find((n) => n.id === page)!;
+  const current = modules.find(module => module.pages.includes(page))!;
+  const subpages = current.id === "harness" ? modulePages.harness : current.id === "task" ? modulePages.task : [];
   const data = bootstrap.data || lastBootstrap;
   const executionEnabled = !!bootstrap.data?.service.execution_enabled;
   return (
@@ -127,43 +128,22 @@ export default function App() {
             <small>WORKFLOW STUDIO</small>
           </div>
         </a>
-        <div className="workspace-picker">
-          <div className="workspace-icon">
-            <Network size={17} />
-          </div>
-          <div>
-            <b>KB 研究工作空间</b>
-            <small>Scientific workflow</small>
-          </div>
-          <ChevronDown size={13} />
-        </div>
-        <div className="nav-label">工作空间</div>
-        <nav>
-          {navigation.map(({ id, name, en, icon: Icon }) => (
+        <div className="nav-label">研究工作空间</div>
+        <nav aria-label="核心模块">
+          {modules.map(({ id, name, entry, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => navigate(id)}
-              className={`nav-item ${page === id ? "active" : ""}`}
+              onClick={() => navigate(entry)}
+              aria-current={current.id === id ? "page" : undefined}
+              className={`nav-item ${current.id === id ? "active" : ""}`}
             >
               <Icon size={19} />
               <span>{name}</span>
-              {id === "questions" && data?.stats?.questions !== undefined && (
-                <i>{data.stats.questions.toLocaleString()}</i>
-              )}
-              {page === id && <span className="active-pin" />}
+              {current.id === id && <span className="active-pin" />}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="research-note">
-            <span className="note-symbol">✳</span>
-            <b>从实验，到可复现的知识。</b>
-            <p>
-              完整输入、真实调用
-              <br />
-              和每一步证据，始终可见。
-            </p>
-          </div>
           <div className="server-chip">
             <span className={`server-dot ${bootstrap.data ? "connected" : ""}`} />
             <div>
@@ -241,10 +221,15 @@ export default function App() {
                 : undefined
             }
           />
-          {page === "data" ? (
-            data && <DataWorkspace version={version} act={act} bootstrap={{...data,service:{...data.service,execution_enabled:executionEnabled}}} onRag={key=>{setRagQuestion(key);navigate("rag");}} onRun={onRun}/>
-          ) : page === "questions" ? (
-            <Questions version={version} act={act} onSet={onSet} onRag={key=>{setRagQuestion(key);navigate("rag");}} />
+          {subpages.length > 0 && <nav className="module-subnav" aria-label={`${current.name} 模块页面`}>
+            {subpages.map(item => <button key={item.id} aria-current={page === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.name}</button>)}
+          </nav>}
+          {current.id === "data" ? (
+            data && <DataWorkspace version={version} act={act} bootstrap={{...data,service:{...data.service,execution_enabled:executionEnabled}}} onRag={key=>{setRagQuestion(key);navigate("rag");}} onRun={onRun}
+              tool={page === "questions" || page === "generation" ? page : undefined} onTool={tool => navigate(tool || "data")}>
+              {page === "questions" && <Questions version={version} act={act} onSet={onSet} onRag={key=>{setRagQuestion(key);navigate("rag");}} />}
+              {page === "generation" && <Generation capabilities={data.capabilities} version={version} act={act} executionEnabled={executionEnabled} onRun={onRun} />}
+            </DataWorkspace>
           ) : page === "rag" ? (
             <Rag version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
           ) : page === "workflow" ? (
@@ -261,14 +246,6 @@ export default function App() {
             </WorkflowWorkspace>
           ) : page === "models" ? (
             <Models version={version} act={act} />
-          ) : page === "generation" ? (
-            <Generation
-              capabilities={data?.capabilities}
-              version={version}
-              act={act}
-              executionEnabled={executionEnabled}
-              onRun={onRun}
-            />
           ) : page === "runs" ? (
             <Runs
               version={version}

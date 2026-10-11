@@ -252,35 +252,6 @@ small {
   place-items: center;
   background: #244455;
 }
-.workspace-picker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #ffffff08;
-  border: 1px solid #ffffff10;
-  border-radius: 8px;
-  padding: 12px 9px;
-  margin-bottom: 29px;
-}
-.workspace-picker b {
-  font-size: 11px;
-  font-weight: 500;
-  color: #dce8ef;
-}
-.workspace-picker small {
-  display: block;
-  color: #839bac;
-  font-size: 9px;
-}
-.workspace-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 5px;
-  display: grid;
-  place-items: center;
-  color: #8cc9bd;
-  background: #325063;
-}
 .nav-label {
   font-size: 10px;
   letter-spacing: 1px;
@@ -317,14 +288,6 @@ small {
 .nav-item.active svg {
   color: #8ed3c5;
 }
-.nav-item i {
-  font-style: normal;
-  font-size: 10px;
-  margin-left: auto;
-  background: #ffffff0d;
-  border-radius: 4px;
-  padding: 0 5px;
-}
 .active-pin {
   position: absolute;
   right: 12px;
@@ -336,32 +299,6 @@ small {
 .sidebar-bottom {
   margin-top: auto;
   padding-top: 25px;
-}
-.research-note {
-  background: linear-gradient(135deg, #264858, #203b4c);
-  border: 1px solid #ffffff0c;
-  border-radius: 9px;
-  padding: 15px 14px;
-  margin-bottom: 18px;
-}
-.research-note b {
-  font-size: 11px;
-  display: block;
-  font-weight: 500;
-  color: #d7e7ed;
-}
-.research-note p {
-  font-size: 10px;
-  line-height: 1.8;
-  color: #87a5b7;
-  margin: 7px 0 0;
-}
-.note-symbol {
-  font-size: 28px;
-  display: block;
-  color: #88c8b9;
-  margin-bottom: 8px;
-  line-height: 1;
 }
 .server-chip {
   display: flex;
@@ -454,6 +391,40 @@ small {
   padding: 35px 32px 30px;
   flex: 1;
   min-width: 0;
+}
+.module-subnav,
+.data-subnav.module-subnav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 24px;
+  padding: 0;
+}
+.module-subnav button {
+  flex-shrink: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 0 12px;
+  color: #7e9098;
+  font-size: 12px;
+}
+.module-subnav button[aria-current=page] {
+  color: var(--teal);
+  border-bottom-color: var(--teal);
+  background: transparent;
+  font-weight: 600;
+}
+.module-subnav button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--teal);
+}
+.module-subnav button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
 }
 .page-heading {
   display: flex;
@@ -1750,16 +1721,6 @@ summary {
   }
   .brand-mark {
     width: 31px;
-  }
-  .workspace-picker {
-    padding: 10px 7px;
-    gap: 7px;
-  }
-  .workspace-picker b {
-    font-size: 10px;
-  }
-  .workspace-picker small {
-    font-size: 8px;
   }
   .main-shell {
     margin-left: 190px;
