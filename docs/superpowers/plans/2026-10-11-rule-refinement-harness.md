@@ -164,7 +164,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `PoolStore(root: Path, catalog: Catalog).initialize(binding: dict) -> dict`、`.get(version: str) -> dict`、`.public_cases(version: str) -> list[dict]`、`.record_first_test(batch_id: str, *, pool: dict, score: dict, generation: dict) -> dict`、`.promote(batch_id: str, *, expected_pool_version: str) -> dict`；`check_independence(existing: dict, incoming: dict) -> dict` 返回 overlap/missing_identity/eligible 及原因。
 
-- [ ] **Step 1: 写失败测试。** `test_dataset_edits_do_not_change_frozen_pool`、`test_first_result_is_immutable_and_full_batch_promotes_once`、`test_relabelled_question_and_shared_lineage_are_not_fresh`、`test_holdout_and_half_pairs_are_rejected`：
+- [x] **Step 1: 写失败测试。** `test_dataset_edits_do_not_change_frozen_pool`、`test_first_result_is_immutable_and_full_batch_promotes_once`、`test_relabelled_question_and_shared_lineage_are_not_fresh`、`test_holdout_and_half_pairs_are_rejected`：
   ```python
   assert promoted_again["version"] == promoted["version"]
   assert {m["ref"]["key"] for m in promoted["members"]} == expected_all_member_keys
@@ -172,12 +172,12 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert duplicate_report["eligible"] is False
   ```
   同 key 不同 hash 拒绝覆盖，显示题号相同但精确 key 不同的成员各自保留。测试来源损坏、并发两次扩池 CAS、initial development/final 拒绝、源 split 不变；缺少可靠谱系时标为无法证明独立，不能伪称新实例。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_pool.py -q`。
-- [ ] **Step 3: 实现接口。** 冻结 DatasetBinding、精确成员和完整 pair_manifest；统一主键使用 key，不用显示题号。新批次按 unseen→sealed→revealed→promoted 推进，必须引用 Task 3 封存首测才能扩池。完整有效批次无论答对与否都收录，重复成员保留尝试记录但不重复添加；同批共享数据实例如实统计，跨批重用实例不算独立挑战。保留 canonical 筛选/不足记录，不允许按答案过滤。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_pool.py -q`。
+- [x] **Step 3: 实现接口。** 冻结 DatasetBinding、精确成员和完整 pair_manifest；统一主键使用 key，不用显示题号。新批次按 unseen→sealed→revealed→promoted 推进，必须引用 Task 3 封存首测才能扩池。完整有效批次无论答对与否都收录，重复成员保留尝试记录但不重复添加；同批共享数据实例如实统计，跨批重用实例不算独立挑战。保留 canonical 筛选/不足记录，不允许按答案过滤。
   生成不足时，已核验的完整题/题对也先首测再整体入池，缺失与故障另存；空批次不生成 all_pass。批次账本同时保存 requested/actual/eligible/first_score 和 `batch_passed`，后者必须满足规模完整、独立与 all_pass，避免把“已有部分全对”展示为整批通过。
   另立 `novelty_policy="rule_challenge_v1"`：核对题目、数据实例/生成 seed 与规格、lineage、完整 pair 身份，并计算去展示 ID/letter 后按 canonical 内容排序的候选规格集合指纹；重排选项或改题号不能获得新题额度。现有 exact_question_v1 仍用于总题库去重，不能直接当作挑战独立性证明。先前批次无论是否通过都进入已见集合，避免只对当前池做重叠检查。
-- [ ] **Step 4: 验证。** 上述命令加 `tests/test_studio_dataset_inputs.py tests/test_studio_pairs.py tests/test_studio_task_inputs.py`，预期全通过。
-- [ ] **Step 5: 提交。** `git commit -m "feat: track frozen research pools and first-test usage"`。
+- [x] **Step 4: 验证。** 上述命令加 `tests/test_studio_dataset_inputs.py tests/test_studio_pairs.py tests/test_studio_task_inputs.py`，预期全通过。
+- [x] **Step 5: 提交。** `git commit -m "feat: track frozen research pools and first-test usage"`。
 
 ## Task 5: 同池不退步验收
 
