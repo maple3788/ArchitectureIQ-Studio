@@ -205,7 +205,7 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
 
 **Interfaces:** `BudgetLedger(root: Path, limits: dict, *, clock: Callable[[], float]).reserve(operation_key: str, cost: dict, *, inputs_hash: str) -> dict`、`.settle(operation_key: str, *, actual: dict, receipt_ref: str, outcome: str) -> dict`、`.snapshot() -> dict`、`.check_time() -> None`；`BudgetExceeded`、`UncertainOperation` 为明确异常。相同 operation_key 输入不同时冲突。
 
-- [ ] **Step 1: 写失败测试。** `test_rejected_and_failed_attempts_consume_limits`、`test_two_processes_cannot_reserve_same_remaining_budget`、`test_restart_and_pause_never_reset_deadline`、`test_uncertain_reservation_is_not_refundable_or_retryable`：
+- [x] **Step 1: 写失败测试。** `test_rejected_and_failed_attempts_consume_limits`、`test_two_processes_cannot_reserve_same_remaining_budget`、`test_restart_and_pause_never_reset_deadline`、`test_uncertain_reservation_is_not_refundable_or_retryable`：
   ```python
   assert after_invalid["revision_attempts"] == 1
   assert after_failed_generation["generation_attempts"] == 1
@@ -213,10 +213,10 @@ PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; import architectur
   assert duplicate_reservation["operation_key"] == original_reservation["operation_key"]
   ```
   包含预算恰好用尽、零/负/NaN/bool、missing usage 保守计费、实际 usage 超预留后立即停止、所有失败仍计调用；reserved 与 settled 不重复累计。
-- [ ] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_budget.py -q`。
-- [ ] **Step 3: 实现接口。** 同一锁下校验、预留和提交账本；截止时间在首次运行启动固定，包含暂停时间。新题按请求的实际题数预留上限，确定终结后可结算实际新增数，但生成尝试永不返还；pending/uncertain 保持预留。模型以 UTF-8 输入字节+冻结 max_tokens+256 的现有保守方式预留，并检查模型 context 上限；GT 按 canonical candidate_seed_runs 预留整个挑战，执行前逐单元检查时间及控制信号。硬截止时终止受管理的调用/GT 子进程，无法证明完成的记 uncertain，保留完整结果且不再启动新单元。
-- [ ] **Step 4: 验证。** 上述命令预期全通过；用独立 Ledger 实例和 fake clock，不依赖真实等待。
-- [ ] **Step 5: 提交。** `git commit -m "feat: enforce cumulative refinement resource limits"`。
+- [x] **Step 2: 红灯。** `PYTHONPATH=src .venv/bin/python -m pytest tests/test_rule_refinement_budget.py -q`。
+- [x] **Step 3: 实现接口。** 同一锁下校验、预留和提交账本；截止时间在首次运行启动固定，包含暂停时间。新题按请求的实际题数预留上限，确定终结后可结算实际新增数，但生成尝试永不返还；pending/uncertain 保持预留。模型以 UTF-8 输入字节+冻结 max_tokens+256 的现有保守方式预留，并检查模型 context 上限；GT 按 canonical candidate_seed_runs 预留整个挑战，执行前逐单元检查时间及控制信号。硬截止时终止受管理的调用/GT 子进程，无法证明完成的记 uncertain，保留完整结果且不再启动新单元。
+- [x] **Step 4: 验证。** 上述命令预期全通过；用独立 Ledger 实例和 fake clock，不依赖真实等待。
+- [x] **Step 5: 提交。** `git commit -m "feat: enforce cumulative refinement resource limits"`。
 
 ## Task 7: 初始化与修订模型适配
 
