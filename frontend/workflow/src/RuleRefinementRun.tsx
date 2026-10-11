@@ -1,13 +1,15 @@
-import {useState} from 'react';
+import {useRef,useState} from 'react';
 import {Tabs,ErrorBox,Field,JsonView} from './ui';
 import {QuestionReader} from './QuestionReader';
+import {RuleRefinementCanvas} from './RuleRefinementCanvas';
 import {LiveOutput,useLiveOutput} from './LiveOutput';
 import {caseRecord,deriveRuleRefinementView,decisionLabels,independenceLabels,problemLabels} from './ruleRefinementView';
 import {getRuleArtifact,controlRefinement,recoverRefinement} from './ruleRefinementApi';
-import type {Run,Json} from './types';
+import type {Run,Json,WorkflowNode} from './types';
 import type {Action} from './Questions';
 import type {RuleScore,RuleArtifact} from './ruleRefinementTypes';
 import './rule-refinement.css';
+import './harness-run.css';
 export function RuleScoreSummary({score,title='累计研究池'}:{score?:RuleScore;title?:string}){return <section><h3>{title}</h3>{!score?<p>等待已封存的评分记录</p>:<><div className="rr-run-summary">{[['正确 / 所选',`${score.correct} / ${score.selected}`],['可评分',score.scorable],['资料未完成',score.unscorable],['明确作答率',`${Math.round(score.answer_coverage*100)}%`]].map(([label,value])=><article key={String(label)}><small>{label}</small><strong>{value}</strong></article>)}</div><p>冲突 {score.conflicts} · 错误规则断言 {score.wrong_assertions}{score.paired?.total?` · 题对双方通过 ${score.paired.both_correct} / ${score.paired.total}`:''}</p></>}</section>;}
 export function RuleCaseEvidence({row}:{row:Json}){
  const prediction=row.prediction||{},letters=Object.fromEntries((row.case?.question?.choices||[]).map((c:Json)=>[c.id,c.letter]));const label=(id:string)=>letters[id]||id;
@@ -24,16 +26,91 @@ export function RuleRefinementControls({run,act}:{run:Run;act:Action}){
  const send=async(action:string)=>{setPending(true);try{await act(()=>action==='recover'?recoverRefinement(run.id):controlRefinement(run.id,action));}finally{setPending(false);}};
  return <div className="actions">{['queued','starting','running'].includes(run.status)&&<button disabled={pending} onClick={()=>void send('pause')}>暂停研究</button>}{run.status==='paused'&&<button disabled={pending} onClick={()=>void send('resume')}>恢复研究</button>}{['interrupted','uncertain'].includes(run.status)&&<button disabled={pending} onClick={()=>void send('recover')}>核验并恢复</button>}<button disabled={pending||run.status==='stopping'} onClick={()=>void send('stop')}>停止研究并保留结果</button></div>;
 }
+const stageArtifactKinds:Record<string,string[]>={initialize:['proposal','kb'],revise:['proposal'],accept:['decision'],save:['kb']};
+const stageEvidenceTitles:Record<string,string>={initialize:'初始规则与模型记录',revise:'候选规则与修订记录',accept:'不退步验收记录',save:'当前接受的研究规则'};
+
 export function RuleRefinementRun({run,act}:{run:Run;act:Action}){
- const view=deriveRuleRefinementView(run),[tab,setTab]=useState('当前结果'),[artifact,setArtifact]=useState<RuleArtifact>(),[error,setError]=useState(''),[selectedBatch,setSelectedBatch]=useState(''),[modelOperation,setModelOperation]=useState('');const live=useLiveOutput(run);
+ return <RuleRefinementRunContent key={run.id} run={run} act={act}/>;
+}
+function RuleRefinementRunContent({run,act}:{run:Run;act:Action}){
+ const view=deriveRuleRefinementView(run),evaluation=run.kind==='rule_evaluation';
+ const [tab,setTab]=useState('当前结果'),[selectedStage,setSelectedStage]=useState<string>(),[artifact,setArtifact]=useState<RuleArtifact>();
+ const [error,setError]=useState(''),[selectedBatch,setSelectedBatch]=useState(''),[modelOperation,setModelOperation]=useState('');
+ const artifactRequest=useRef(0),live=useLiveOutput(run);
  const modelEvents=[...new Map(view.events.filter(e=>['initialize','revise'].includes(e.node_id)&&e.operation_key).map(e=>[e.operation_key,e])).values()];
- const selectedModel=modelEvents.find(e=>e.operation_key===modelOperation)??modelEvents[modelEvents.length-1];
+ const stageModels=selectedStage&&['initialize','revise'].includes(selectedStage)?modelEvents.filter(e=>e.node_id===selectedStage):modelEvents;
+ const selectedModel=stageModels.find(e=>e.operation_key===modelOperation)??stageModels[stageModels.length-1];
  const operation=[...view.events].reverse().find(e=>e.node_id===view.phaseId&&e.operation_key);
- return <div className="rr-run"><header><span className="eyebrow">{run.kind==='rule_evaluation'?'STORED RULE EVALUATION':'RULE REFINEMENT'}</span><h2>{run.kind==='rule_evaluation'?(run.result?'规则评测已完成':'规则评测处理中'):view.status}</h2><p>{run.kind==='rule_evaluation'?independenceLabels[run.result?.independence]||'等待固定题集评分':view.phase}</p><p className="rr-version">KB {view.kbVersion?.slice(0,12)||'待记录'} · 题池 {view.poolVersion?.slice(0,12)||'待记录'}{run.refinement&&` · 修订 ${run.refinement.attempt_index??0} 次 · 连续新批次通过 ${run.refinement.fresh_passes??0}`}</p><RuleRefinementControls run={run} act={act}/></header><ErrorBox error={run.artifact_error||error||run.error}/>
- {view.budget&&<details><summary>已用资源与冻结上限</summary><dl>{[['model_calls','max_model_calls','模型调用'],['tokens','max_tokens','累计 token'],['candidate_seed_runs','max_candidate_seed_runs','候选 × 种子'],['new_questions','max_new_questions','新题']].map(([k,limit,label])=><div key={k}><dt>{label}</dt><dd>{view.budget![k]} / {view.budget!.limits?.[limit]}</dd></div>)}</dl></details>}
- <Tabs tabs={run.kind==='rule_evaluation'?['当前结果','版本与验收']:['当前结果','首测历史','版本与验收']} value={tab} onChange={setTab}/>
- {tab==='当前结果'&&<><RuleScoreSummary score={view.score} title={run.kind==='rule_evaluation'?'固定评测题集':'累计研究池'}/>{view.phaseId&&['initialize','revise'].includes(view.phaseId)&&operation&&<LiveOutput live={live} nodeId={view.phaseId} operationKey={operation.operation_key} round={0}/>}<ProblemReader score={view.score}/></>}
- {tab==='首测历史'&&<section><h3>新题原始首测</h3><p>每批第一次面对冻结 KB 的成绩；后续回归不会覆盖这些记录。</p><div className="rr-history">{view.batches.map((b:Json)=><article key={b.batch_id}><h4>第 {b.index} 批 · 原始首测</h4><strong>{b.first_score.correct} / {b.first_score.selected}</strong><p>{b.batch_passed?'完整独立批次通过':'未满足完整独立批次通过条件'} · 实际 {b.actual} / 计划 {b.requested} 道</p><p className="rr-version">KB {b.kb_version?.slice(0,12)}</p><button onClick={()=>setSelectedBatch(b.batch_id)}>阅读此批题目与证据</button>{b.batch_id===selectedBatch&&<ProblemReader score={b.first_score}/>}</article>)}</div>{!view.batches.length&&<p>尚无已封存的新题首测。</p>}</section>}
- {tab==='版本与验收'&&<section>{!!modelEvents.length&&<div><Field label="已保存模型调用"><select value={selectedModel?.operation_key||''} onChange={e=>setModelOperation(e.target.value)}>{modelEvents.map(e=><option key={e.operation_key} value={e.operation_key}>{e.node_id==='initialize'?'初始化':'修订'} · {e.operation_key}</option>)}</select></Field>{selectedModel&&<LiveOutput live={live} nodeId={selectedModel.node_id} round={0} operationKey={selectedModel.operation_key} terminal/>}</div>}<h3>保存的证据与候选版本</h3><p>当前版本只随验收通过的补丁前进；被拒提案仍可查阅。</p><div className="rr-history">{(run.artifacts||[]).map((a:RuleArtifact)=><div key={a.id}><button onClick={async()=>{try{setArtifact(await getRuleArtifact(run.id,a.id));setError('');}catch(e){setError((e as Error).message);}}}>{a.label}</button><small> · {a.kind}</small></div>)}</div>{artifact&&<article><h4>{artifact.label}</h4>{artifact.kind==='decision'&&<p>{decisionLabels[artifact.value?.reason]||artifact.value?.reason}</p>}{artifact.kind==='proposal'&&<p>候选提案 · {artifact.value?.outcome} · 待呈现问题 {artifact.value?.remaining_count??0}</p>}<JsonView value={artifact.value}/></article>}</section>}
+ const terminal=!!run.result||['complete','failed','cancelled','interrupted','uncertain'].includes(run.status);
+ const artifacts:RuleArtifact[]=run.artifacts||[];
+ const artifactKinds=selectedStage?stageArtifactKinds[selectedStage]:undefined;
+ const visibleArtifacts=artifactKinds?artifacts.filter(a=>artifactKinds.includes(a.kind)):artifacts;
+ const clearArtifact=()=>{artifactRequest.current+=1;setArtifact(undefined);setError('');};
+ const selectStage=(node:WorkflowNode)=>{
+  setSelectedStage(node.id);clearArtifact();setModelOperation('');
+  setTab(node.id==='challenge'?'首测历史':['initialize','revise','accept','save'].includes(node.id)?'版本与验收':'当前结果');
+ };
+ const selectTab=(value:string)=>{
+  setTab(value);setSelectedStage(value==='当前结果'?'verify':value==='首测历史'?'challenge':undefined);clearArtifact();
+ };
+ const readArtifact=async(item:RuleArtifact)=>{
+  const request=++artifactRequest.current;
+  try{const value=await getRuleArtifact(run.id,item.id);if(request===artifactRequest.current){setArtifact(value);setError('');}}
+  catch(e){if(request===artifactRequest.current)setError((e as Error).message);}
+ };
+ const title=evaluation?(run.result?'规则评测已完成':'规则评测处理中'):view.status;
+ return <div className="rr-run harness-run">
+  <header className="harness-run-header">
+   <div><span className="eyebrow">{evaluation?'STORED RULE EVALUATION':'HARNESS · 规则 KB 闭环'}</span><h2>{title}</h2>
+    {evaluation?<p>{independenceLabels[run.result?.independence]||'等待固定题集评分'}</p>:view.phase!==title&&<p>{view.phase}</p>}
+   </div>
+   <RuleRefinementControls run={run} act={act}/>
+  </header>
+  <ErrorBox error={run.artifact_error||error||run.error}/>
+  {!evaluation&&<RuleRefinementCanvas run={run} selectedId={selectedStage} onSelect={selectStage}/>}
+  <section className="harness-run-evidence" aria-label="运行证据">
+   <Tabs tabs={evaluation?['当前结果','版本与验收']:['当前结果','首测历史','版本与验收']} value={tab} onChange={selectTab}/>
+   {tab==='当前结果'&&<>
+    <RuleScoreSummary score={view.score} title={evaluation?'固定评测题集':'累计研究池'}/>
+    {view.phaseId&&['initialize','revise'].includes(view.phaseId)&&operation&&<LiveOutput live={live} nodeId={view.phaseId} operationKey={operation.operation_key} round={0} terminal={terminal}/>}
+    <ProblemReader score={view.score}/>
+   </>}
+   {tab==='首测历史'&&<section>
+    <h3>新题原始首测</h3><p>每批第一次面对冻结 KB 的成绩；后续回归不会覆盖这些记录。</p>
+    <div className="rr-history">{view.batches.map((b:Json)=><article key={b.batch_id}>
+     <h4>第 {b.index} 批 · 原始首测</h4><strong>{b.first_score.correct} / {b.first_score.selected}</strong>
+     <p>{b.batch_passed?'完整独立批次通过':'未满足完整独立批次通过条件'} · 实际 {b.actual} / 计划 {b.requested} 道</p>
+     <p className="rr-version">KB {b.kb_version?.slice(0,12)}</p>
+     <button onClick={()=>setSelectedBatch(b.batch_id)}>阅读此批题目与证据</button>
+     {b.batch_id===selectedBatch&&<ProblemReader score={b.first_score}/>}
+    </article>)}</div>
+    {!view.batches.length&&<p>尚无已封存的新题首测。</p>}
+   </section>}
+   {tab==='版本与验收'&&<section>
+    <div className="harness-evidence-heading"><h3>{stageEvidenceTitles[selectedStage||'']||'保存的证据与候选版本'}</h3>
+     {artifactKinds&&<button onClick={()=>{setSelectedStage(undefined);clearArtifact();}}>查看全部证据</button>}
+    </div>
+    <p>当前版本只随验收通过的补丁前进；被拒提案仍可查阅。</p>
+    {!!stageModels.length&&(!selectedStage||['initialize','revise'].includes(selectedStage))&&<div>
+     <Field label="已保存模型调用"><select value={selectedModel?.operation_key||''} onChange={e=>setModelOperation(e.target.value)}>
+      {stageModels.map(e=><option key={e.operation_key} value={e.operation_key}>{e.node_id==='initialize'?'初始化':'修订'} · {e.operation_key}</option>)}
+     </select></Field>
+     {selectedModel&&<LiveOutput live={live} nodeId={selectedModel.node_id} round={0} operationKey={selectedModel.operation_key} terminal={terminal||selectedModel.operation_key!==operation?.operation_key}/>}
+    </div>}
+    <div className="rr-history">{visibleArtifacts.map(a=><div key={a.id}>
+     <button onClick={()=>void readArtifact(a)}>{a.label}</button><small> · {a.kind}</small>
+    </div>)}</div>
+    {!visibleArtifacts.length&&<p>此阶段尚无已保存的证据。</p>}
+    {artifact&&<article className="harness-artifact"><h4>{artifact.label}</h4>
+     {artifact.kind==='decision'&&<p>{decisionLabels[artifact.value?.reason]||artifact.value?.reason}</p>}
+     {artifact.kind==='proposal'&&<p>候选提案 · {artifact.value?.outcome} · 待呈现问题 {artifact.value?.remaining_count??0}</p>}
+     <JsonView value={artifact.value}/>
+    </article>}
+   </section>}
+  </section>
+  <details className="harness-run-metadata"><summary>版本与资源记录</summary>
+   <p className="rr-version">KB {view.kbVersion?.slice(0,12)||'待记录'} · 题池 {view.poolVersion?.slice(0,12)||'待记录'}{run.refinement&&` · 修订 ${run.refinement.attempt_index??0} 次 · 连续新批次通过 ${run.refinement.fresh_passes??0}`}</p>
+   {view.budget&&<><h4>已用资源与冻结上限</h4><dl>{[['model_calls','max_model_calls','模型调用'],['tokens','max_tokens','累计 token'],['candidate_seed_runs','max_candidate_seed_runs','候选 × 种子'],['new_questions','max_new_questions','新题']].map(([k,limit,label])=><div key={k}><dt>{label}</dt><dd>{view.budget![k]} / {view.budget!.limits?.[limit]}</dd></div>)}</dl></>}
+  </details>
  </div>;
 }

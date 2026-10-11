@@ -81,6 +81,7 @@ import type {
   WorkflowNode,
 } from "./types";
 import type { Action } from "./Questions";
+import "./harness-entry.css";
 function cleanMethodDraft(value: Spec): Spec {
   if (!value.settings.method_id || !("experience_mode" in value.settings)) return value;
   const settings = {...value.settings};
@@ -373,7 +374,7 @@ export function Workflow({
     if (historyOpen) void shared.refreshBackups();
   }, [historyOpen, shared.refreshBackups]);
   useEffect(() => {
-    if (!freshBasic || workflow?.settings.method_id !== "basic_learning" || workflow.settings.question_set_id) return;
+    if (liveRun.editing === false || !freshBasic || workflow?.settings.method_id !== "basic_learning" || workflow.settings.question_set_id) return;
     let active=true;
     void (async()=>{
       try {
@@ -394,12 +395,12 @@ export function Workflow({
       } catch(e) { if(active)setError(`默认题目读取失败：${(e as Error).message}`); }
     })();
     return()=>{active=false;};
-  },[freshBasic,workflow?.settings.method_id,workflow?.settings.question_set_id]);
+  },[freshBasic,workflow?.settings.method_id,workflow?.settings.question_set_id,liveRun.editing]);
   useEffect(()=>{
-    if(!freshBasic||!workflow||workflow.settings.model_id||modelSelectionTouched.current)return;
+    if(liveRun.editing===false||!freshBasic||!workflow||workflow.settings.model_id||modelSelectionTouched.current)return;
     const ready=items(models.data).find(m=>workflowModelReady(m,workflow.settings.method_id));
     if(ready)setWorkflow(current=>current&&!current.settings.model_id?{...current,settings:{...current.settings,model_id:ready.id}}:current);
-  },[freshBasic,models.data,workflow?.settings.model_id]);
+  },[freshBasic,models.data,workflow?.settings.model_id,liveRun.editing]);
   const node = workflow?.nodes.find((n) => n.id === nodeId);
   const edge = workflow?.edges.find((e) => e.id === edgeId);
   const chosenModel = items(models.data).find(
@@ -754,7 +755,7 @@ export function Workflow({
     if(workflow.settings.model_id)retained.model_id=workflow.settings.model_id;
     if(identifier!=='basic_learning'||(questionCount===1&&chosenSet?.selection_mode!=='pairs'))retained.question_set_id=workflow.settings.question_set_id;
     const nextWorkflow={...next,settings:{...next.settings,...retained},nodes:next.nodes.map((n:WorkflowNode)=>{const old=workflow.nodes.find(o=>o.id===n.id);return old?.type==='agent'?{...n,config:{...n.config,prompt:old.config.prompt??''}}:n;})};
-    setWorkflow(migrateWorkflowLayout(nextWorkflow));setFreshBasic(identifier==='basic_learning'&&!retained.question_set_id);setPreview(undefined);setPreviewAttempted(false);setNotice(identifier==='basic_learning'?'已进入单题学习；原高级草稿已保留，可随时恢复。':'已切换高级方法，请核对题目与运行配置。');
+    setWorkflow(migrateWorkflowLayout(nextWorkflow));setFreshBasic(identifier==='basic_learning'&&!retained.question_set_id);setPreview(undefined);setPreviewAttempted(false);setNotice(identifier==='basic_learning'?'已进入单题学习；切换前的草稿已保留，可随时恢复。':'已切换方法，请核对题目与运行配置。');
   };
   if (shared.loading) return <Loading />;
   if (!workflow)
@@ -815,24 +816,37 @@ export function Workflow({
   ].filter((reason):reason is string=>!!reason);
   const isRule=!liveRun.run&&workflow.schema_version===2&&workflow.settings.method_id==='rule_refinement';
   const displayedName=liveRun.run?(liveRun.run.config.workflow?.name??liveRun.run.config.name??'冻结研究运行'):workflow.name;
+  const methodChoices=methods.data?.items?.length?methods.data.items:[
+    {id:'rule_refinement',name:'KB 真理闭环',status:'available'},
+    {id:'basic_learning',name:'单题学习',status:'available'},
+  ];
+  const primaryMethod=methodChoices.find(method=>method.id==='rule_refinement');
+  const currentMethod=methodChoices.find(method=>method.id===workflow.settings.method_id);
+  const currentMethodName=currentMethod?.name??workflow.settings.method_id??'历史自定义流程';
+  const syncNeedsAttention=shared.status==='offline'||shared.status==='conflict'||!!shared.error;
   return (
     <div className="workflow-page stage-editor is-basic unified-research-editor">
-      <div className="workflow-title">
-        <div><input aria-label="工作流名称" className="workflow-name" value={displayedName} readOnly={!!liveRun.run} onChange={e=>{if(!liveRun.run)setWorkflow({...workflow,name:e.target.value});}}/></div>
-        {!liveRun.run&&<div className="basic-editor-tools">
-          <select aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}>
-            {!workflow.settings.method_id&&<option value="" disabled>历史自定义流程</option>}
-            {(methods.data?.items?.length?methods.data.items:[{id:'basic_learning',name:'单题学习',status:'available'}]).map(m=><option key={m.id} value={m.id} disabled={m.status!=='available'}>{m.name}</option>)}
-          </select>
-          <details className="basic-more"><summary>更多</summary><div className="basic-advanced-tools">
+      <header className={`harness-entry${syncNeedsAttention?' has-sync-issue':''}`}>
+        {!liveRun.run&&<nav className="harness-method-nav module-subnav" aria-label="Harness 方法">
+          <button aria-current={workflow.settings.method_id==='rule_refinement'?'page':undefined} disabled={!!primaryMethod&&primaryMethod.status!=='available'} onClick={()=>void switchMethod('rule_refinement')}>KB 真理闭环</button>
+          <details className="harness-other-methods"><summary>其他方法</summary><div className="harness-method-panel">
+            <label htmlFor="harness-method-select">切换学习方法</label>
+            <select id="harness-method-select" aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}>
+              {!currentMethod&&<option value={workflow.settings.method_id??''} disabled>{currentMethodName}</option>}
+              {methodChoices.map(method=><option key={method.id} value={method.id} disabled={method.status!=='available'}>{method.id==='rule_refinement'?'KB 真理闭环':method.name}</option>)}
+            </select>
+          </div></details>
+          {workflow.settings.method_id!=='rule_refinement'&&<span className="harness-current-method">当前：{currentMethodName}</span>}
+          <details className="basic-more harness-more"><summary>更多</summary><div className="basic-advanced-tools"><label className="harness-name-field">研究名称<input aria-label="工作流名称" value={displayedName} onChange={e=>setWorkflow({...workflow,name:e.target.value})}/></label>{onModels&&<button onClick={onModels}>模型配置</button>}
             <button onClick={()=>void save()}>保存版本</button><button onClick={exportJson}>导出 JSON</button>
             <label className="upload-button compact">导入 JSON<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label>
             <button onClick={()=>setHistoryOpen(true)}>版本与备份</button>
-            {advancedBackup&&<button onClick={()=>{setFreshBasic(false);setWorkflow(advancedBackup);setNotice('已恢复切换前的高级草稿。');}}>恢复原高级草稿</button>}
+            {advancedBackup&&<button onClick={()=>{setFreshBasic(false);setWorkflow(advancedBackup);setNotice('已恢复切换前的草稿。');}}>恢复切换前的草稿</button>}
             <button onClick={resetDraft}>恢复默认</button>
           </div></details>
-        </div>}
-      </div>
+        </nav>}
+      <div className={`harness-draft-bar${syncNeedsAttention?' has-sync-issue':''}`}>
+        <div className="workflow-title">{liveRun.run&&<input aria-label="工作流名称" className="workflow-name" value={displayedName} readOnly/>}</div>
       {!liveRun.run && <section className={`shared-draft shared-draft-${shared.status}`} aria-label="服务器共享草稿">
         <div className="shared-draft-heading">
           <div role="status" aria-live="polite"><span className="shared-draft-dot"/>{({
@@ -848,6 +862,8 @@ export function Workflow({
         <ErrorBox error={shared.error}/>
         {shared.error && shared.status === "saved" && <button onClick={() => void shared.retry()}>重试备份同步</button>}
       </section>}
+      </div>
+      </header>
       <ErrorBox error={error || defaults.error} />
       {isRule?<RuleRefinementEditor workflow={workflow} onChange={setWorkflow} bootstrap={{...(bootstrap||{stats:{},capabilities:{},service:{host:'',state_root:'',execution_enabled:executionEnabled}}),models:items(models.data),service:{...(bootstrap?.service||{host:'',state_root:''}),execution_enabled:executionEnabled}}} onStarted={onRun} synced={shared.status==='saved'}/>:showBasic?<><BasicLearning workflow={workflow} models={items(models.data)} researchSet={chosenSet} onResearch={()=>{setFreshBasic(false);openPicker('research','single');}} onDataset={()=>{setFreshBasic(false);setPickerPurpose('research');setDatasetPickerOpen(true);}} onSetting={setSetting} onPrompt={(id,prompt)=>setWorkflow(updatePrompt(workflow,id,prompt))} rolePrompts={rolePrompts} version={version} run={liveRun.run} syncError={liveRun.syncState?.error} act={liveRun.act}/>
 

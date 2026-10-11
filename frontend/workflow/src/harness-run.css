@@ -1,0 +1,19 @@
+.harness-run{max-width:1480px;margin:0 auto;padding:12px 24px 28px;min-width:0}
+.harness-run-header{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.harness-run-header h2{font-size:22px;margin:7px 0}
+.harness-run-header p{font-size:13px;color:#64766b;margin:5px 0}
+.harness-run-header .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:0}
+.harness-run-header button{font-size:12px}
+.harness-run-evidence{padding:0 0 20px;min-width:0}
+.harness-run-evidence>.tabs{margin-top:0}
+.harness-run-evidence h3{font-size:16px}
+.harness-run-evidence>section>p{font-size:13px;color:#64766b;line-height:1.7}
+.harness-evidence-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.harness-evidence-heading button{font-size:12px}
+.harness-artifact{margin-top:20px;border-top:1px solid #dce3df;padding-top:16px;min-width:0}
+.harness-artifact pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.harness-run-metadata{border-top:1px solid #e0e6e1;padding-top:14px;font-size:12px;color:#64766b}
+.harness-run-metadata summary{cursor:pointer}
+.harness-run-metadata dl{display:flex;flex-wrap:wrap;gap:20px}
+.harness-run-metadata dd{margin:6px 0 0;color:#324d3f}
+@media(max-width:760px){.harness-run{padding:12px 16px 24px}.harness-run-header{align-items:flex-start;flex-direction:column;gap:12px}.harness-run-header .actions{justify-content:flex-start}.harness-evidence-heading{align-items:flex-start;flex-direction:column;gap:0}}

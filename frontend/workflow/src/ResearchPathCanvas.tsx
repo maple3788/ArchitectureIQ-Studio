@@ -8,6 +8,7 @@ import {nodeStatusLabel, type NodeStatus} from './runWorkflow';
 import '@xyflow/react/dist/style.css';
 import './research-path.css';
 
+export type PathPortSide = 'left' | 'right' | 'top' | 'bottom';
 export type PathNode = {
   id: string;
   label: string;
@@ -18,6 +19,8 @@ export type PathNode = {
   position?: {x: number; y: number};
   inputs?: string[];
   outputs?: string[];
+  inputSides?: Record<string,PathPortSide>;
+  outputSides?: Record<string,PathPortSide>;
 };
 export type PathEdge = {
   id: string;
@@ -45,10 +48,15 @@ function PathCard({data, selected, isConnectable}: NodeProps<CardNode>) {
     : item.kind === 'decision' ? GitBranch : item.kind === 'model' ? Sparkles : Workflow;
   const inputs = item.inputs?.length ? item.inputs : ['in'];
   const outputs = item.outputs?.length ? item.outputs : ['out'];
+  const portPosition=(side:PathPortSide)=>({left:Position.Left,right:Position.Right,top:Position.Top,bottom:Position.Bottom})[side];
+  const portStyle=(ports:string[],sides:Record<string,PathPortSide>|undefined,port:string,fallback:PathPortSide)=>{
+    const side=sides?.[port]??fallback,siblings=ports.filter(id=>(sides?.[id]??fallback)===side);
+    return {[side==='top'||side==='bottom'?'left':'top']:`${(siblings.indexOf(port)+1)*100/(siblings.length+1)}%`};
+  };
   return <div className={`research-path-card ${selected ? 'is-selected' : ''} stage-${item.stage ?? 'harness'}`}>
     {inputs.map((port, i) => <Handle key={`in-${port}`} id={port} type="target"
-      position={reverse ? Position.Right : Position.Left} isConnectable={isConnectable}
-      style={{top: `${(i + 1) * 100 / (inputs.length + 1)}%`}}/>)}
+      position={portPosition(item.inputSides?.[port]??(reverse?'right':'left'))} isConnectable={isConnectable}
+      style={portStyle(inputs,item.inputSides,port,reverse?'right':'left')}/>)}
     <button type="button" className="research-path-card-button" aria-label={item.label}
       aria-pressed={selected} onClick={() => select(item.id)}>
       <span className="research-path-card-top"><span className="research-path-icon"><Icon size={16}/></span>
@@ -61,8 +69,8 @@ function PathCard({data, selected, isConnectable}: NodeProps<CardNode>) {
       </span>}
     </button>
     {outputs.map((port, i) => <Handle key={`out-${port}`} id={port} type="source"
-      position={reverse ? Position.Left : Position.Right} isConnectable={isConnectable}
-      style={{top: `${(i + 1) * 100 / (outputs.length + 1)}%`}}/>)}
+      position={portPosition(item.outputSides?.[port]??(reverse?'left':'right'))} isConnectable={isConnectable}
+      style={portStyle(outputs,item.outputSides,port,reverse?'left':'right')}/>)}
   </div>;
 }
 const nodeTypes = {researchPath: PathCard};
@@ -81,7 +89,8 @@ export function ResearchPathCanvas(props: {
   edges: PathEdge[];
   selectedId: string;
   onSelect: (id: string) => void;
-  inspector: ReactNode;
+  inspector?: ReactNode;
+  inspectorPresentation?: 'sidebar' | 'overlay';
   toolbar?: ReactNode;
   footer?: ReactNode;
   ariaLabel?: string;
@@ -93,7 +102,7 @@ export function ResearchPathCanvas(props: {
   return <ResearchPathSurface key={signature} {...props}/>;
 }
 
-function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, toolbar, footer,
+function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, inspectorPresentation='sidebar', toolbar, footer,
   ariaLabel = '研究路径画布', onMove, onConnect}: Parameters<typeof ResearchPathCanvas>[0]) {
   const [arrangement, setArrangement] = useState<PositionMap>({});
   const [measurements, setMeasurements] = useState<Record<string, {width: number; height: number}>>({});
@@ -121,7 +130,7 @@ function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, too
   };
   return <section className="research-path" aria-label={ariaLabel}>
     {toolbar && <div className="research-path-toolbar">{toolbar}</div>}
-    <div className="research-path-layout">
+    <div className={`research-path-layout ${!inspector?'without-inspector':''} ${inspectorPresentation==='overlay'?'overlay-inspector':''}`}>
       <div className="research-path-board">
         <ReactFlow<CardNode> nodes={renderedNodes} nodeTypes={nodeTypes}
           edges={edges.map(edge => ({...edge, type: 'smoothstep',
@@ -136,6 +145,7 @@ function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, too
           }))}
           fitView fitViewOptions={{padding: 0.12, maxZoom: 0.9, minZoom: 0.2}}
           defaultViewport={{x: 34, y: 48, zoom: 0.82}} minZoom={0.2} maxZoom={1.4}
+          zoomOnScroll={inspectorPresentation!=='overlay'} preventScrolling={inspectorPresentation!=='overlay'}
           nodesDraggable nodesConnectable={!!onConnect} nodesFocusable={false}
           edgesFocusable={false} deleteKeyCode={null} onNodesChange={move}
           onNodeDragStop={(_, node) => {
@@ -155,7 +165,7 @@ function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, too
         </ReactFlow>
         <span className="research-path-board-hint">拖动画布 · 点击节点配置</span>
       </div>
-      <aside className="research-path-inspector" aria-label="节点详情">{inspector}</aside>
+      {inspector&&<aside className="research-path-inspector" aria-label="节点详情">{inspector}</aside>}
     </div>
     {footer && <div className="research-path-footer">{footer}</div>}
   </section>;

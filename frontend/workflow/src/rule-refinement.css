@@ -34,3 +34,11 @@
 .rr-claim-heading,.rr-rule-clause-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.rr-claim-heading small{color:#597260;font-weight:650}.rr-source-state{font-size:11px;background:#f1f4ee;color:#5d6b55;border-radius:4px;padding:3px 7px}.rr-rule h3{font-size:17px;line-height:1.7;margin:12px 0}.rr-rule h4{font-size:12px;color:#627569;margin:18px 0 10px}.rr-claim-lineage{font-size:12px;color:#657266}
 .rr-rule-clause{padding:10px 0}.rr-rule-clause+.rr-rule-clause{border-top:1px dashed #dae3da}.rr-rule-clause-heading{font-size:12px}.rr-rule-clause-heading small{color:#78827b}.rr-condition-list{margin:10px 0;font-size:13px;line-height:1.7}.rr-condition-list>div{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;margin:7px 0}.rr-condition-list dt{color:#768177}.rr-condition-list dd{margin:0;overflow-wrap:anywhere}.rr-rule details{font-size:12px;color:#647267}.rr-injection-policy{border-left:2px solid #c6d4c2;padding:0 14px;margin:16px 0}.rr-injection-policy p{font-size:13px;margin:6px 0}.rr-injection-policy h4{margin:0 0 8px}.rr-rule .rr-usage-note{color:#785e38}.rr-development{margin-top:18px}.rr-protocol .rr-condition-list>div{grid-template-columns:82px minmax(0,1fr)}
 @media(max-width:560px){.rr-condition-list>div{grid-template-columns:1fr;gap:2px;margin:12px 0}.rr-protocol .rr-condition-list>div{grid-template-columns:1fr}}
+
+/* Keep the loop overview clear; configuration is opened from its stage. */
+.rr-editor-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:18px 0 6px;color:#718078;font-size:12px}
+.rr-editor-bar>p{margin:0;line-height:1.7;overflow-wrap:anywhere}.rr-editor-bar>p span{margin:0 8px}
+.rr-editor-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.rr-editor-actions button{font-size:12px;padding:9px 13px;min-height:36px}
+.rr-config-details{border-top:1px solid #e1e7e3;margin:18px 0;padding-top:14px}.rr-config-details summary{color:#65776d;cursor:pointer;margin-bottom:12px}
+.rr-config-details:not([open])>:not(summary){display:none}
+@media(max-width:650px){.rr-editor-bar{align-items:flex-start;flex-direction:column;gap:10px}.rr-editor-actions{align-self:flex-end}}

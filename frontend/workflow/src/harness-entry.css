@@ -1,0 +1,123 @@
+.harness-entry .harness-method-nav {
+  overflow: visible;
+  gap: 24px;
+  margin: 0 0 18px;
+}
+.harness-other-methods {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.harness-other-methods > summary,
+.harness-entry .harness-more > summary {
+  padding: 10px 0 12px;
+  color: #7e9098;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.harness-other-methods > summary:focus-visible,
+.harness-entry .harness-more > summary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+.harness-method-panel {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 25;
+  width: 260px;
+  max-width: calc(100vw - 48px);
+  padding: 16px;
+  border: 1px solid #e1e8e5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 26px #243e3014;
+}
+.harness-entry details:not([open]) > :not(summary) {
+  display: none;
+}
+.harness-method-panel label {
+  display: block;
+  margin-bottom: 8px;
+  color: #778a84;
+  font-size: 11px;
+}
+.harness-method-panel select {
+  width: 100%;
+  font-size: 12px;
+}
+.harness-current-method {
+  min-width: 0;
+  color: #657c77;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.harness-entry .harness-more {
+  margin-left: auto;
+}
+.harness-draft-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 20px;
+}
+.workflow-page.is-basic .harness-entry .workflow-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.workflow-page.is-basic .harness-entry .workflow-name {
+  max-width: none;
+  font-size: 16px !important;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.workflow-page.is-basic .harness-entry .shared-draft {
+  flex-shrink: 0;
+  margin: 0;
+}
+.harness-draft-bar.has-sync-issue {
+  flex-wrap: wrap;
+}
+.harness-draft-bar.has-sync-issue .shared-draft {
+  flex-basis: 100%;
+}
+@media (max-width: 640px) {
+  .harness-entry .harness-method-nav {
+    flex-wrap: wrap;
+    gap: 0 20px;
+  }
+  .harness-current-method {
+    flex-basis: 100%;
+    order: 1;
+    padding-bottom: 10px;
+  }
+  .harness-method-panel {
+    left: auto;
+    right: -40px;
+  }
+  .harness-draft-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .workflow-page.is-basic .harness-entry .workflow-title,
+  .harness-draft-bar.has-sync-issue .shared-draft {
+    width: 100%;
+  }
+}
+
+/* One method bar leaves room for the research path. */
+.harness-entry{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:0 0 8px}
+.harness-entry .harness-method-nav{flex:1;margin:0;min-width:0;border-bottom:0}
+.harness-entry .harness-draft-bar{margin:0;gap:0}
+.harness-entry .harness-draft-bar .workflow-title:empty{display:none}
+.harness-entry.has-sync-issue .harness-draft-bar{flex-basis:100%}
+.harness-name-field{display:block;padding:8px 10px;color:#768781;font-size:11px}
+.harness-name-field input{display:block;margin-top:6px;max-width:100%;font-size:12px}
+.harness-entry .basic-advanced-tools{min-width:230px}
+@media(max-width:640px){.harness-entry{gap:4px 12px}.harness-entry .harness-method-nav{flex-basis:100%}.harness-entry .harness-draft-bar{margin-left:auto}.harness-entry .harness-draft-bar .workflow-title{width:auto}}

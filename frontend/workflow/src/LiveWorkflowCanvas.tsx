@@ -10,7 +10,7 @@ import {ErrorBox,JsonView} from './ui';
 import type {Action} from './Questions';
 import type {MethodDefinition,RoundDecision,Run,StageId,Workflow} from './types';
 import './live-workflow.css';
-export type LiveRunContextValue={run?:Run;syncState?:SyncState;act?:Action};
+export type LiveRunContextValue={run?:Run;syncState?:SyncState;act?:Action;editing?:boolean};
 export const LiveRunContext=createContext<LiveRunContextValue>({});
 export const useWorkflowRun=()=>useContext(LiveRunContext);
 const CanvasContext=createContext<{view:WorkflowViewModel;run?:Run;focus?:Focus;select:(f:Focus)=>void;act?:Action}|null>(null);

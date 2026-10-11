@@ -221,7 +221,7 @@ export default function App() {
                 : undefined
             }
           />
-          {subpages.length > 0 && <nav className="module-subnav" aria-label={`${current.name} 模块页面`}>
+          {subpages.length > 0 && page !== "workflow" && <nav className="module-subnav" aria-label={`${current.name} 模块页面`}>
             {subpages.map(item => <button key={item.id} aria-current={page === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.name}</button>)}
           </nav>}
           {current.id === "data" ? (

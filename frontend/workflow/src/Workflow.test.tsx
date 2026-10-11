@@ -609,7 +609,7 @@ it("keeps the actual draft canvas and path nodes mounted after an idempotent Sta
 it("invalidates preview when changing the catalog method and binds its authoritative settings",async()=>{
  const method=(id:string,name:string,experience_mode:string)=>({id,version:"1",name,description:"Description",adaptation:"Adapted",paper_url:null,status:"available",learning_protocol:"single",experience_mode,hash:id,steps:[{id:'assemble',stage_id:'data',label:'组装题目与材料',node_ids:['input']},{id:'solve',stage_id:'harness',label:'独立作答',node_ids:['solver']},{id:'evaluate',stage_id:'task',label:'独立新题效果验证',node_ids:['evaluate']}]});
  const {submissions}=setup(path=>path==="/api/studio/methods"?Promise.resolve(response({items:[method("scientific","Scientific","off"),method("expel","ExpeL","expel_inspired")]})):undefined,false,undefined,{...graph,settings:{...graph.settings,method_id:"scientific",method_version:"1",loop_mode:"manual"}});
- await enterRun();fireEvent.click(screen.getByRole("button",{name:"关闭详情"}));fireEvent.change(screen.getByLabelText("切换学习方法"),{target:{value:"expel"}});
+ await enterRun();fireEvent.click(screen.getByRole("button",{name:"关闭详情"}));fireEvent.click(screen.getByText('其他方法',{exact:true}));fireEvent.change(screen.getByLabelText("切换学习方法"),{target:{value:"expel"}});
  expect((screen.getByRole("button",{name:"开始研究"}) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(await enterRun());await waitFor(()=>expect(submissions).toHaveLength(1));expect(submissions[0].body.workflow.settings).toMatchObject({method_id:"expel",method_version:"1",learning_protocol:"single",loop_mode:"manual"});
  expect(Object.hasOwn(submissions[0].body.workflow.settings,"experience_mode")).toBe(false);
@@ -621,6 +621,49 @@ it('shows legacy missing no-change stop as unconfigured without writing a phanto
 });
 
 const basicGraph={...graph,name:'单题学习',settings:{method_id:'basic_learning',method_version:'1',loop_mode:'manual',max_rounds:2,discovery_per_round:1,packet_size:1,use_previous_experience:true,record_conditions:true}};
+const entryMethods = [
+ ['rule_refinement','规则 KB 闭环','available'],
+ ['basic_learning','单题学习','available'],
+ ['scientific','科学研究','available'],
+ ['paired_scientific','配对科学研究','available'],
+ ['future_method','未来方法','planned'],
+].map(([id,name,status])=>({id,name,status,version:'1',description:'方法说明',adaptation:'',paper_url:null,learning_protocol:id==='paired_scientific'?'paired_progressive':'single',experience_mode:'off',hash:id,steps:[]}));
+it('keeps other methods collapsed while preserving the saved primary draft and full method catalog',async()=>{
+ const original={...structuredClone(ruleWorkflow),name:'保留的 KB 研究草稿'};
+ const {draftWrites,getSharedDraft}=setup(path=>path==='/api/studio/methods'?Promise.resolve(response({items:entryMethods})):undefined,false,undefined,original);
+ const methods=await screen.findByRole('navigation',{name:'Harness 方法'});
+ expect(within(methods).getByRole('button',{name:'KB 真理闭环'}).getAttribute('aria-current')).toBe('page');
+ const disclosure=within(methods).getByLabelText('切换学习方法').closest('details');
+ expect(disclosure).toBeTruthy();
+ expect(disclosure!.open).toBe(false);
+ expect(getSharedDraft().workflow).toEqual(original);
+ expect(draftWrites).toHaveLength(0);
+ fireEvent.click(within(methods).getByText('其他方法',{exact:true}));
+ expect(disclosure!.open).toBe(true);
+ const select=within(methods).getByRole('combobox',{name:'切换学习方法'}) as HTMLSelectElement;
+ expect(select.value).toBe('rule_refinement');
+ expect(Array.from(select.options,option=>option.value)).toEqual(['rule_refinement','basic_learning','scientific','paired_scientific','future_method']);
+ expect(select.options[4].disabled).toBe(true);
+ expect(draftWrites).toHaveLength(0);
+});
+it('enters the primary KB loop only on request and can restore the exact previous method draft',async()=>{
+ const original={...structuredClone(graph),name:'已有配对方法草稿',settings:{...graph.settings,method_id:'paired_scientific',method_version:'1',learning_protocol:'paired_progressive',max_rounds:7}};
+ const {draftWrites,getSharedDraft}=setup(path=>{
+  if(path==='/api/studio/methods')return Promise.resolve(response({items:entryMethods}));
+  if(path==='/api/studio/workflow/default?method_id=rule_refinement')return Promise.resolve(response(ruleWorkflow));
+ },false,undefined,original);
+ const methods=await screen.findByRole('navigation',{name:'Harness 方法'});
+ expect(within(methods).getByText('当前：配对科学研究')).toBeTruthy();
+ expect(getSharedDraft().workflow).toEqual(original);
+ expect(draftWrites).toHaveLength(0);
+ fireEvent.click(within(methods).getByRole('button',{name:'KB 真理闭环'}));
+ await waitFor(()=>expect(getSharedDraft().workflow.settings.method_id).toBe('rule_refinement'));
+ expect(getSharedDraft().advanced_backup).toEqual(original);
+ fireEvent.click(within(methods).getByText('更多',{exact:true}));
+ fireEvent.click(within(methods).getByRole('button',{name:'恢复切换前的草稿'}));
+ await waitFor(()=>expect(getSharedDraft().workflow).toEqual(original));
+ expect(within(methods).getByText('当前：配对科学研究')).toBeTruthy();
+});
 it.each([
  ['basic_learning','单题学习工作流'],
  ['scientific','方法研究路径'],
@@ -715,11 +758,12 @@ it('keeps an explicit empty model choice after fresh default auto-selection',asy
 it('switches to single-question learning only explicitly and restores the backed-up advanced draft',async()=>{
  const original={...graph,name:'高级实验草稿',settings:{...graph.settings,method_id:'scientific',max_rounds:3},nodes:graph.nodes.map(n=>n.id==='solver'?{...n,config:{role:'solver',prompt:'自定义指令'}}:n)};
  const {getSharedDraft}=setup(path=>path==='/api/studio/workflow/default?method_id=basic_learning'?Promise.resolve(response(basicGraph)):undefined,false,undefined,original);
- fireEvent.change(await screen.findByRole('combobox',{name:'切换学习方法'}),{target:{value:'basic_learning'}});
+ fireEvent.click(await screen.findByText('其他方法',{exact:true}));
+ fireEvent.change(screen.getByRole('combobox',{name:'切换学习方法'}),{target:{value:'basic_learning'}});
  await screen.findByRole('region',{name:'单题学习工作流'});
  await waitFor(()=>expect(getSharedDraft().advanced_backup?.settings.max_rounds).toBe(3));
  fireEvent.click(screen.getByText('更多',{exact:true}));
- fireEvent.click(screen.getByRole('button',{name:'恢复原高级草稿'}));
+ fireEvent.click(screen.getByRole('button',{name:'恢复切换前的草稿'}));
  await screen.findByDisplayValue('高级实验草稿');
  await waitFor(()=>expect(getSharedDraft().workflow.name).toBe(original.name));
  expect(getSharedDraft().workflow.nodes.find((n:any)=>n.id==='solver').config.prompt).toBe('自定义指令');
@@ -758,6 +802,9 @@ it('keeps unsynced edits visible and prevents execution when the server save fai
  fireEvent.click(screen.getByRole('button',{name:'关闭详情'}));
  fireEvent.change(screen.getByLabelText('工作流名称'),{target:{value:'尚未同步的修改'}});
  await screen.findByText('服务器连接中断，修改尚未同步');
+ const sync=screen.getByRole('region',{name:'服务器共享草稿'});
+ expect(within(sync).getByRole('button',{name:'重试同步'})).toBeTruthy();
+ expect(within(sync).getByRole('button',{name:'导出未同步草稿'})).toBeTruthy();
  expect((screen.getByLabelText('工作流名称') as HTMLInputElement).value).toBe('尚未同步的修改');
  expect((screen.getByRole('button',{name:'预览研究配置'}) as HTMLButtonElement).disabled).toBe(true);
  expect((screen.getByRole('button',{name:'开始研究'}) as HTMLButtonElement).disabled).toBe(true);
