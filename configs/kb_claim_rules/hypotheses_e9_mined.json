@@ -1,0 +1,86 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kind": "pre-registration",
+  "written": "2026-10-08, before any controlled-experiment dataset or candidate was generated",
+  "origin": "Patterns noticed on epoch-9 arch-only candidate pairs (data/evals/kb_claim_pairwise/kb_0008_e9) after trying a handful of simple rules; therefore hypotheses, not findings.",
+  "test_data": "Fresh dataset instances (new seed range) with one-factor-at-a-time candidate sets from tools/run_controlled_arch_experiment.py. Each set changes exactly one architecture field; optimizer, loss, budget and batch size are shared.",
+  "decision_rule": {
+    "H01a": "CONFIRMED if decisive-pair precision >= 0.85 AND dataset-bootstrap 95% lower bound >= 0.70; REFUTED if precision < 0.60; otherwise INCONCLUSIVE.",
+    "others": "Exploratory: precision and CI are reported, no pass/fail verdict."
+  },
+  "also_evaluated": "configs/kb_claim_rules/kb_0008_evidence_ge1.json unchanged (sha256 467391b9d5aae062669c20257595a56ec2eabfd6e61a8e14f403a97600bb72c9)",
+  "claims": [
+    {
+      "id": "H01a",
+      "status": "testable",
+      "note": "PRIMARY. More LayerNorm layers win, all else equal, in the two families where the pattern was seen (tabular 42/44, univariate regression 26/27 at same depth).",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["family", "in", ["synthetic_tabular_classification", "univariate_regression"]]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation", "residual"],
+          "predict": {"higher_better": "ln_count"}
+        }
+      ]
+    },
+    {
+      "id": "H01b",
+      "status": "testable",
+      "note": "Exploratory generalization of H01a to MLP families where it was not seen (only 1 decisive pair there in epoch 9).",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["family", "in", ["multivariate_regression", "spiral_classification", "xor_classification"]]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation", "residual"],
+          "predict": {"higher_better": "ln_count"}
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "status": "testable",
+      "note": "Exploratory. Deeper wins at fixed width with a uniform LayerNorm setting (epoch 9: 75% tabular, 59% univariate at same LN count, width not fixed).",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "width", "activation", "residual", "ln_any", "ln_all"],
+          "predict": {"higher_better": "depth"}
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "status": "testable",
+      "note": "Descriptive, no prior direction. Wider wins at fixed depth and LayerNorm pattern.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "depth", "activation", "residual", "ln_count"],
+          "predict": {"higher_better": "width"}
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "status": "testable",
+      "note": "Descriptive, no prior direction (epoch 9 confounded: 56%). Residual beats non-residual, all else equal.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation", "ln_count"],
+          "predict": {"better": [["residual", "eq", true]], "worse": [["residual", "eq", false]]}
+        }
+      ]
+    },
+    {
+      "id": "H05",
+      "status": "testable",
+      "note": "Descriptive, no prior direction (epoch 9 confounded: 52%). GELU/SiLU beat ReLU/LeakyReLU, all else equal.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "depth", "width", "residual", "ln_count"],
+          "predict": {"better": [["smooth_activation", "eq", true]], "worse": [["smooth_activation", "eq", false]]}
+        }
+      ]
+    }
+  ]
+}

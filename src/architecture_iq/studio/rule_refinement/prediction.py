@@ -5,7 +5,7 @@ from collections import deque
 from copy import deepcopy
 from itertools import combinations
 
-from architecture_iq.kb.rules import public_views, match_rule
+from architecture_iq.kb.rules import public_views, match_rule, match_rule_for_injection
 from .artifacts import validate_snapshot
 from .contracts import PREDICTOR_VERSION, fields, text, digest
 
@@ -128,3 +128,40 @@ def predict_question(case: dict, kb: dict) -> dict:
 
 def predict_batch(cases: list[dict], kb: dict) -> list[dict]:
     return [predict_question(case, kb) for case in cases]
+
+
+def match_question_for_injection(case: dict, kb: dict) -> dict:
+    """Return public-spec context applicability evidence, without choosing an answer.
+
+    The matching contract intentionally differs from ``predict_question``:
+    source-reported replication and injection permission gate these references,
+    and a documented ``inject_same`` may loosen equal-control requirements.
+    No GT, model call or independent validation experiment is involved.
+    Opposing matches remain visible for the caller; they are never voted on.
+    """
+    result = {"question_ref": deepcopy(case.get("ref")), "kb_version": kb.get("version"),
+              "executable_hash": kb.get("executable_hash"), "status": "invalid",
+              "matches": [], "rule_ids": [], "claim_ids": [], "issues": []}
+    try:
+        validate_public_case(case)
+        validate_snapshot(kb)
+        views = public_views(case["dataset_spec"], case["candidate_specs"])
+        ids = [choice["id"] for choice in case["question"]["choices"]]
+        matches = []
+        for a, b in combinations(range(len(ids)), 2):
+            for rule in kb["rules"]:
+                predicted = match_rule_for_injection(rule, views[a], views[b])
+                if predicted is None:
+                    continue
+                winner, loser = (ids[a], ids[b]) if predicted == 0 else (ids[b], ids[a])
+                metadata = rule["metadata"]
+                matches.append({"rule_id": rule["rule_id"], "revision": rule["revision"],
+                                "claim_id": metadata["claim_id"], "clause_index": metadata["clause_index"],
+                                "winner": winner, "loser": loser})
+    except (ValueError, TypeError, KeyError, IndexError, OverflowError) as exc:
+        result["issues"] = [{"code": "invalid_case", "message": str(exc)}]
+        return result
+    result.update(status="matched" if matches else "unmatched", matches=matches,
+                  rule_ids=sorted({match["rule_id"] for match in matches}),
+                  claim_ids=sorted({match["claim_id"] for match in matches}))
+    return result

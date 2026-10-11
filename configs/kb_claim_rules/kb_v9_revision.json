@@ -1,0 +1,96 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kind": "kb-revision-proposal",
+  "parent_kb": "data/kb_0008.json",
+  "parent_rules": "configs/kb_claim_rules/kb_0008_evidence_ge1.json (sha256 467391b9d5aae062669c20257595a56ec2eabfd6e61a8e14f403a97600bb72c9)",
+  "written": "2026-10-09, by claude-opus-5-5 acting as reviser, from development data only",
+  "development_data": [
+    "epoch-9 natural candidate pairs (data/evals/kb_claim_pairwise/kb_0008_e9)",
+    "controlled_arch_v1 one-factor sets (docs/reports/kb-claim-controlled-arch-20261008.md)"
+  ],
+  "validity_status_values": "proposed -> (confirmation on fresh data) -> replicated_in_scope | refuted | inconclusive",
+  "claims": [
+    {
+      "id": "R1",
+      "revision": 1,
+      "status": "testable",
+      "validity_status": "proposed",
+      "operation": "broaden",
+      "parents": ["K0002", "K0037"],
+      "text": "In MLPs trained under these short budgets, enabling LayerNorm in the hidden layers lowers test loss when depth, width, activation, residual setting and the whole training setup are held fixed. In controlled tests this held for every learning rate from 3e-5 to 3e-3, all five optimizers, with and without residual connections, and from 256 to 2048 steps.",
+      "dev_evidence": "controlled_arch_v1: 122/125 decisive pairs, all 5 MLP families; parents were scoped to residual + lr <= 1e-4, which the data did not require.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "depth", "width", "activation", "residual"],
+          "predict": {"higher_better": "ln_count"}
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "revision": 1,
+      "status": "testable",
+      "validity_status": "proposed",
+      "operation": "broaden + merge",
+      "parents": ["K0047", "K0074 (width half)", "K0021 (width half)"],
+      "text": "In MLPs, holding depth, LayerNorm pattern, activation, residual setting and the training setup fixed, a wider network reaches lower test loss under these budgets. Width also raises the parameter count, so this does not say how to trade width against depth at a fixed parameter budget.",
+      "dev_evidence": "controlled_arch_v1: 304/304 decisive pairs, all 5 MLP families; K0074 width half 29/29, K0021 width half 5/5, K0047 14/14.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"]],
+          "same": ["opt_key", "batch_size", "depth", "activation", "residual", "ln_count"],
+          "predict": {"higher_better": "width"}
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "revision": 1,
+      "status": "testable",
+      "validity_status": "proposed",
+      "operation": "broaden + split",
+      "parents": ["K0038", "K0177", "K0074 (depth half, reversed)", "K0021 (depth half, reversed)", "K0083 (retired)"],
+      "text": "In MLPs that have residual connections or LayerNorm, a deeper network with the same width and training setup reaches lower test loss under these budgets. For plain MLPs with neither residual connections nor LayerNorm, extra depth gives no reliable gain.",
+      "dev_evidence": "controlled_arch_v1 depth sets: LN+plain 161/185, LN+res 194/212, noLN+res 159/159; noLN+plain only 68/114 (abstain there). K0074 depth half 1/89 and K0021 depth half 0/12 predicted the opposite.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], {"any": [["residual", "eq", true], ["ln_any", "eq", true]]}],
+          "same": ["opt_key", "batch_size", "width", "activation", "residual", "ln_any", "ln_all"],
+          "predict": {"higher_better": "depth"}
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "revision": 1,
+      "status": "testable",
+      "validity_status": "proposed",
+      "operation": "replace (parent refuted)",
+      "parents": ["K0082 (retired)"],
+      "text": "For MSE regression with MLPs, ReLU or LeakyReLU activations reach lower test loss than GELU or SiLU when everything else is fixed. For classification there is no reliable activation preference.",
+      "dev_evidence": "controlled_arch_v1 activation sets: regression 114/115 decisive pairs favour ReLU-family; classification 61/103 favour smooth (no reliable direction). K0082 (smooth wins in regression) 1/109.",
+      "rules": [
+        {
+          "scope": [["model_type", "eq", "mlp"], ["task", "eq", "regression"]],
+          "same": ["opt_key", "batch_size", "depth", "width", "residual", "ln_count"],
+          "predict": {"better": [["smooth_activation", "eq", false]], "worse": [["smooth_activation", "eq", true]]}
+        }
+      ]
+    }
+  ],
+  "legacy_disposition": {
+    "K0002": "superseded by R1 (scope broadened)",
+    "K0037": "superseded by R1 (scope broadened)",
+    "K0047": "superseded by R2 (scope broadened)",
+    "K0038": "superseded by R3",
+    "K0177": "superseded by R3",
+    "K0074": "split: width half merged into R2; depth half retired (controlled 1/89)",
+    "K0021": "split: width half merged into R2; depth half retired (controlled 0/12)",
+    "K0082": "retired: refuted (controlled regression 1/109); replaced by R4",
+    "K0083": "retired: not supported (controlled 2/6; plain no-LN deeper still wins 68/114)",
+    "K0056": "disabled: no support (controlled 2/4; residual has no consistent effect, 20/37)",
+    "K0071": "unchanged legacy (controlled 6/7, narrow scope, too few lineages to revise)",
+    "optimizer claims": "unchanged legacy; on epoch 9 they match the one-line displacement baseline (not part of this architecture round)"
+  }
+}

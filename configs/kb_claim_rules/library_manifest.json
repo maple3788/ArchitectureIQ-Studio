@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "files": {
+    "kb_0008_evidence_ge1.json": "467391b9d5aae062669c20257595a56ec2eabfd6e61a8e14f403a97600bb72c9",
+    "kb_v9_revision.json": "8cd6fb423dd90a1cdc1ddbb4600a02dd222cf171a583b356486b0c292244bb49",
+    "kb_v10_revision.json": "0964a544bc964ade5168e037478de9e2664f9c27724b58f657c4176d72e59990",
+    "hypotheses_e9_mined.json": "d71dce4cc24ed8d2283401f56264fbbf148825903169a64253db105dd3f2d9ca",
+    "hypotheses_v2_confirm.json": "7c8f63e412127a0c1977bdc815671d717dd4b490f041d5391f6528f5dba72639",
+    "hypotheses_v3_confirm.json": "0e42c685b5e637ca106c804762559975c923aa86b3b7403d2989382f35431e9d"
+  },
+  "versions": [
+    {
+      "id": "kb-v9",
+      "label": "KB v9",
+      "name": "KB v9 · 架构规则",
+      "file": "kb_v9_revision.json",
+      "protocol": "hypotheses_v2_confirm.json",
+      "parent": null
+    },
+    {
+      "id": "kb-v10",
+      "label": "KB v10",
+      "name": "KB v10 · 架构与优化器规则",
+      "file": "kb_v10_revision.json",
+      "protocol": "hypotheses_v3_confirm.json",
+      "parent": "kb-v9"
+    }
+  ]
+}

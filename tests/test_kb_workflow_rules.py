@@ -255,3 +255,109 @@ def test_validated_scope_rejects_unverified_pair_selection_strategy(strategy):
     question, claim, a, b = scoped_pair()
     claim["validated_scope"]["pair_sampling"] = strategy
     assert match_validated_scope(question, claim, a, b) is False
+
+
+def r6_rule():
+    return {"scope": [["model_type", "eq", "mlp"], ["residual", "eq", True]],
+            "same": ["opt_key"], "differ": ["depth", "width"], "max_param_ratio": 2.0,
+            "predict": {"dominates": [["depth", "higher"], ["width", "lower"]]}}
+
+
+def r6_views():
+    common = {"model_type": "mlp", "residual": True, "opt_key": "adam"}
+    return ({**common, "depth": 4, "width": 16, "params": 200},
+            {**common, "depth": 2, "width": 32, "params": 100})
+
+
+@pytest.mark.parametrize("params,expected", [(100, 0), (200, 0), (200.00001, None), (50, 0), (49.99999, None)])
+def test_max_param_ratio_accepts_equal_boundary_and_abstains_outside(params, expected):
+    from architecture_iq.kb.rules import match_rule
+    a, b = r6_views()
+    a["params"] = params
+    assert match_rule(r6_rule(), a, b) == expected
+    assert match_rule(r6_rule(), b, a) == (1 if expected == 0 else None)
+
+
+@pytest.mark.parametrize("params", [None, 0, -1, True, "200", float("inf"), float("nan")])
+def test_max_param_ratio_abstains_on_unknown_or_invalid_public_parameter_counts(params):
+    from architecture_iq.kb.rules import match_rule
+    a, b = r6_views()
+    assert match_rule(r6_rule(), {**a, "params": params}, b) is None
+    assert match_rule(r6_rule(), a, {**b, "params": params}) is None
+    a.pop("params")
+    assert match_rule(r6_rule(), a, b) is None
+
+
+@pytest.mark.parametrize("limit", [None, 0, .99, -2, True, "2", {}, float("inf"), float("nan")])
+def test_max_param_ratio_rejects_nonfinite_nonnumeric_or_subunit_limit(limit):
+    from architecture_iq.kb.rules import validate_rule
+    with pytest.raises(ValueError, match="max_param_ratio"):
+        validate_rule({**r6_rule(), "max_param_ratio": limit})
+
+
+def reported_rule(rule=None, **metadata):
+    return {"rule_id": "rule_r6", "revision": "a" * 64, "state": "active",
+            "rule": rule or r6_rule(), "metadata": {
+                "claim_id": "R6", "clause_index": 1, "validity_status": "replicated_in_scope",
+                "validation_origin": "source_reported", **metadata}}
+
+
+def test_injection_same_relaxes_only_context_matching_and_never_mutates_strict_rule():
+    from architecture_iq.kb.rules import match_rule, match_rule_for_injection
+    a, b = r6_views()
+    b["opt_key"] = "sgd"
+    entry = reported_rule(inject_same=[])
+    before = copy.deepcopy(entry)
+    assert match_rule(entry["rule"], a, b) is None
+    assert match_rule_for_injection(entry, a, b) == 0
+    assert entry == before
+    assert match_rule(entry["rule"], a, b) is None
+
+
+@pytest.mark.parametrize("patch", [{"params": 401}, {"depth": 4}, {"width": 16},
+                                   {"residual": False}, {"model_type": "transformer"},
+                                   {"depth": 8, "width": 32}])
+def test_injection_same_preserves_parameter_scope_differ_and_prediction_conditions(patch):
+    from architecture_iq.kb.rules import match_rule_for_injection
+    a, b = r6_views()
+    entry = reported_rule(inject_same=[])
+    assert match_rule_for_injection(entry, a, {**b, **patch}) is None
+
+
+def test_injection_without_override_keeps_equal_controls():
+    from architecture_iq.kb.rules import match_rule_for_injection
+    a, b = r6_views()
+    assert match_rule_for_injection(reported_rule(), a, b) == 0
+    assert match_rule_for_injection(reported_rule(), a, {**b, "opt_key": "sgd"}) is None
+
+
+@pytest.mark.parametrize("metadata", [{"inject": False}, {"validity_status": "proposed"},
+                                      {"validity_status": "refuted"}, {"validity_status": "inconclusive"},
+                                      {"validity_status": None}, {"validation_origin": "modified_in_studio"},
+                                      {"validation_origin": None}])
+def test_context_injection_requires_source_reported_replication_and_permission(metadata):
+    from architecture_iq.kb.rules import match_rule, match_rule_for_injection
+    a, b = r6_views()
+    entry = reported_rule(**metadata)
+    assert match_rule(entry["rule"], a, b) == 0
+    assert match_rule_for_injection(entry, a, b) is None
+
+
+def test_context_injection_excludes_retired_and_unmarked_legacy_rules():
+    from architecture_iq.kb.rules import match_rule_for_injection
+    a, b = r6_views()
+    entry = reported_rule()
+    entry["state"] = "retired"
+    assert match_rule_for_injection(entry, a, b) is None
+    entry["state"] = "active"
+    entry.pop("metadata")
+    assert match_rule_for_injection(entry, a, b) is None
+
+
+@pytest.mark.parametrize("role", ["exploratory", "descriptive"])
+def test_nonconfirmatory_protocol_roles_are_never_injected_even_when_source_reports_replication(role):
+    from architecture_iq.kb.rules import match_rule, match_rule_for_injection
+    a, b = r6_views()
+    entry = reported_rule(role=role)
+    assert match_rule(entry["rule"], a, b) == 0
+    assert match_rule_for_injection(entry, a, b) is None

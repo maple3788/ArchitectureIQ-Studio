@@ -14,7 +14,7 @@ from architecture_iq.studio.rag import freeze_rag_model
 from .artifacts import RuleArtifactStore, validate_snapshot
 from .contracts import PROTOCOL, fields, text
 from .pool import PoolStore, _case, check_independence
-from .prediction import predict_batch
+from .prediction import predict_batch, match_question_for_injection
 from .workflow import compile_rule_workflow
 from .challenges import prepare_challenge
 
@@ -44,7 +44,8 @@ def match_rules(catalog,datasets,inventory,body,*,offset=0,limit=25):
     kb,_,_=resolve_rule_knowledge(catalog,inventory,body['kb_ref'])
     keys=selection['binding']['keys'];cases=[_case(catalog.get_question(k)) for k in keys[offset:offset+limit]]
     predictions=predict_batch(cases,kb)
-    return dict(items=predictions,cases=cases,total=len(keys),offset=offset,limit=limit,matched_count=len(predictions),
+    context_matches=[match_question_for_injection(case,kb) for case in cases]
+    return dict(items=predictions,context_matches=context_matches,cases=cases,total=len(keys),offset=offset,limit=limit,matched_count=len(predictions),
                 counts={status:sum(p['status']==status for p in predictions) for status in ('answered','conflict','uncovered','invalid')},
                 kb_version=kb['version'],scope='requested_page',model_required=False,feedback_released=False)
 

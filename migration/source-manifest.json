@@ -234,5 +234,21 @@
     "frontend/workflow/src/time.ts": "aef5f25a27c8bedb439453e0780dfc000521a4ae5d483c5c394db2dcbf2f01d3",
     "frontend/workflow/src/ui.tsx": "06bc9738a400c0f99d4cd7a52b2dac2659bb838a0f8ef998ef7bf35f062b77d6",
     "tools/llm_eval/llm_client.py": "5733d7b1308e5dae1008e1855764db22bda3d18db84ebf0dde8698c63fb79387"
-  }
+  },
+  "additional_imports": [
+    {
+      "import_date": "2026-10-11",
+      "kind": "kb_rule_documents",
+      "source_repository": "ArchitectureIQ",
+      "source_subdirectory": "configs/kb_claim_rules",
+      "notes": "Source documents copied unchanged; source-reported validation remains separate from Studio receipts. Existing migration hashes are preserved.",
+      "files": {
+        "configs/kb_claim_rules/kb_v9_revision.json": "8cd6fb423dd90a1cdc1ddbb4600a02dd222cf171a583b356486b0c292244bb49",
+        "configs/kb_claim_rules/kb_v10_revision.json": "0964a544bc964ade5168e037478de9e2664f9c27724b58f657c4176d72e59990",
+        "configs/kb_claim_rules/hypotheses_e9_mined.json": "d71dce4cc24ed8d2283401f56264fbbf148825903169a64253db105dd3f2d9ca",
+        "configs/kb_claim_rules/hypotheses_v2_confirm.json": "7c8f63e412127a0c1977bdc815671d717dd4b490f041d5391f6528f5dba72639",
+        "configs/kb_claim_rules/hypotheses_v3_confirm.json": "0e42c685b5e637ca106c804762559975c923aa86b3b7403d2989382f35431e9d"
+      }
+    }
+  ]
 }

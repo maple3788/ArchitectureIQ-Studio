@@ -41,7 +41,7 @@ def test_identical_archives_and_run_are_one_snapshot_with_three_provenance_sourc
     run = store.create('workflow', {'name': 'Existing scientific run'})
     write_json_atomic(store.directory(run['id']) / 'result.json', {'kb': snapshot})
     result = client(tmp_path).get('/api/studio/kb').json()
-    assert result['total'] == 1
+    assert result['total'] == 3  # one archive/run snapshot plus the two bundled proposals
     item = result['items'][0]
     assert item['kind'] == 'formal'
     assert item['source_count'] == 3
@@ -62,8 +62,8 @@ def test_equal_record_counts_do_not_collapse_different_knowledge(tmp_path, monke
     second, _ = archive(tmp_path, 'archive-b', different)
     monkeypatch.setenv('STUDIO_ARCHIVES', os.pathsep.join(map(str, [first, second])))
     result = client(tmp_path).get('/api/studio/kb').json()
-    assert result['total'] == 2
-    assert [x['counts']['records'] for x in result['items']] == [3, 3]
+    assert result['total'] == 4
+    assert [x['counts']['records'] for x in result['items'] if x['kind'] == 'formal'] == [3, 3]
     assert all(x['source_count'] == 1 for x in result['items'])
 
 
@@ -90,7 +90,7 @@ def test_waiting_manual_loop_exposes_latest_sealed_experience_without_final_job_
     response = client(tmp_path).get('/api/studio/kb')
     assert response.status_code == 200, response.text
     result = response.json()
-    assert result['total'] == 1
+    assert result['total'] == 3
     item = result['items'][0]
     assert item['kind'] == 'experience'
     assert item['name'] == '单题学习 · 学习经验'
@@ -112,7 +112,7 @@ def test_unsealed_or_tampered_experience_is_not_presented_as_saved_knowledge(tmp
     write_json_atomic(path, value)
     response = client(tmp_path).get('/api/studio/kb')
     assert response.status_code == 200, response.text
-    assert response.json()['items'] == []
+    assert {item['id'] for item in response.json()['items']} == {'builtin:kb-v9', 'builtin:kb-v10'}
     assert response.json()['warnings']
     assert 'TAMPERED' not in response.text
 
@@ -121,7 +121,7 @@ def test_first_round_empty_memory_is_not_reported_as_a_broken_snapshot(tmp_path,
     monkeypatch.delenv('STUDIO_ARCHIVES', raising=False)
     practice_job(tmp_path, rounds=0)
     response = client(tmp_path).get('/api/studio/kb').json()
-    assert response['items'] == []
+    assert {item['id'] for item in response['items']} == {'builtin:kb-v9', 'builtin:kb-v10'}
     assert response['warnings'] == []
 
 

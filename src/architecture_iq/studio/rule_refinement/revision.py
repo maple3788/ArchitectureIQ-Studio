@@ -19,6 +19,7 @@ from .prediction import validate_public_case
 DSL = {
     'public_fields': sorted(PUBLIC_FIELDS), 'control_fields': sorted(CONTROL_FIELDS), 'operators': sorted(OPS),
     'rule': {'scope': 'optional predicate', 'same': ['control fields equal'], 'differ': ['control fields unequal'],
+             'max_param_ratio': 'optional finite number >= 1; both parameter counts must be positive and their larger/smaller ratio within this bound',
              'predict': 'exactly one mode: higher_better/lower_better field with optional min_ratio; '
                         'better/worse predicates; or dominates [[field,higher|lower,optional ratio]], optional winner/loser predicates'},
     'predicate': '[field,operator,scalar], [predicates] for conjunction, or {all|any:[predicates]} or {not:predicate}',

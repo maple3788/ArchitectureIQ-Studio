@@ -8,11 +8,11 @@ vi.mock('./ResearchPathCanvas',()=>({ResearchPathCanvas:({nodes,onSelect,inspect
 vi.mock('./DatasetInputPicker',()=>({DatasetInputPicker:({onApply,selectionMode}:any)=><button onClick={()=>onApply({dataset_binding:{collection_id:'ds',revision:'rev',keys:['q1','q2'],hashes:['h1','h2'],selection:{},pair_keys:selectionMode==='pairs'?['p1']:[]}})}>应用整库</button>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const bootstrap:any={service:{execution_enabled:true},models:[{id:'m',name:'修订服务',enabled:true}],capabilities:{profiles:[{name:'v1.4',budgets:[4096],families:[{name:'univariate_regression',form_schema:{editable_fields:[]}}]}]}};
-function setup(complete=false,omitDefaults=false){
+function setup(complete=false,omitDefaults=false,kbItems?:any[]){
  const calls:any[]=[];
  vi.stubGlobal('fetch',async(path:string,init:any)=>{const body=init?.body&&JSON.parse(init.body);calls.push({path,body,headers:init?.headers});let value:any={};
- if(path.endsWith('/kb'))value={items:[{id:'kb',version:'v',name:'研究规则',kind:'research_rules'}]};
- if(path.endsWith('/match?offset=0&limit=25'))value={total:2,matched_count:2,items:[{status:'conflict',question_ref:{key:'q1'},edges:[],paths:[]},{status:'answered',answer_id:'a',question_ref:{key:'q2'},edges:[],paths:[]}],cases:[]};
+ if(path.endsWith('/kb'))value={items:kbItems??[{id:'kb',version:'v',name:'研究规则',kind:'research_rules'}]};
+ if(path.endsWith('/match?offset=0&limit=25'))value={total:2,matched_count:2,items:[{status:'conflict',question_ref:{key:'q1'},edges:[],paths:[]},{status:'answered',answer_id:'a',question_ref:{key:'q2'},edges:[],paths:[]}],cases:[],context_matches:[{question_ref:{key:'q1'},status:'matched',claim_ids:['R1'],rule_ids:['R1:0'],matches:[{rule_id:'R1:0',claim_id:'R1',winner:'a',loser:'b'}]},{question_ref:{key:'q2'},status:'uncovered',claim_ids:[],rule_ids:[],matches:[]}]};
  if(path.endsWith('/preview'))value={can_run:true,preview_hash:'hash',counts:{questions:2,pairs:0},cost:{candidate_seed_runs_per_batch:48},blockers:[]};
  if(path.endsWith('/runs'))value={id:'run'};
  return new Response(JSON.stringify(value));});
@@ -45,3 +45,18 @@ it('freezes a preview and invalidates it on model or budget changes',async()=>{
 });
 
 it('shows server default iteration limits for a valid imported draft with only resource caps',async()=>{setup(false,true);fireEvent.click(screen.getByRole('button',{name:'新题挑战'}));expect((screen.getByLabelText('最大修订尝试') as HTMLInputElement).value).toBe('12');expect(screen.getByText(/每批 16 道/)).toBeTruthy();});
+
+it('retains the selected built-in rule version and its status when moving between nodes',async()=>{
+ const kbItems=['v9','v10'].map(v=>({id:'builtin:kb-'+v,version:'hash-'+v,name:'KB '+v,kind:'research_rules',snapshot:{parent_version:'parent',source_document:{version_label:v,filename:'kb_'+v+'_revision.json'},rules:[{rule_id:'R1:0',state:'active',metadata:{claim_id:'R1',validity_status:'proposed',validation_origin:'source_reported'},rule:{predict:{higher_better:'width'}}}]}}));
+ const {calls}=setup(false,false,kbItems);
+ fireEvent.click(screen.getByRole('button',{name:'初始规则'}));await screen.findByRole('option',{name:/KB v10/});
+ fireEvent.change(screen.getByLabelText('规则 KB'),{target:{value:'builtin:kb-v10@hash-v10'}});
+ expect(screen.getByText(/1 条待独立确认/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'研究题池'}));fireEvent.click(screen.getByRole('button',{name:'选择 Dataset'}));fireEvent.click(screen.getByRole('button',{name:'应用整库'}));
+ fireEvent.click(screen.getByRole('button',{name:'初始规则'}));expect((screen.getByLabelText('规则 KB') as HTMLSelectElement).value).toBe('builtin:kb-v10@hash-v10');
+ fireEvent.click(screen.getByRole('button',{name:'匹配预览'}));await screen.findByText(/本页 2/);
+ expect(calls.find(c=>c.path.includes('/match?')).body.kb_ref).toEqual({id:'builtin:kb-v10',version:'hash-v10'});
+ expect(screen.getByText('模型参考匹配：1 条主张 · R1')).toBeTruthy();
+ expect(screen.getByText('规则冲突')).toBeTruthy();
+ expect(screen.getByText(/参考匹配不代表程序答案/)).toBeTruthy();
+});

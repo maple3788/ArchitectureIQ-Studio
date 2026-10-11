@@ -133,3 +133,152 @@ def test_proposals_are_idempotent_but_cannot_be_overwritten(tmp_path):
     assert store.save_proposal("attempt-1", {"raw": "bad"}) == store.save_proposal("attempt-1", {"raw": "bad"})
     with pytest.raises(ValueError):
         store.save_proposal("attempt-1", {"raw": "different"})
+
+
+def native_document(*, status="replicated_in_scope", inject=False, parents=None):
+    return {"schema_version": "kb_claim_rules_v1", "kind": "kb-revision-proposal",
+            "parent": "kb_v9_revision.json", "legacy_disposition": {"K1": "superseded by R2"},
+            "claims": [{"id": "R2", "text": "A scoped source claim", "revision": 1,
+                        "status": "testable", "kind": "architecture", "validity_status": status,
+                        "inject": inject, "inject_same": [], "parents": parents or ["K1"],
+                        "operation": "merge", "dev_evidence": "49/49 independent lineages",
+                        "usage_note": "Do not inject into parameter-banded comparisons",
+                        "rules": [rule_entry()["rule"], rule_entry(lower=True)["rule"]]}]}
+
+
+def test_native_document_splits_clauses_and_preserves_source_restrictions(tmp_path):
+    store = make_store(tmp_path)
+    protocol = {"kind": "pre-registration", "decision_rule": {"alpha": "0.05/6"},
+                "claims": [{"id": "R2", "role": "confirmatory", "rules": [rule_entry()["rule"]]}]}
+    snapshot = store.import_rules(native_document(), source_ref={"id": "v10"},
+                                  source_document={"version_label": "v10", "file_sha256": "a"*64},
+                                  confirmation_protocol=protocol)
+    assert len(snapshot["rules"]) == 2
+    for index, rule in enumerate(snapshot["rules"], 1):
+        assert rule["metadata"] == {
+            "claim_id": "R2", "clause_index": index, "revision": 1,
+            "status": "testable", "kind": "architecture", "validity_status": "replicated_in_scope",
+            "validation_origin": "source_reported", "inject": False, "inject_same": [],
+            "parents": ["K1"], "operation": "merge", "dev_evidence": "49/49 independent lineages",
+            "usage_note": "Do not inject into parameter-banded comparisons", "role": "confirmatory"}
+        assert rule["source_refs"][0]["source_clause_index"] == index
+    assert snapshot["source_document"]["parent"] == "kb_v9_revision.json"
+    assert snapshot["source_document"]["legacy_disposition"] == {"K1": "superseded by R2"}
+    assert snapshot["source_document"]["version_label"] == "v10"
+    assert snapshot["confirmation_protocol"] == protocol
+    assert store.get(snapshot["version"]) == snapshot
+
+
+def test_native_version_links_resolve_exact_parent_claims(tmp_path):
+    store = make_store(tmp_path)
+    v9 = store.import_rules(native_document(status="proposed"), source_ref={"id": "v9"})
+    v10 = store.import_rules(native_document(parents=["v9 R2 (replicated)"]), source_ref={"id": "v10"},
+                            parent_version=v9["version"], parent_snapshot=v9)
+    assert v10["parent_version"] == v9["version"]
+    assert all(r["parents"] == [target(p) for p in v9["rules"]] for r in v10["rules"])
+    with pytest.raises(ValueError):
+        store.import_rules(native_document(), source_ref={"id": "v10"},
+                           parent_version="b"*64, parent_snapshot=v9)
+
+
+@pytest.mark.parametrize("op", ["edit", "split", "merge", "retire"])
+def test_patch_cannot_inherit_confirmed_status_or_reenable_injection(tmp_path, op):
+    store = make_store(tmp_path)
+    before = store.import_rules(native_document(), source_ref={"id": "v10"})
+    first, second = before["rules"]
+    operation = ({"op": op, **target(first), "entry": rule_entry()} if op == "edit" else
+                 {"op": op, **target(first)} if op == "retire" else
+                 {"op": op, "targets": [target(first)] if op == "split" else [target(first), target(second)],
+                  "entries": [rule_entry(), rule_entry(lower=True)] if op == "split" else [rule_entry()]})
+    after = store.apply_patch(before["version"], patch(before, operation))
+    assert after["source_document"] == before["source_document"]
+    for rule in after["rules"]:
+        assert rule["metadata"]["inject"] is False
+        if rule["parents"] and rule["state"] == "active":
+            assert rule["metadata"]["validity_status"] == "proposed"
+            assert rule["metadata"]["validation_origin"] == "modified_in_studio"
+        else:
+            assert rule["metadata"]["validity_status"] == "replicated_in_scope"
+    assert store.get(before["version"]) == before
+
+
+def test_patch_metadata_cannot_forge_source_certification_and_add_is_proposed(tmp_path):
+    store = make_store(tmp_path)
+    before = initial(store)
+    forged = {**rule_entry(), "metadata": {"validity_status": "replicated_in_scope",
+              "validation_origin": "source_reported", "inject": True}}
+    with pytest.raises(ValueError):
+        store.apply_patch(before["version"], patch(before, {"op": "add", "entry": forged}))
+    after = store.apply_patch(before["version"], patch(before, {"op": "add", "entry": rule_entry()}))
+    added = next(r for r in after["rules"] if r["rule_id"] != before["rules"][0]["rule_id"])
+    assert added["metadata"]["validity_status"] == "proposed"
+    assert added["metadata"]["validation_origin"] == "modified_in_studio"
+
+
+@pytest.mark.parametrize("field,value", [("inject", 1), ("inject_same", ["correct_letter"]),
+    ("inject_same", ["depth", "depth"]), ("validity_status", "always_true"),
+    ("parents", [False]), ("role", "auto-certified")])
+def test_native_document_rejects_unsafe_or_invalid_metadata(tmp_path, field, value):
+    doc = native_document()
+    doc["claims"][0][field] = value
+    with pytest.raises(ValueError):
+        make_store(tmp_path).import_rules(doc, source_ref={"id": "bad"})
+
+
+def test_schema_one_snapshot_without_metadata_imports_without_rehashing(tmp_path):
+    from architecture_iq.kb.store import canonical_hash
+    from architecture_iq.studio.rule_refinement.artifacts import executable_hash
+    old_rule = {"rule_id": "old_rule", **rule_entry(), "rationale": "", "parents": [],
+                "source_refs": [{"id": "frozen"}], "state": "active"}
+    old_rule["revision"] = canonical_hash(old_rule)
+    snapshot = {"kind": "research_rules", "schema_version": 1, "parent_version": None,
+                "rules": [old_rule], "executable_hash": executable_hash([old_rule]), "import_issues": []}
+    snapshot["version"] = canonical_hash(snapshot)
+    store = make_store(tmp_path)
+    assert store.import_rules(snapshot, source_ref={"id": "archive"}) == snapshot
+    assert store.get(snapshot["version"]) == snapshot
+    with pytest.raises(ValueError):
+        store.import_rules(snapshot, source_ref={"id": "archive"}, source_document={"version_label": "changed"})
+
+
+@pytest.mark.parametrize("field,value", [("validity_status", []), ("role", {}), ("status", []),
+                                      ("revision", True), ("inject_same", [{}])])
+def test_malformed_native_metadata_raises_validation_error(tmp_path, field, value):
+    document = native_document()
+    document["claims"][0][field] = value
+    with pytest.raises(ValueError):
+        make_store(tmp_path).import_rules(document, source_ref={"id": "malformed"})
+
+
+def test_source_parent_tokens_do_not_match_partial_or_different_version_ids(tmp_path):
+    store = make_store(tmp_path)
+    parent = store.import_rules(native_document(), source_ref={"id": "v9"},
+                                source_document={"version_label": "v9"})
+    child = store.import_rules(native_document(parents=["R20 (different claim)", "v8 R2 (older version)"]),
+                              source_ref={"id": "v10"}, parent_snapshot=parent)
+    assert all(rule["parents"] == [] for rule in child["rules"])
+
+
+def test_metadata_tampering_is_detected_and_document_overrides_are_rejected(tmp_path):
+    store = make_store(tmp_path)
+    before = store.import_rules(native_document(), source_ref={"id": "v10"})
+    changed = deepcopy(before)
+    changed["rules"][0]["metadata"]["inject"] = True
+    with pytest.raises(ValueError):
+        store.import_rules(changed, source_ref={"id": "tampered"})
+    with pytest.raises(ValueError):
+        store.import_rules(native_document(), source_ref={"id": "v10"},
+                           source_document={"parent": "invented_history.json"})
+
+
+@pytest.mark.parametrize("label,matched", [("v9", True), ("KB v9", True),
+                                        ("v90", False), ("KB v90", False),
+                                        ("custom KB v9 rules", False)])
+def test_display_version_labels_preserve_exact_library_rule_parents(tmp_path, label, matched):
+    store = make_store(tmp_path)
+    parent = store.import_rules(native_document(), source_ref={"id": "kb-v9"},
+                                source_document={"version_label": label})
+    child = store.import_rules(native_document(parents=["v9 R2 (REPLICATED on controlled_arch_v2)"]),
+                              source_ref={"id": "kb-v10"}, parent_snapshot=parent)
+    expected = [target(rule) for rule in parent["rules"]] if matched else []
+    assert all(rule["parents"] == expected for rule in child["rules"])

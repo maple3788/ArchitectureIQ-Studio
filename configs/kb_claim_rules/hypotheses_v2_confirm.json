@@ -1,0 +1,307 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kind": "pre-registration",
+  "written": "2026-10-09, before any v2 dataset or candidate was generated",
+  "revision_file": "configs/kb_claim_rules/kb_v9_revision.json (sha256 8cd6fb423dd90a1cdc1ddbb4600a02dd222cf171a583b356486b0c292244bb49)",
+  "test_data": "controlled_arch_v2: fresh datasets, seed base 80,000,000 (v1 used 70,000,000; disjoint), counts univariate 12, multivariate 12, spiral 8, xor 8, tabular 10 (50 lineages); 6 base configurations per dataset; factors layernorm, activation, residual, depth, width, shape.",
+  "unit": "dataset instance (lineage). Within a lineage, the claim's decisive pairs vote; majority correct = success, majority wrong = failure, tie = undetermined, no decisive pair = no evidence.",
+  "decision_rule": {
+    "confirmatory": [
+      "R1",
+      "R2",
+      "R3",
+      "R4"
+    ],
+    "alpha": "0.0125 one-sided per claim (0.05 Bonferroni over 4 confirmatory claims), Hoeffding bound over determined lineages",
+    "REPLICATED": "determined lineages >= 16 AND lineage success rate >= 0.75 AND Hoeffding lower bound > 0.5",
+    "REFUTED": "determined lineages >= 16 AND lineage success rate < 0.5",
+    "INCONCLUSIVE": "otherwise",
+    "also_reported": "pair-level decisive precision, dataset bootstrap, strict rate counting no-decisive lineages as non-success",
+    "exploratory_and_descriptive": "R5, R5b, R3b: reported, no verdict, not enabled in the KB this round"
+  },
+  "downstream": "Only REPLICATED claims are enabled in KB v9 for the benchmark A/B (protocol pre-registered separately before v2 results).",
+  "claims": [
+    {
+      "id": "R1",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v9_revision.json (broaden; parents K0002, K0037).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "width",
+            "activation",
+            "residual"
+          ],
+          "predict": {
+            "higher_better": "ln_count"
+          }
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v9_revision.json (broaden + merge; parents K0047, K0074 (width half), K0021 (width half)).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "activation",
+            "residual",
+            "ln_count"
+          ],
+          "predict": {
+            "higher_better": "width"
+          }
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v9_revision.json (broaden + split; parents K0038, K0177, K0074 (depth half, reversed), K0021 (depth half, reversed), K0083 (retired)).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            {
+              "any": [
+                [
+                  "residual",
+                  "eq",
+                  true
+                ],
+                [
+                  "ln_any",
+                  "eq",
+                  true
+                ]
+              ]
+            }
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "width",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "predict": {
+            "higher_better": "depth"
+          }
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v9_revision.json (replace (parent refuted); parents K0082 (retired)).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "task",
+              "eq",
+              "regression"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "width",
+            "residual",
+            "ln_count"
+          ],
+          "predict": {
+            "better": [
+              [
+                "smooth_activation",
+                "eq",
+                false
+              ]
+            ],
+            "worse": [
+              [
+                "smooth_activation",
+                "eq",
+                true
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "status": "testable",
+      "role": "exploratory",
+      "note": "First controlled test, so exploratory by protocol. At matched parameter counts (shape sets, within 2x), the deeper-and-narrower MLP wins when it has residual connections or LayerNorm. Source: epoch-9 banded pairs (deeper-narrower 73-77%, LN-confounded) plus R2/R3.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            {
+              "any": [
+                [
+                  "residual",
+                  "eq",
+                  true
+                ],
+                [
+                  "ln_any",
+                  "eq",
+                  true
+                ]
+              ]
+            }
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "higher"
+              ],
+              [
+                "width",
+                "lower"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "R5b",
+      "status": "testable",
+      "role": "descriptive",
+      "note": "Same as R5 for plain MLPs without LayerNorm (no prediction; reported only).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "residual",
+              "eq",
+              false
+            ],
+            [
+              "ln_any",
+              "eq",
+              false
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "higher"
+              ],
+              [
+                "width",
+                "lower"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "R3b",
+      "status": "testable",
+      "role": "descriptive",
+      "note": "Depth in plain MLPs without LayerNorm (R3 abstains here; dev data 68/114). Reported only.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "residual",
+              "eq",
+              false
+            ],
+            [
+              "ln_any",
+              "eq",
+              false
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "width",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "predict": {
+            "higher_better": "depth"
+          }
+        }
+      ]
+    }
+  ]
+}

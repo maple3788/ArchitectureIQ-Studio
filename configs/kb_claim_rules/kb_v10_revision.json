@@ -1,0 +1,589 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kind": "kb-revision-proposal",
+  "parent": "configs/kb_claim_rules/kb_v9_revision.json",
+  "written": "2026-10-10, by claude-opus-5-5 as reviser, from development data only (epoch-9 natural pairs; controlled_arch_v2 shape sets for R6)",
+  "injection": "a claim is injected into a question when one of its rules applies to some candidate pair with `same` replaced by `inject_same` (other rule fields kept); claims with inject=false are never injected",
+  "claims": [
+    {
+      "id": "O1",
+      "kind": "optimizer",
+      "parents": [
+        "K0009",
+        "K0019",
+        "K0022",
+        "K0044",
+        "K0156",
+        "K0198"
+      ],
+      "text": "For the MLP tasks, among adaptive optimizers (Adam, AdamW, RMSprop, Adagrad) the candidate with the larger cumulative step size reaches lower test loss under these budgets: step size is lr x steps for Adam/AdamW/RMSprop and 2 x lr x sqrt(steps) for Adagrad. This also held when the architectures differed.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "family",
+              "ne",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "higher_better": "disp"
+          }
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "epoch-9 natural: 0.95 of 559 decisive pairs (MLP optimizer-only 298/301), 25/25 lineages."
+    },
+    {
+      "id": "O2",
+      "kind": "optimizer",
+      "parents": [
+        "K0020",
+        "K0100",
+        "K0105"
+      ],
+      "text": "For the bigram language-model tasks (transformer or GRU), the same cumulative-step-size rule holds for learning rates up to 1e-3, but Adam, AdamW and RMSprop at lr 3e-3 are unstable: with 1024 or more steps they lose to any adaptive optimizer at lr 1e-3 or lower, and with 256 steps they are no better than a coin flip.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "family",
+              "eq",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "disp",
+                "higher"
+              ]
+            ],
+            "winner": {
+              "not": [
+                [
+                  "family",
+                  "eq",
+                  "bigram_lm"
+                ],
+                [
+                  "opt",
+                  "in",
+                  [
+                    "Adam",
+                    "AdamW",
+                    "RMSprop"
+                  ]
+                ],
+                [
+                  "lr",
+                  "ge",
+                  0.003
+                ]
+              ]
+            }
+          }
+        },
+        {
+          "scope": [
+            [
+              "family",
+              "eq",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "better": [
+              [
+                "lr",
+                "le",
+                0.001
+              ]
+            ],
+            "worse": [
+              [
+                "opt",
+                "in",
+                [
+                  "Adam",
+                  "AdamW",
+                  "RMSprop"
+                ]
+              ],
+              [
+                "lr",
+                "ge",
+                0.003
+              ],
+              [
+                "steps",
+                "ge",
+                1024
+              ]
+            ]
+          }
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "epoch-9 bigram: 0.91 of 196 decisive pairs, 8/9 lineages; Adam/RMSprop lr 3e-3 with 1024 steps lost 30/30, with 256 steps won 18/33."
+    },
+    {
+      "id": "O3",
+      "kind": "optimizer",
+      "parents": [
+        "K0016",
+        "K0067",
+        "K0124"
+      ],
+      "text": "Plain SGD without momentum loses to any adaptive optimizer (Adam, AdamW, RMSprop, Adagrad) run at lr 1e-4 or higher, regardless of architecture.",
+      "inject_same": [],
+      "rules": [
+        {
+          "predict": {
+            "better": [
+              [
+                "opt",
+                "in",
+                [
+                  "Adam",
+                  "AdamW",
+                  "RMSprop",
+                  "Adagrad"
+                ]
+              ],
+              [
+                "lr",
+                "ge",
+                0.0001
+              ]
+            ],
+            "worse": [
+              [
+                "opt",
+                "eq",
+                "SGD"
+              ],
+              [
+                "momentum",
+                "eq",
+                0
+              ]
+            ]
+          }
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "epoch-9 natural: 0.99 of 200 decisive pairs (optimizer-only and mixed), 22/22 lineages."
+    },
+    {
+      "id": "O4",
+      "kind": "optimizer",
+      "parents": [
+        "K0012",
+        "K0066",
+        "K0069"
+      ],
+      "text": "Between two SGD runs on the same architecture, the one with the larger effective step lr / (1 - momentum) reaches lower test loss; momentum 0.9 multiplies the effective step by 10.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "opt",
+              "eq",
+              "SGD"
+            ]
+          ],
+          "same": [
+            "arch_key"
+          ],
+          "predict": {
+            "higher_better": "eff_lr"
+          }
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "epoch-9 natural: 34/34 decisive pairs, 14/14 lineages."
+    },
+    {
+      "id": "M1",
+      "kind": "mixed",
+      "parents": [
+        "K0023",
+        "K0031",
+        "K0043"
+      ],
+      "text": "When both the architecture and the optimizer settings differ, the candidate whose cumulative step size is at least 2x larger usually wins regardless of architecture (adaptive optimizers; see the step-size notes for the language-model exception at lr 3e-3). Architecture notes decide mainly when the step sizes are within 2x of each other.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "differ": [
+            "arch_key"
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "disp",
+                "higher",
+                2
+              ]
+            ],
+            "winner": {
+              "not": [
+                [
+                  "family",
+                  "eq",
+                  "bigram_lm"
+                ],
+                [
+                  "opt",
+                  "in",
+                  [
+                    "Adam",
+                    "AdamW",
+                    "RMSprop"
+                  ]
+                ],
+                [
+                  "lr",
+                  "ge",
+                  0.003
+                ]
+              ]
+            }
+          }
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "epoch-9 mixed pairs: 0.92 of 372 decisive pairs, 16/17 lineages. Within mixed pairs whose step sizes are within 2x, R1 held 18/22 and R3 20/21; R2 only 2/22."
+    },
+    {
+      "id": "R6",
+      "kind": "architecture",
+      "parents": [
+        "K0074 (depth half)",
+        "K0021 (depth half)",
+        "R2 usage limit",
+        "R5 (v2 descriptive)"
+      ],
+      "text": "At comparable parameter counts (within 2x), an MLP that trades width for depth wins when the networks have residual connections or LayerNorm: the deeper, narrower one is better. For plain MLPs with neither residual connections nor LayerNorm the shallower, wider one is better.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            {
+              "any": [
+                [
+                  "residual",
+                  "eq",
+                  true
+                ],
+                [
+                  "ln_any",
+                  "eq",
+                  true
+                ]
+              ]
+            }
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "max_param_ratio": 2.0,
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "higher"
+              ],
+              [
+                "width",
+                "lower"
+              ]
+            ]
+          },
+          "differ": [
+            "depth",
+            "width"
+          ]
+        },
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "residual",
+              "eq",
+              false
+            ],
+            [
+              "ln_any",
+              "eq",
+              false
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "max_param_ratio": 2.0,
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "lower"
+              ],
+              [
+                "width",
+                "higher"
+              ]
+            ]
+          },
+          "differ": [
+            "depth",
+            "width"
+          ]
+        }
+      ],
+      "status": "testable",
+      "validity_status": "proposed",
+      "dev_evidence": "controlled_arch_v2 shape sets (2x parameter band): 172/220 decisive pairs, 33/41 lineages; LN+residual 70/75, no-LN+residual 29/35, LN+plain 49/69, plain without LN shallower-wider 43/62."
+    },
+    {
+      "id": "R1",
+      "kind": "architecture",
+      "parents": [
+        "v9 R1 (REPLICATED on controlled_arch_v2)"
+      ],
+      "text": "In MLPs trained under these short budgets, enabling LayerNorm in the hidden layers lowers test loss when depth, width, activation, residual setting and the whole training setup are held fixed. In controlled tests this held for every learning rate from 3e-5 to 3e-3, all five optimizers, with and without residual connections, and from 256 to 2048 steps.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "width",
+            "activation",
+            "residual"
+          ],
+          "predict": {
+            "higher_better": "ln_count"
+          }
+        }
+      ],
+      "validity_status": "replicated_in_scope",
+      "status": "testable",
+      "dev_evidence": "REPLICATED on controlled_arch_v2 (45/47 lineages)."
+    },
+    {
+      "id": "R3",
+      "kind": "architecture",
+      "parents": [
+        "v9 R3 (REPLICATED on controlled_arch_v2)"
+      ],
+      "text": "In MLPs that have residual connections or LayerNorm, a deeper network with the same width and training setup reaches lower test loss under these budgets. For plain MLPs with neither residual connections nor LayerNorm, extra depth gives no reliable gain.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            {
+              "any": [
+                [
+                  "residual",
+                  "eq",
+                  true
+                ],
+                [
+                  "ln_any",
+                  "eq",
+                  true
+                ]
+              ]
+            }
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "width",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "predict": {
+            "higher_better": "depth"
+          }
+        }
+      ],
+      "validity_status": "replicated_in_scope",
+      "status": "testable",
+      "dev_evidence": "REPLICATED on controlled_arch_v2 (41/48 lineages)."
+    },
+    {
+      "id": "R4",
+      "kind": "architecture",
+      "parents": [
+        "v9 R4 (REPLICATED on controlled_arch_v2)"
+      ],
+      "text": "For MSE regression with MLPs, ReLU or LeakyReLU activations reach lower test loss than GELU or SiLU when everything else is fixed. For classification there is no reliable activation preference.",
+      "inject_same": [],
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "task",
+              "eq",
+              "regression"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "width",
+            "residual",
+            "ln_count"
+          ],
+          "predict": {
+            "better": [
+              [
+                "smooth_activation",
+                "eq",
+                false
+              ]
+            ],
+            "worse": [
+              [
+                "smooth_activation",
+                "eq",
+                true
+              ]
+            ]
+          }
+        }
+      ],
+      "validity_status": "replicated_in_scope",
+      "status": "testable",
+      "dev_evidence": "REPLICATED on controlled_arch_v2 (20/20 lineages)."
+    },
+    {
+      "id": "R2",
+      "kind": "architecture",
+      "parents": [
+        "v9 R2 (REPLICATED on controlled_arch_v2)"
+      ],
+      "text": "In MLPs, holding depth, LayerNorm pattern, activation, residual setting and the training setup fixed, a wider network reaches lower test loss under these budgets. Width also raises the parameter count, so this does not say how to trade width against depth at a fixed parameter budget.",
+      "inject": false,
+      "validity_status": "replicated_in_scope",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "depth",
+            "activation",
+            "residual",
+            "ln_count"
+          ],
+          "predict": {
+            "higher_better": "width"
+          }
+        }
+      ],
+      "usage_note": "Not injected: benchmark model sets are parameter-banded, so wider usually means shallower; dev data (epoch-9 natural) shows wider-wins only 22% on banded arch pairs and 2/22 on comparable-step mixed pairs. Validity unchanged; replaced in use by R6.",
+      "status": "testable",
+      "dev_evidence": "REPLICATED on controlled_arch_v2 (49/49 lineages); not injected (see usage_note)."
+    }
+  ]
+}

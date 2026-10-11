@@ -144,7 +144,10 @@ def knowledge_inventory(jobs, archives: list[dict]) -> dict:
             add('experience', snapshot, source)
         except _ARTIFACT_ERRORS as exc:
             warnings.append({'source_id': job['id'], 'message': str(exc)})
-    items = sorted(grouped.values(), key=lambda item: item['updated_at'], reverse=True)
+    from .rule_library import bundled_rule_inventory
+    bundled = bundled_rule_inventory()
+    warnings.extend(bundled['warnings'])
+    items = sorted([*grouped.values(), *bundled['items']], key=lambda item: item['updated_at'], reverse=True)
     return {'items': items, 'total': len(items), 'warnings': warnings,
             'notice': '相同完整快照合并展示并保留全部来源；条数相同但内容不同的快照分别保留。'}
 

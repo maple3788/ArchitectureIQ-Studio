@@ -20,3 +20,13 @@ it('shows learned experience independently of formal verified knowledge', async(
  expect(screen.getByText('目标函数具有周期性')).toBeTruthy();
  expect(screen.queryByText('这个版本尚无知识条目。')).toBeNull();
 });
+
+it('counts imported claims separately from their executable branches',async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({items:[{id:'builtin:kb-v10',version:'v10hash',kind:'research_rules',name:'KB v10 · 架构与优化器规则',snapshot:{source_document:{version_label:'v10',filename:'kb_v10_revision.json'},rules:[0,1].map(i=>({rule_id:'R6:'+i,state:'active',metadata:{claim_id:'R6',clause_index:i,validity_status:'proposed',validation_origin:'source_reported'},text:'参数量条件下的深度宽度权衡',rule:{max_param_ratio:2,predict:{higher_better:'depth'}}}))}}]})));
+ render(<KB version={0}/>);
+ expect(await screen.findByRole('heading',{name:'KB v10 · 架构与优化器规则'})).toBeTruthy();
+ expect(screen.getByText('1 条主张 · 2 个执行分支')).toBeTruthy();
+ expect(screen.getByText('内置研究版本')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'查看记录'}));
+ expect(screen.getAllByRole('heading',{name:'参数量条件下的深度宽度权衡'})).toHaveLength(1);
+});

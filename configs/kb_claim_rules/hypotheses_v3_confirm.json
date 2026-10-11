@@ -1,0 +1,501 @@
+{
+  "schema_version": "kb_claim_rules_v1",
+  "kind": "pre-registration",
+  "written": "2026-10-10, before any v3 dataset or candidate was generated",
+  "revision_file": "configs/kb_claim_rules/kb_v10_revision.json (sha256 0964a544bc964ade5168e037478de9e2664f9c27724b58f657c4176d72e59990)",
+  "test_data": "controlled_v3: fresh datasets, seed base 90,000,000 (v1 70M, v2 80M; disjoint), counts univariate 8, multivariate 8, spiral 6, xor 6, tabular 8, bigram 24 (60 lineages); 4 base configurations per dataset; factors lr, opt_type, betas, weight_decay, batch, mixed (benchmark sampler, model+optimizer), shape (MLP only).",
+  "unit": "dataset instance (lineage); within a lineage the claim's decisive pairs vote; majority correct = success, majority wrong = failure, tie = undetermined, no decisive pair = no evidence.",
+  "decision_rule": {
+    "confirmatory": [
+      "O1",
+      "O2",
+      "O3",
+      "O4",
+      "M1",
+      "R6"
+    ],
+    "alpha": "0.05/6 = 0.00833 one-sided per claim, Hoeffding bound over determined lineages",
+    "REPLICATED": "determined lineages >= 16 AND lineage success rate >= 0.75 AND Hoeffding lower bound > 0.5",
+    "REFUTED": "determined lineages >= 16 AND lineage success rate < 0.5",
+    "INCONCLUSIVE": "otherwise",
+    "exploratory": "E1-E4 reported only, never enabled this round"
+  },
+  "downstream": "KB v10 for the leaderboard-identical Opus 5 run = REPLICATED claims among these six, plus R1/R3/R4 (replicated on v2). R2 stays non-injected.",
+  "claims": [
+    {
+      "id": "O1",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "family",
+              "ne",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "higher_better": "disp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "O2",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "family",
+              "eq",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "disp",
+                "higher"
+              ]
+            ],
+            "winner": {
+              "not": [
+                [
+                  "family",
+                  "eq",
+                  "bigram_lm"
+                ],
+                [
+                  "opt",
+                  "in",
+                  [
+                    "Adam",
+                    "AdamW",
+                    "RMSprop"
+                  ]
+                ],
+                [
+                  "lr",
+                  "ge",
+                  0.003
+                ]
+              ]
+            }
+          }
+        },
+        {
+          "scope": [
+            [
+              "family",
+              "eq",
+              "bigram_lm"
+            ],
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "predict": {
+            "better": [
+              [
+                "lr",
+                "le",
+                0.001
+              ]
+            ],
+            "worse": [
+              [
+                "opt",
+                "in",
+                [
+                  "Adam",
+                  "AdamW",
+                  "RMSprop"
+                ]
+              ],
+              [
+                "lr",
+                "ge",
+                0.003
+              ],
+              [
+                "steps",
+                "ge",
+                1024
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "O3",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "predict": {
+            "better": [
+              [
+                "opt",
+                "in",
+                [
+                  "Adam",
+                  "AdamW",
+                  "RMSprop",
+                  "Adagrad"
+                ]
+              ],
+              [
+                "lr",
+                "ge",
+                0.0001
+              ]
+            ],
+            "worse": [
+              [
+                "opt",
+                "eq",
+                "SGD"
+              ],
+              [
+                "momentum",
+                "eq",
+                0
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "O4",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "opt",
+              "eq",
+              "SGD"
+            ]
+          ],
+          "same": [
+            "arch_key"
+          ],
+          "predict": {
+            "higher_better": "eff_lr"
+          }
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "opt",
+              "in",
+              [
+                "Adam",
+                "AdamW",
+                "RMSprop",
+                "Adagrad"
+              ]
+            ]
+          ],
+          "differ": [
+            "arch_key"
+          ],
+          "predict": {
+            "dominates": [
+              [
+                "disp",
+                "higher",
+                2
+              ]
+            ],
+            "winner": {
+              "not": [
+                [
+                  "family",
+                  "eq",
+                  "bigram_lm"
+                ],
+                [
+                  "opt",
+                  "in",
+                  [
+                    "Adam",
+                    "AdamW",
+                    "RMSprop"
+                  ]
+                ],
+                [
+                  "lr",
+                  "ge",
+                  0.003
+                ]
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "status": "testable",
+      "role": "confirmatory",
+      "note": "Copied verbatim from configs/kb_claim_rules/kb_v10_revision.json.",
+      "rules": [
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            {
+              "any": [
+                [
+                  "residual",
+                  "eq",
+                  true
+                ],
+                [
+                  "ln_any",
+                  "eq",
+                  true
+                ]
+              ]
+            }
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "max_param_ratio": 2.0,
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "higher"
+              ],
+              [
+                "width",
+                "lower"
+              ]
+            ]
+          },
+          "differ": [
+            "depth",
+            "width"
+          ]
+        },
+        {
+          "scope": [
+            [
+              "model_type",
+              "eq",
+              "mlp"
+            ],
+            [
+              "residual",
+              "eq",
+              false
+            ],
+            [
+              "ln_any",
+              "eq",
+              false
+            ]
+          ],
+          "same": [
+            "opt_key",
+            "batch_size",
+            "activation",
+            "residual",
+            "ln_any",
+            "ln_all"
+          ],
+          "max_param_ratio": 2.0,
+          "predict": {
+            "dominates": [
+              [
+                "depth",
+                "lower"
+              ],
+              [
+                "width",
+                "higher"
+              ]
+            ]
+          },
+          "differ": [
+            "depth",
+            "width"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "status": "testable",
+      "role": "exploratory",
+      "note": "Adam/AdamW beta2 0.95 beats 0.999 (legacy K0015/K0198 direction).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "sign_normalized",
+              "eq",
+              true
+            ]
+          ],
+          "same": [
+            "arch_key",
+            "opt",
+            "lr",
+            "batch_size",
+            "weight_decay"
+          ],
+          "predict": {
+            "better": [
+              [
+                "beta2",
+                "eq",
+                0.95
+              ]
+            ],
+            "worse": [
+              [
+                "beta2",
+                "eq",
+                0.999
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "status": "testable",
+      "role": "exploratory",
+      "note": "Higher weight decay wins (legacy K0022 says negligible; expect no direction).",
+      "rules": [
+        {
+          "same": [
+            "arch_key",
+            "opt",
+            "lr",
+            "batch_size",
+            "momentum",
+            "beta2"
+          ],
+          "predict": {
+            "higher_better": "weight_decay"
+          }
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "status": "testable",
+      "role": "exploratory",
+      "note": "At a fixed sample budget, the smaller batch (more steps) wins, same optimizer and architecture.",
+      "rules": [
+        {
+          "same": [
+            "arch_key",
+            "opt_key"
+          ],
+          "predict": {
+            "lower_better": "batch_size"
+          }
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "status": "testable",
+      "role": "exploratory",
+      "note": "SGD momentum 0.9 beats momentum 0 at the same lr (subset of O4).",
+      "rules": [
+        {
+          "scope": [
+            [
+              "opt",
+              "eq",
+              "SGD"
+            ]
+          ],
+          "same": [
+            "arch_key",
+            "lr",
+            "batch_size",
+            "weight_decay"
+          ],
+          "predict": {
+            "better": [
+              [
+                "momentum",
+                "ge",
+                0.9
+              ]
+            ],
+            "worse": [
+              [
+                "momentum",
+                "eq",
+                0
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

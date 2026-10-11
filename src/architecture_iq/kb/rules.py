@@ -100,8 +100,10 @@ def _predicate(value: Any, depth: int = 0, budget: list[int] | None = None) -> N
 
 def validate_rule(rule: dict) -> None:
     """Reject hidden selectors, unknown keys, ambiguous modes and unsafe shapes."""
-    if not isinstance(rule, dict) or not set(rule) <= {"scope", "same", "differ", "predict"} or "predict" not in rule:
-        raise ValueError("Rule requires predict and only scope/same/differ/predict keys")
+    if not isinstance(rule, dict) or not set(rule) <= {"scope", "same", "differ", "predict", "max_param_ratio"} or "predict" not in rule:
+        raise ValueError("Rule requires predict and only scope/same/differ/predict/max_param_ratio keys")
+    if "max_param_ratio" in rule and (not _number(rule["max_param_ratio"]) or rule["max_param_ratio"] < 1):
+        raise ValueError("max_param_ratio must be finite and at least one")
     budget = [128]
     _predicate(rule.get("scope"), budget=budget)
     for key in ("same", "differ"):
@@ -210,6 +212,12 @@ def match_rule(rule: dict, a: dict, b: dict) -> int | None:
     validate_rule(rule)
     if _holds(rule.get("scope"), a) is not True or _holds(rule.get("scope"), b) is not True:
         return None
+    if "max_param_ratio" in rule:
+        params_a, params_b = a.get("params"), b.get("params")
+        if not _number(params_a) or not _number(params_b) or params_a <= 0 or params_b <= 0:
+            return None
+        if max(params_a, params_b) / min(params_a, params_b) > rule["max_param_ratio"]:
+            return None
     for key in ("same", "differ"):
         for field in rule.get(key, []):
             va, vb = a.get(field), b.get(field)
@@ -233,6 +241,27 @@ def match_rule(rule: dict, a: dict, b: dict) -> int | None:
     if ratio > 1 and (min(va, vb) <= 0 or max(va, vb) / min(va, vb) < ratio):
         return None
     return 0 if (va > vb) == (key == "higher_better") else 1
+
+
+def match_rule_for_injection(rule_record: dict, a_view: dict, b_view: dict) -> int | None:
+    """Match eligible source-reported knowledge for model context, never execution.
+
+    Source ``inject_same`` changes only the context applicability gate. It does
+    not loosen the authored rule used by deterministic research evaluation, nor
+    turn a source-reported status into a Studio confirmation receipt.
+    """
+    metadata = rule_record.get("metadata")
+    if (rule_record.get("state") != "active" or not isinstance(metadata, dict)
+            or metadata.get("validation_origin") != "source_reported"
+            or metadata.get("validity_status") != "replicated_in_scope"
+            or metadata.get("role") in {"exploratory", "descriptive"}
+            or ("inject" in metadata and metadata["inject"] is not True)):
+        return None
+    rule = rule_record["rule"]
+    validate_rule(rule)
+    if "inject_same" in metadata:
+        rule = {**rule, "same": metadata["inject_same"]}
+    return match_rule(rule, a_view, b_view)
 
 
 def _validate_expression(expression: str) -> None:
