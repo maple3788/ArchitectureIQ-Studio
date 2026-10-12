@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Menu,
   RefreshCw,
+  Settings2,
   ShieldCheck,
   Workflow as FlowIcon,
   X,
@@ -26,17 +27,16 @@ import { ErrorBox, Loading, useResource } from "./ui";
 import type { Bootstrap } from "./types";
 const modules = [
   {id: "data", name: "Data", entry: "data", pages: ["data", "questions", "generation"], icon: Database},
-  {id: "harness", name: "Harness", entry: "workflow", pages: ["workflow", "models"], icon: FlowIcon},
+  {id: "harness", name: "Harness", entry: "workflow", pages: ["workflow"], icon: FlowIcon},
   {id: "kb", name: "KB", entry: "kb", pages: ["kb"], icon: BookOpen},
   {id: "task", name: "Task", entry: "rag", pages: ["rag", "runs"], icon: FlaskConical},
 ];
 const modulePages = {
-  harness: [{id: "workflow", name: "工作流"}, {id: "models", name: "模型配置"}],
   task: [{id: "rag", name: "解答任务"}, {id: "runs", name: "评测与记录"}],
 };
 const pageFromHash = () => {
   const id = location.hash.slice(1);
-  return modules.some(module => module.pages.includes(id)) ? id : id ? undefined : "data";
+  return id === "models" || modules.some(module => module.pages.includes(id)) ? id : id ? undefined : "data";
 };
 export default function App() {
   const [page, setPage] = useState(() => pageFromHash() || "data");
@@ -105,8 +105,8 @@ export default function App() {
     setSetId(id);
     setToast({ message: "题集已保存，可在 Task 的评测与记录中选择并执行。" });
   };
-  const current = modules.find(module => module.pages.includes(page))!;
-  const subpages = current.id === "harness" ? modulePages.harness : current.id === "task" ? modulePages.task : [];
+  const current = modules.find(module => module.pages.includes(page)) || {id: "models", name: "模型配置"};
+  const subpages = current.id === "task" ? modulePages.task : [];
   const data = bootstrap.data || lastBootstrap;
   const executionEnabled = !!bootstrap.data?.service.execution_enabled;
   return (
@@ -146,6 +146,17 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <nav className="sidebar-settings" aria-label="工作空间设置">
+            <button
+              className={`nav-item ${page === "models" ? "active" : ""}`}
+              aria-current={page === "models" ? "page" : undefined}
+              onClick={() => navigate("models")}
+            >
+              <Settings2 size={19} />
+              <span>模型配置</span>
+              {page === "models" && <span className="active-pin" />}
+            </button>
+          </nav>
           <div className="server-chip">
             <span className={`server-dot ${bootstrap.data ? "connected" : ""}`} />
             <div>

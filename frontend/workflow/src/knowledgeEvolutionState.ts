@@ -41,7 +41,7 @@ export type EvolutionSnapshot = {
   round?:EvolutionRound|null; kb?:{claims:number;candidate:number;verified:number;flagged:number;retired:number};
   evidence?:{questions:number;verdicts:number}; claims?:EvolutionClaim[]; rounds?:EvolutionRound[]; thresholds?:Json;
 };
-export type EvolutionClaimDetail = {observation?:EvolutionObservation;claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number;evidence_truncated:boolean};
+export type EvolutionClaimDetail = {observation?:EvolutionObservation;claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number|null;evidence_truncated:boolean;reading_round?:number;evidence_unavailable?:boolean;notice?:string};
 export type EvolutionGeneration = {total:number;completed:number;ok:number;failed:number;pending:number;items:{item_id:string;family:string;question_type:string;budget?:Json;purpose:string;targets:string[];status:string;seconds?:number;question_id?:string}[]};
 export type EvolutionRoundDetail = EvolutionRound & {
   observation?:EvolutionObservation;

@@ -158,6 +158,61 @@ def _report(value):
     }
 
 
+def _claim_detail(raw, history, evidence, questions):
+    """Project a bounded evidence window after the caller fixes its scope."""
+    claim = _claim(raw)
+    claim['evidence'] = {'applicable': len(evidence),
+                         'support': sum(row['outcome'] == 'support' for row in evidence),
+                         'refute': sum(row['outcome'] == 'refute' for row in evidence),
+                         'conflicts': sum(row.get('conflicts', 0) for row in evidence)}
+    def evidence_row(row):
+        public = _pick(row, ('claim_id', 'version', 'question_id', 'round', 'outcome', 'pairs', 'conflicts'))
+        public['question'] = questions.get((row['question_id'], row['round']), questions.get(row['question_id']))
+        return public
+    rows = [evidence_row(row) for row in reversed(evidence[-MAX_EVIDENCE:])]
+    refutes = [row for row in evidence if row['outcome'] == 'refute']
+    return {'claim': claim, 'history': [_claim(v) for v in history],
+            'evidence': rows, 'evidence_total': len(evidence), 'evidence_truncated': len(evidence) > len(rows),
+            'counterexamples': {'items': [evidence_row(row) for row in reversed(refutes[-MAX_EVIDENCE:])],
+                                'total': len(refutes), 'truncated': len(refutes) > MAX_EVIDENCE}}
+
+
+def _claim_at_judgment(raw, event):
+    """Mutable current status/stats must not leak into a historical judgment."""
+    claim = _claim(raw)
+    claim['status'] = event.get('to') or 'unknown'
+    claim['stats'] = _pick(event, STATS) or None
+    claim['needs_revision'] = event.get('needs_revision')
+    return claim
+
+
+def _generation_question(question):
+    """Only public structural scalars belong in the generated-question list."""
+    candidates = question.get('candidates') if isinstance(question, dict) else None
+    if not isinstance(candidates, dict) or not 1 <= len(candidates) <= 26:
+        return None
+    projected = {}
+    for cid, raw in candidates.items():
+        if not isinstance(cid, str) or not 1 <= len(cid) <= 256 or not isinstance(raw, dict):
+            continue
+        view = {}
+        for key in ('depth', 'width', 'lr', 'weight_decay', 'momentum', 'budget', 'steps', 'batch_size',
+                    'num_layers', 'd_model', 'd_ff', 'num_heads'):
+            value = raw.get(key)
+            if type(value) in (int, float) and math.isfinite(value):
+                view[key] = value
+        for key in ('model_type', 'activation', 'opt'):
+            value = raw.get(key)
+            if isinstance(value, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,63}', value):
+                view[key] = value
+        for key in ('residual', 'layer_residual'):
+            if type(raw.get(key)) is bool:
+                view[key] = raw[key]
+        if view:
+            projected[cid] = view
+    return {'candidates': projected} if projected else None
+
+
 def _round(reader, index):
     prefix = f'rounds/round_{index:04d}/'
     completed = [stage for stage in STAGES if reader.read(prefix + 'DONE_' + stage) is not None]
@@ -218,10 +273,15 @@ def collect(root: Path, process_state='unknown') -> dict:
     question_fields = ('question_id', 'round', 'purpose', 'family', 'type', 'dataset_id',
                        'winner', 'winner_separates', 'candidates', 'comparisons')
     questions = {row['question_id']: _pick(row, question_fields) for row in records}
-    by_claim = {}
+    question_history, historical_questions = {}, {}
+    for row in records:
+        if type(row.get('round')) is int:
+            question_history.setdefault(row['question_id'], []).append(_pick(row, question_fields))
+    by_claim, ledger_history = {}, {}
     for row in ledger:
         key = (row['claim_id'], row['version'], row['question_id'])
         by_claim[key] = row  # protect one question / one claim against duplicate append records
+        ledger_history.setdefault(key[:2], []).append(row)
     ledger_by_version, history_by_claim = {}, {}
     for (cid, version, _), row in by_claim.items():
         ledger_by_version.setdefault((cid, version), []).append(row)
@@ -229,25 +289,10 @@ def collect(root: Path, process_state='unknown') -> dict:
         history_by_claim.setdefault(version['id'], []).append(version)
     claims, details = [], {}
     for cid, raw in raw_claims.items():
-        claim = _claim(raw)
         evidence = [row for row in ledger_by_version.get((cid, raw['version']), [])
                     if row['round'] > raw['registered_round']]
-        support = sum(row['outcome'] == 'support' for row in evidence)
-        claim['evidence'] = {'applicable': len(evidence), 'support': support,
-                             'refute': sum(row['outcome'] == 'refute' for row in evidence),
-                             'conflicts': sum(row.get('conflicts', 0) for row in evidence)}
-        def evidence_row(row):
-            public = _pick(row, ('claim_id', 'version', 'question_id', 'round', 'outcome', 'pairs', 'conflicts'))
-            public['question'] = questions.get(row['question_id'])
-            return public
-        rows = [evidence_row(row) for row in reversed(evidence[-MAX_EVIDENCE:])]
-        refutes = [row for row in evidence if row['outcome'] == 'refute']
-        counterexamples = {'items': [evidence_row(row) for row in reversed(refutes[-MAX_EVIDENCE:])],
-                           'total': len(refutes), 'truncated': len(refutes) > MAX_EVIDENCE}
-        details[cid] = {'claim': claim, 'history': [_claim(v) for v in history_by_claim.get(cid, [])],
-                        'evidence': rows, 'evidence_total': len(evidence), 'evidence_truncated': len(evidence) > len(rows),
-                        'counterexamples': counterexamples}
-        claims.append(claim)
+        details[cid] = _claim_detail(raw, history_by_claim.get(cid, []), evidence, questions)
+        claims.append(details[cid]['claim'])
     counts = Counter(claim['status'] for claim in claims)
     names = [name for name in reader.names('rounds') if re.fullmatch(r'round_\d{4,}', name)]
     indices = sorted(int(name.split('_')[1]) for name in names)
@@ -256,8 +301,55 @@ def collect(root: Path, process_state='unknown') -> dict:
     current = next((index for index in indices if not done[index]), (indices[-1] + 1) if indices else 1)
     selected = sorted(set(indices[-MAX_ROUNDS:] + [current]))
     rounds, round_details = [], {}
+    version_claims = {(raw['id'], raw['version']): raw for raw in [*raw_claims.values(), *versions]}
     for index in selected:
         summary, detail = _round(reader, index)
+        for item in detail['generation']['items']:
+            public = _generation_question(questions.get(item.get('question_id')))
+            if item.get('status') == 'ok' and public:
+                item['question'] = public
+        # Capture only revisions referenced by this bounded round window.
+        # Reading later must not depend on the current revision's ledger.
+        registered = {(raw['id'], raw['version']): raw for raw in detail['registered']}
+        events = {(event.get('claim_id'), event.get('version')): event for event in detail['judge_events']}
+        round_claims = {}
+        for cid, version in registered.keys() | events.keys():
+            raw = registered.get((cid, version)) or version_claims.get((cid, version))
+            if not raw or type(raw.get('registered_round')) is not int or raw['registered_round'] > index:
+                continue
+            if (cid, version) in events:
+                raw = _claim_at_judgment(raw, events[cid, version])
+            # Apply the cutoff before deduplication: a later repeated question
+            # must not replace its earlier persisted result in an older round.
+            evidence = list({row['question_id']: row for row in ledger_history.get((cid, version), [])
+                             if raw['registered_round'] < row['round'] <= index}.values())
+            history = [item for item in history_by_claim.get(cid, [])
+                       if item['version'] <= version and item.get('registered_round', index + 1) <= index]
+            for row in evidence:
+                key = (row['question_id'], row['round'])
+                if key not in historical_questions:
+                    # Resume/repeated-question records can arrive later than
+                    # this claim's verdict. Bind the summary to the verdict's
+                    # own round, including when another claim saw a newer one.
+                    historical_questions[key] = max(
+                        (question for question in reversed(question_history.get(row['question_id'], []))
+                         if question['round'] <= row['round']),
+                        key=lambda question: question['round'], default=None)
+            saved = _claim_detail(raw, history[-MAX_EVIDENCE:], evidence, historical_questions)
+            saved.update(reading_round=index, evidence_unavailable=False,
+                         history_truncated=len(history) > MAX_EVIDENCE)
+            round_claims.setdefault(cid, {})[str(version)] = saved
+        detail['claim_details'] = round_claims
+        # A question often tests several claims and appears in both evidence
+        # windows. Persist its large public summary once within this round.
+        evidence_questions = {}
+        for revisions in round_claims.values():
+            for saved in revisions.values():
+                for row in [*saved['evidence'], *saved['counterexamples']['items']]:
+                    question = row.pop('question', None)
+                    if question is not None:
+                        evidence_questions[f"{row['round']}:{row['question_id']}"] = question
+        detail['evidence_questions'] = evidence_questions
         round_details[str(index)] = detail
         if index in indices:
             rounds.append(summary)

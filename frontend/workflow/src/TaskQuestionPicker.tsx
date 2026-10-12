@@ -3,13 +3,13 @@ import {ArrowLeft,ArrowUpRight,ChevronLeft,ChevronRight,Search,X} from 'lucide-r
 import {api} from './api';
 import {Empty,ErrorBox,Loading,useResource} from './ui';
 import {QuestionReader} from './QuestionReader';
-import {familyLabel,typeLabel} from './displayNames';
+import {familyLabel,questionListSummary,typeLabel} from './displayNames';
 import {publicRagReady} from './ragTypes';
 import type {Json} from './types';
 import './task-question-picker.css';
 
 type Source='catalog'|'evolution';
-type Row={id:string;key?:string;family:string;type?:string;question_type?:string;round_index?:number;rag_ready?:boolean};
+type Row={id:string;key?:string;family:string;type?:string;question_type?:string;round_index?:number;rag_ready?:boolean;candidate_configs?:Json[];model_types?:string[]};
 type Selection={source:Source;row:Row};
 type Resolved={key:string;record:Json};
 const PAGE_SIZE=25;
@@ -26,6 +26,7 @@ export function TaskQuestionPicker({version,onSelectQuestion,onClose}:{version:n
  const resolve=async(choice:Selection)=>{
   const cached=cache.current.get(identity(choice));if(cached)return cached;
   const value=choice.source==='evolution'?await api<Resolved>(`/tasks/evolution/questions/${encodeURIComponent(choice.row.id)}`,{}):{key:choice.row.key!,record:await api<Json>(`/tasks/questions/${encodeURIComponent(choice.row.key!)}`)};
+  if(choice.row.key&&value.key!==choice.row.key)throw Error('题目来源已变化，请重新打开选择器后重试。');
   if(!value.key||!publicRagReady(value.record))throw Error('题目公开输入不可用，请选择其他题目。');
   cache.current.set(identity(choice),value);return value;
  };
@@ -53,7 +54,21 @@ export function TaskQuestionPicker({version,onSelectQuestion,onClose}:{version:n
    <div className="task-picker-toolbar"><label><Search size={16}/><input aria-label="搜索题目" placeholder="搜索题号、题型或数据类别" value={search} disabled={busy} onChange={event=>{setSearch(event.target.value);setOffset(0);}}/></label>{source==='evolution'&&list.data?.source&&<span className={list.data.source.connected?'':'is-stale'}>{list.data.source.connected?'新题自动更新':'显示最近同步记录'}</span>}</div>
    <div className="task-picker-body"><ErrorBox error={list.error}/>{list.loading?<Loading/>:!rows.length?<Empty title="没有符合条件的题目">{source==='evolution'?'知识演化已完成并保存的题目会显示在这里。':'换一个搜索条件试试。'}</Empty>:rows.map(row=>{
     const choice={source,row},chosen=selected&&identity(selected)===identity(choice),unavailable=row.rag_ready===false;
-    return <article className={`task-picker-row${chosen?' is-selected':''}`} key={row.key||row.id}><label><input type="radio" name="task-question" checked={!!chosen} disabled={unavailable||busy} aria-label={`选择 ${row.id}`} onChange={()=>{setSelected(choice);setError('');}}/><span><strong>{familyLabel(row.family)} · {typeLabel(row.type||row.question_type)}</strong><small>{row.id}{source==='evolution'?` · 第 ${row.round_index} 轮`:''}{unavailable?' · 公开题面暂不可用':''}</small></span></label><button className="task-text-action" disabled={busy} aria-label={`阅读题目 ${row.id}`} onClick={()=>void read(choice)}>阅读题目<ArrowUpRight size={14}/></button></article>;
+    const questionType=row.type||row.question_type,summary=questionListSummary({...row,type:questionType});
+    return <article className={`task-picker-row${chosen?' is-selected':''}`} key={row.key||row.id}>
+     <label><input type="radio" name="task-question" checked={!!chosen} disabled={unavailable||busy} aria-label={`选择 ${row.id}`} onChange={()=>{setSelected(choice);setError('');}}/>
+      <span className="task-picker-copy"><span className="task-picker-kind">{familyLabel(row.family)} · {typeLabel(questionType)}</span>
+       <strong>{summary.title}</strong>
+       {summary.candidates.length>=2&&<span className="task-picker-question">比较以下 {summary.candidates.length} 个候选方案，选择表现最好的一个。</span>}
+       {summary.candidates.length?<span className="task-picker-candidates" role="list" aria-label={`${row.id} 的公开候选`}>
+        {summary.candidates.map((candidate,index)=><span role="listitem" key={`${candidate.letter}-${index}`}><b aria-hidden={candidate.letter==='?'?true:undefined}>{candidate.letter==='?'?'·':candidate.letter}</b><span>{candidate.label}</span></span>)}
+       </span>:<span className="task-picker-summary-note">候选摘要暂未记录，可阅读完整题目。</span>}
+       {summary.candidates.some(candidate=>candidate.letter==='?')&&<span className="task-picker-summary-note">选项字母以完整题面为准。</span>}
+       <small>{row.id}{source==='evolution'?` · 第 ${row.round_index} 轮`:''}{unavailable?' · 公开题面暂不可用':''}</small>
+      </span>
+     </label>
+     <button className="task-text-action" disabled={busy} aria-label={`阅读题目 ${row.id}`} onClick={()=>void read(choice)}>阅读题目<ArrowUpRight size={14}/></button>
+    </article>;
    })}</div>
    <div className="task-picker-pagination"><span>{total?`${offset+1}–${Math.min(offset+PAGE_SIZE,total)} / ${total} 道题`:'0 道题'}</span><button className="icon-button" aria-label="上一页" disabled={!offset||busy||list.loading} onClick={()=>setOffset(value=>Math.max(0,value-PAGE_SIZE))}><ChevronLeft size={18}/></button><button className="icon-button" aria-label="下一页" disabled={offset+PAGE_SIZE>=total||busy||list.loading} onClick={()=>setOffset(value=>value+PAGE_SIZE)}><ChevronRight size={18}/></button></div>
   </>}

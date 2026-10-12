@@ -300,6 +300,14 @@ small {
   margin-top: auto;
   padding-top: 25px;
 }
+.sidebar-settings {
+  border-bottom: 1px solid #ffffff10;
+  margin-bottom: 9px;
+  padding-bottom: 9px;
+}
+.sidebar-settings .nav-item {
+  margin-bottom: 0;
+}
 .server-chip {
   display: flex;
   align-items: center;

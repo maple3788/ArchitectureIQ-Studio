@@ -129,6 +129,10 @@ def _observed_question(observer, source):
         for detail in capture['round_details'].values() for row in detail.get('generation', {}).get('items', []))
     known = known or any(row.get('question_id') == qid for detail in capture['claim_details'].values()
         for row in [*detail.get('evidence', []), *detail.get('counterexamples', {}).get('items', [])])
+    known = known or any(row.get('question_id') == qid
+        for detail in capture['round_details'].values()
+        for versions in detail.get('claim_details', {}).values() for saved in versions.values()
+        for row in [*saved.get('evidence', []), *saved.get('counterexamples', {}).get('items', [])])
     if not known:
         raise PracticeConflict('这份阅读记录没有保存该题，请重新打开题目')
     record = observer.question(qid)

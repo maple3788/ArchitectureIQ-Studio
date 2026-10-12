@@ -44,7 +44,8 @@ def test_public_view_only_summaries_preserve_missing_values_and_strip_private_fi
                {'id': 'a', 'letter': 'A', 'view': {'model_type': 'gru_lm', 'budget': 16384,
                 'arch_key': json.dumps({'type': 'gru_lm', 'num_layers': 2, 'score': 'SECRET'}),
                 'opt_key': json.dumps({'type': 'Adam', 'lr': 0.001, 'answer': 'SECRET'})}},
-               {'id': 'b', 'letter': 'B', 'view': {'model_type': 'transformer_lm'}}]}
+               {'id': 'b', 'letter': 'B', 'view': {'model_type': 'transformer_lm',
+                'num_layers': 3, 'd_model': 128, 'd_ff': 256, 'num_heads': 4, 'layer_residual': False}}]}
     source = tmp_path / 'public_questions.json'
     source.write_text(json.dumps([raw]))
     catalog.import_source(source)
@@ -53,6 +54,8 @@ def test_public_view_only_summaries_preserve_missing_values_and_strip_private_fi
     assert candidates[0]['optimizer'] == {'type': 'Adam', 'lr': 0.001}
     assert candidates[0]['budget'] == {'total_samples_seen': 16384}
     assert candidates[1]['budget'] == {}
+    assert candidates[1]['model'] == {'type': 'transformer_lm', 'num_layers': 3,
+        'd_model': 128, 'd_ff': 256, 'num_heads': 4, 'layer_residual': False}
     assert 'SECRET' not in json.dumps(candidates)
 
 

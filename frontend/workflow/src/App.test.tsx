@@ -45,12 +45,15 @@ it('opens Data by default while preserving existing named routes',async()=>{
  expect(await screen.findByRole('heading',{name:'总题库'})).toBeTruthy();
  expect(location.hash).toBe('#data');
 });
-it('keeps model deep links inside Harness and follows browser hash navigation',async()=>{
+it('opens model settings directly and follows browser hash navigation',async()=>{
  location.hash='#models';
  vi.stubGlobal('fetch',async(path:string)=>new Response(JSON.stringify(path.endsWith('/bootstrap')?{service:{execution_enabled:false,host:'local'},stats:{},models:[]}:{items:[],total:0})));
  render(<App/>);
  expect(await screen.findByRole('heading',{name:'配置模型接入。'})).toBeTruthy();
- expect(screen.getByRole('button',{name:'Harness'}).getAttribute('aria-current')).toBe('page');
+ const settings=within(screen.getByRole('navigation',{name:'工作空间设置'}));
+ expect(settings.getByRole('button',{name:'模型配置'}).getAttribute('aria-current')).toBe('page');
+ expect(within(screen.getByRole('banner')).getByText('模型配置')).toBeTruthy();
+ expect(within(screen.getByRole('navigation',{name:'核心模块'})).getAllByRole('button').every(button=>!button.hasAttribute('aria-current'))).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'Task'}));
  expect(await screen.findByRole('heading',{name:'解答任务'})).toBeTruthy();
  location.hash='#rag_one';
@@ -61,4 +64,22 @@ it('keeps model deep links inside Harness and follows browser hash navigation',a
  fireEvent(window,new HashChangeEvent('hashchange'));
  expect(await screen.findByRole('heading',{name:'配置模型接入。'})).toBeTruthy();
  expect(screen.getByRole('button',{name:'模型配置'}).getAttribute('aria-current')).toBe('page');
+});
+it('opens model registration from footer settings and closes the mobile navigation',async()=>{
+ location.hash='#data';
+ vi.stubGlobal('fetch',async(path:string)=>new Response(JSON.stringify(path.endsWith('/bootstrap')?{service:{execution_enabled:false,host:'local'},stats:{},models:[]}:{items:[],total:0})));
+ render(<App/>);
+ expect(await screen.findByRole('heading',{name:'我的 Datasets'})).toBeTruthy();
+ const modules=within(screen.getByRole('navigation',{name:'核心模块'}));
+ expect(modules.getAllByRole('button').map(button=>button.textContent)).toEqual(['Data','Harness','KB','Task']);
+ fireEvent.click(screen.getByRole('button',{name:'展开导航'}));
+ expect(screen.getByRole('button',{name:'关闭导航'})).toBeTruthy();
+ fireEvent.click(within(screen.getByRole('navigation',{name:'工作空间设置'})).getByRole('button',{name:'模型配置'}));
+ expect(location.hash).toBe('#models');
+ expect(await screen.findByRole('heading',{name:'配置模型接入。'})).toBeTruthy();
+ expect(screen.queryByRole('button',{name:'关闭导航'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'登记模型'}));
+ expect(screen.getByLabelText('接入方式')).toBeTruthy();
+ expect(screen.getByLabelText('请求模型 ID')).toBeTruthy();
+ expect(screen.getByRole('button',{name:'保存模型配置'})).toBeTruthy();
 });

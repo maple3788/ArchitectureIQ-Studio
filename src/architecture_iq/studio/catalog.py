@@ -169,7 +169,9 @@ def candidate_configs(record: dict) -> list[dict]:
                 if key in view:
                     groups[name] = _object(json.loads(view[key]))
             aliases = {'model': {'type': 'model_type', 'depth': 'depth', 'width': 'width',
-                                 'activation': 'activation', 'residual': 'residual'},
+                                 'activation': 'activation', 'residual': 'residual',
+                                 'num_layers': 'num_layers', 'd_model': 'd_model', 'd_ff': 'd_ff',
+                                 'num_heads': 'num_heads', 'layer_residual': 'layer_residual'},
                        'optimizer': {'type': 'opt', 'lr': 'lr', 'weight_decay': 'weight_decay',
                                      'momentum': 'momentum'},
                        'budget': {'total_samples_seen': 'budget', 'training_steps': 'steps',

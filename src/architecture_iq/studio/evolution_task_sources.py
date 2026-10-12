@@ -14,6 +14,7 @@ import sqlite3
 
 from architecture_iq.kb.rules import public_views, validate_rule
 from architecture_iq.kb.store import canonical_hash
+from .catalog import candidate_configs
 from .loop_question import public_question
 from .rag_inputs import rag_ready
 from .rule_refinement.artifacts import RuleArtifactStore, _revision, validate_snapshot
@@ -33,6 +34,32 @@ def _json(value):
 
 def _question_key(source_identity, identifier):
     return 'evolution_' + canonical_hash({'source': source_identity, 'question_id': identifier})
+
+
+def _observed_candidate_configs(capture):
+    """Project only public structural features from already captured records.
+
+    Source candidate IDs have no guaranteed relationship to shuffled option
+    letters. Only a canonical public question can supply those letters.
+    """
+    result = {}
+    records = [row for detail in capture.get('round_details', {}).values()
+               for row in detail.get('generation', {}).get('items', []) if row.get('status') == 'ok']
+    for detail in capture.get('claim_details', {}).values():
+        records.extend([*detail.get('evidence', []), *(detail.get('counterexamples') or {}).get('items', [])])
+    for row in records:
+        question = row.get('question')
+        candidates = question.get('candidates') if isinstance(question, dict) else None
+        if not isinstance(candidates, dict) or not 1 <= len(candidates) <= 26:
+            continue
+        choices = [{'id': identifier, 'view': view} for identifier, view in candidates.items()
+                   if isinstance(identifier, str) and 1 <= len(identifier) <= 256 and isinstance(view, dict)]
+        configs = candidate_configs({'public': {'choices': choices}})
+        if configs:
+            result[row.get('question_id')] = [
+                {'candidate_id': choice['id'], **{key: value for key, value in config.items() if key != 'letter'}}
+                for choice, config in zip(choices, configs)]
+    return result
 
 
 class EvolutionTaskSources:
@@ -94,6 +121,16 @@ class EvolutionTaskSources:
                 rows.append((key, source, qid, _json(summary)))
         with self._connect() as conn:
             conn.executemany('INSERT OR IGNORE INTO questions (key,source_identity,question_id,summary) VALUES (?,?,?,?)', rows)
+            # This mutable list index may gain public descriptions as scoring
+            # records arrive. Frozen question payloads and hashes are untouched.
+            for qid, configs in _observed_candidate_configs(capture).items():
+                row = conn.execute('SELECT key,summary FROM questions WHERE source_identity=? AND question_id=?',
+                                   (source, qid)).fetchone()
+                if row:
+                    summary = json.loads(row['summary'])
+                    if summary.get('candidate_configs') != configs:
+                        conn.execute('UPDATE questions SET summary=? WHERE key=?',
+                                     (_json({**summary, 'candidate_configs': configs}), row['key']))
 
     def _index_evidence_question(self, capture, evidence):
         # Evidence can outlive the observer's recent generation window. Admit
@@ -127,7 +164,15 @@ class EvolutionTaskSources:
             items = [row for row in items if needle in ' '.join(str(row.get(k, '')) for k in
                      ('id', 'family', 'type', 'purpose', 'round_index')).casefold()]
         items.sort(key=lambda row: (-row['round_index'], row['id']))
-        return {'items': items[offset:offset + limit], 'total': len(items), 'offset': offset, 'limit': limit,
+        page = items[offset:offset + limit]
+        for item in page:
+            if item['cached']:
+                # Prefer the exact selected public snapshot, with integrity
+                # checks, over descriptive source observations that may evolve.
+                record = self.get_question(item['key'])
+                item.update(candidate_configs=candidate_configs(record),
+                            family=record['public']['family'], rag_ready=rag_ready(record['public']))
+        return {'items': page, 'total': len(items), 'offset': offset, 'limit': limit,
                 'source': {'configured': self.observer.configured,
                            'connected': self.observer.sync()['status'] == 'connected',
                            'sequence': capture['observation']['sequence'] if capture else 0}}

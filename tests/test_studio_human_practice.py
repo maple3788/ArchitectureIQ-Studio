@@ -113,6 +113,38 @@ def test_observed_human_result_is_separate_cached_and_bound_to_seen_public_artif
     assert client.get('/api/studio/tasks').json()['items'] == []
 
 
+@pytest.mark.parametrize('bucket', ['evidence', 'counterexamples'])
+def test_archived_round_question_review_uses_exact_capture_membership(evolution, bucket):
+    client, observer, ref, _, calls = evolution
+    source = observed_capture()
+    source['claim_details'] = {}
+    for detail in source['round_details'].values():
+        detail['generation'] = {'items': []}
+    saved = {'evidence': [], 'counterexamples': {'items': []}}
+    rows = saved['evidence'] if bucket == 'evidence' else saved['counterexamples']['items']
+    rows.append({'question_id': 'q_generated', 'round': 1})
+    source['round_details']['1']['claim_details'] = {'C1': {'1': saved}}
+    observer.reader = lambda _: source
+    assert observer.poll_once()
+    ref = {**ref, 'observation': observer.snapshot()['observation']}
+
+    assert post(client, ref, answer='no-such-option').status_code == 422
+    assert post(client, {**ref, 'expected_question_hash': '0' * 64}).status_code == 409
+    assert post(client, {**ref, 'question_id': 'q_unknown'}).status_code == 409
+    assert not calls
+
+    # Later captures cannot add or remove membership from the viewed record.
+    source['round_details']['1']['claim_details'] = {}
+    assert observer.poll_once()
+    latest = {**ref, 'observation': observer.snapshot()['observation']}
+    assert post(client, latest).status_code == 409
+    assert not calls
+    response = post(client, ref)
+    assert response.status_code == 200, response.text
+    assert response.json()['correct_answer'] == {'id': 'c_A', 'letter': 'A'}
+    assert calls == ['q_generated']
+
+
 @pytest.mark.parametrize('change,status', [('answer',422),('source',409),('sequence',409),('hash',409),('question',409)])
 def test_observed_invalid_references_are_rejected_before_private_reader(evolution, change, status):
     client, _, ref, _, calls = evolution

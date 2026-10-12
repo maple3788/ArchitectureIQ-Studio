@@ -280,3 +280,50 @@ it('does not navigate after leaving a question while its Task selection is still
  const button=await screen.findByRole('button',{name:'去 Task 解答'});fireEvent.click(button);fireEvent.click(button);await waitFor(()=>expect(resolve).toBeTruthy());expect(requests.filter(row=>row.method==='POST')).toHaveLength(1);
  fireEvent.click(screen.getByRole('button',{name:'返回生成记录'}));await act(async()=>{resolve(new Response(JSON.stringify(taskSeed)));});expect(onTask).not.toHaveBeenCalled();expect(screen.getByRole('dialog',{name:'本轮新题'})).toBeTruthy();
 });
+
+it('opens round knowledge at its saved version and returns through question, knowledge and round',async()=>{
+ const snapshot=fixture();install(snapshot);
+ const observation={source_identity:'a'.repeat(64),sequence:8};
+ const requests:string[]=[];
+ const detail={...snapshot.rounds![0],observation,judge_events:[{claim_id:'C0001',version:1,from:'candidate',to:'verified',support:15,applicable:18,lower_bound:.6}],registered:[{id:'C0002',version:1,text:'本轮新登记的规则'}]};
+ vi.stubGlobal('fetch',async(url:string)=>{
+  requests.push(url);
+  const data=url.includes('/rounds/2/claims/')?{observation,reading_round:2,claim:{...snapshot.claims![0],version:1,text:'本轮封存的知识内容'},history:[],evidence:[{question_id:'q_round',round:2,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
+   :url.endsWith('/rounds/2')?detail
+   :url.endsWith('/questions/q_round')?{metadata:{id:'q_round'},public:{id:'q_round',prompt:'本轮完整题面',choices:[{id:'candidate-a',letter:'A'},{id:'candidate-b',letter:'B'}]},observation:{content_hash:'hash'}}
+   :url.endsWith('/questions/review')?{selected_answer:{id:'candidate-a',letter:'A'},correct_answer:{id:'candidate-b',letter:'B'},correct:false,feedback:{correct_letter:'B',reveal:{curves:[]}}}:snapshot;
+  return new Response(JSON.stringify(data));
+ });
+ render(<KnowledgeEvolution onTask={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole('tab',{name:'轮次记录'}));
+ fireEvent.click(screen.getByRole('button',{name:'阅读第 2 轮'}));
+ fireEvent.click(await screen.findByRole('button',{name:'查看第 2 轮知识 C0001'}));
+ expect(await screen.findByText('本轮封存的知识内容')).toBeTruthy();
+ expect(screen.queryByRole('dialog',{name:'第 2 轮研究'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'去 Task 解答'})).toBeNull();
+ expect(requests).toContain(`/api/studio/kb-loop/rounds/2/claims/C0001?version=1&source_identity=${observation.source_identity}&sequence=8`);
+ act(()=>Source.instances[0].emit('snapshot',{...snapshot,sequence:9}));
+ expect(requests.some(url=>url.includes('/rounds/2/claims/')&&url.includes('sequence=9'))).toBe(false);
+ fireEvent.click(screen.getByText('q_round').closest('summary')!);
+ fireEvent.click(screen.getByRole('button',{name:'阅读完整题目 q_round'}));
+ expect(await screen.findByRole('dialog',{name:'完整题目'})).toBeTruthy();
+ fireEvent.click(await screen.findByRole('radio',{name:'选择 A'}));
+ fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
+ expect(await screen.findByText('正确答案 B')).toBeTruthy();
+ expect(screen.queryByRole('button',{name:'去 Task 解答'})).toBeNull();
+ expect(requests.some(url=>url.includes('/evidence'))).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'返回知识与证据'}));
+ fireEvent.click(await screen.findByRole('button',{name:'返回第 2 轮研究'}));
+ expect(await screen.findByRole('dialog',{name:'第 2 轮研究'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'查看第 2 轮知识 C0002'}));
+ await waitFor(()=>expect(requests.some(url=>url.includes('/rounds/2/claims/C0002?version=1'))).toBe(true));
+});
+
+it('does not substitute current knowledge when round reference is missing',async()=>{
+ const snapshot=fixture();install(snapshot);
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/rounds/2')?{...snapshot.rounds![0],judge_events:[{claim_id:'C0001',from:'candidate',to:'verified'}]}:snapshot)));
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('tab',{name:'轮次记录'}));
+ fireEvent.click(screen.getByRole('button',{name:'阅读第 2 轮'}));
+ expect((await screen.findByRole('button',{name:'查看第 2 轮知识 C0001'}) as HTMLButtonElement).disabled).toBe(true);
+});

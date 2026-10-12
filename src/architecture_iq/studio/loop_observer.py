@@ -304,7 +304,97 @@ class LoopObserver:
         row = self._latest()
         if not row:
             raise KeyError('轮次记录不可用')
-        return {**_decode(row['payload'])['round_details'][str(number)], 'observation': self._observation_ref(row)}
+        detail = _decode(row['payload'])['round_details'][str(number)]
+        return {**{key: value for key, value in detail.items() if key not in {'claim_details', 'evidence_questions'}},
+                'observation': self._observation_ref(row)}
+
+    def round_claim(self, number: int, identifier: str, *, version: int,
+                    source_identity: str, sequence: int) -> dict:
+        """Read a referenced revision and evidence through the selected round."""
+        from .loop_source import MAX_EVIDENCE, _claim_at_judgment, _claim_detail
+
+        if (type(number) is not int or number < 1 or not isinstance(identifier, str)
+                or not 1 <= len(identifier) <= 1000 or type(version) is not int
+                or not 1 <= version <= 100000 or not isinstance(source_identity, str)
+                or not re.fullmatch(r'[0-9a-f]{64}', source_identity)
+                or type(sequence) is not int or not 1 <= sequence <= 2**63-1):
+            raise ValueError('Round reading requires an exact revision and observation')
+        try:
+            capture = self.capture(source_identity=source_identity, sequence=sequence)
+        except KeyError as exc:
+            raise ObservationConflict('知识演化来源或阅读记录已变化，请重新打开轮次后重试') from exc
+        if capture is None:
+            raise ObservationConflict('轮次阅读记录尚不可用，请重新打开后重试')
+        detail = capture['round_details'][str(number)]
+        event = next((row for row in detail.get('judge_events', [])
+                      if row.get('claim_id') == identifier and row.get('version') == version), None)
+        registered = next((row for row in detail.get('registered', [])
+                           if row.get('id') == identifier and row.get('version') == version), None)
+        if event is None and registered is None:
+            raise KeyError('该轮次没有保存这版命题')
+        observation = {key: capture['observation'][key] for key in ('source_identity', 'sequence')}
+        def scoped_question(row, question):
+            if (isinstance(question, dict) and type(question.get('round')) is int
+                    and question['round'] > row['round']):
+                return None
+            return question
+        saved = detail.get('claim_details', {}).get(identifier, {}).get(str(version))
+        if saved is not None:
+            pool = detail.get('evidence_questions', {})
+            for row in [*saved.get('evidence', []), *saved.get('counterexamples', {}).get('items', [])]:
+                if 'question' not in row:
+                    row['question'] = pool.get(f"{row['round']}:{row['question_id']}", pool.get(row['question_id']))
+                row['question'] = scoped_question(row, row['question'])
+            return {**saved, 'reading_round': number, 'observation': observation}
+
+        # Older captures retain only the latest revision's evidence. Recover
+        # the exact old text where available, never substitute the latest text.
+        current = capture['claim_details'].get(identifier, {})
+        candidates = [registered, *current.get('history', []), current.get('claim')]
+        raw = next((row for row in candidates if isinstance(row, dict)
+                    and row.get('id') == identifier and row.get('version') == version), None)
+        if raw is None or type(raw.get('registered_round')) is not int or raw['registered_round'] > number:
+            raise KeyError('该轮次的命题修订记录不可用')
+        if event is not None:
+            raw = _claim_at_judgment(raw, event)
+        history = [row for row in current.get('history', []) if row.get('id') == identifier
+                   and type(row.get('version')) is int and row['version'] <= version
+                   and type(row.get('registered_round')) is int and row['registered_round'] <= number]
+        matching = [row for row in current.get('evidence', [])
+                    if row.get('claim_id') == identifier and row.get('version') == version]
+        complete = (current.get('claim', {}).get('version') == version
+                    and current.get('evidence_truncated') is False
+                    and type(current.get('evidence_total')) is int
+                    and current['evidence_total'] == len(matching))
+        counterexamples = current.get('counterexamples') or {}
+        seen, evidence = set(), []
+        for row in [*matching, *counterexamples.get('items', [])]:
+            if (row.get('claim_id') != identifier or row.get('version') != version
+                    or type(row.get('round')) is not int
+                    or not raw['registered_round'] < row['round'] <= number):
+                continue
+            key = (row.get('question_id'), row['round'])
+            if key not in seen:
+                evidence.append(row)
+                seen.add(key)
+        # Cached rows are newest-first; the collector helper expects oldest-first.
+        evidence.sort(key=lambda row: row['round'])
+        # A later occurrence of the same question may have replaced an older
+        # ledger row before this legacy window was captured. Without matching
+        # saved judge totals, filtered current evidence cannot prove completeness.
+        if any(type(row.get('round')) is not int or row['round'] > number for row in matching):
+            complete = (complete and event is not None and event.get('applicable') == len(evidence)
+                        and event.get('support') == sum(row.get('outcome') == 'support' for row in evidence))
+        questions = {(row['question_id'], row['round']): scoped_question(row, row.get('question')) for row in evidence}
+        result = _claim_detail(raw, history[-MAX_EVIDENCE:], evidence, questions)
+        result.update(reading_round=number, evidence_unavailable=not complete,
+                      history_truncated=len(history) > MAX_EVIDENCE, observation=observation)
+        if not complete:
+            result['claim'].pop('evidence', None)
+            result.update(evidence_total=None, evidence_truncated=True,
+                          notice='这份较早的观察记录未保存该修订截至本轮的完整证据；仅展示仍可核对的已保存记录。')
+            result['counterexamples'].update(total=None, truncated=True)
+        return result
 
     def question_evidence(self, identifier: str, *, source_identity: str, sequence: int,
                           claim_id: str | None = None, claim_version: int | None = None) -> dict:

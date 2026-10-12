@@ -60,6 +60,22 @@ def register_loop_observer_routes(api, *, observer):
         except KeyError as exc:
             raise HTTPException(404, '轮次记录不可用') from exc
 
+    @api.get(prefix + '/rounds/{number}/claims/{identifier}')
+    def round_claim(identifier: str = Path(..., min_length=1, max_length=1000),
+                    number: int = Path(..., ge=1),
+                    version: int = Query(..., ge=1, le=100000),
+                    source_identity: str = Query(..., pattern=r'^[0-9a-f]{64}$'),
+                    sequence: int = Query(..., ge=1, le=2**63-1)):
+        try:
+            return observer.round_claim(number, identifier, version=version,
+                                        source_identity=source_identity, sequence=sequence)
+        except ObservationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(404, '该轮次的命题修订记录不可用') from exc
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, '轮次或命题的阅读记录无效，请重新打开后重试') from exc
+
     @api.get(prefix + '/questions/{identifier}')
     def question(identifier: str):
         try:

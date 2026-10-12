@@ -69,6 +69,89 @@ def test_listing_only_completed_deduped_questions_without_remote_artifact_reads(
     assert source.list_questions(offset=1)['items'] == []
 
 
+def test_listing_projects_public_candidate_features_without_guessing_letters_or_freezing(bridge):
+    source, observer, value, calls = bridge
+    source.list_questions()  # Index generation before its scored record is observed.
+    value['claim_details']['C1']['evidence'] = [{
+        'question_id': 'q_generated', 'round': 1, 'outcome': 'SECRET_OUTCOME',
+        'question': {'winner': 'SECRET_WINNER', 'comparisons': 'SECRET_COMPARISON', 'candidates': {
+            'candidate_z': {'model_type': 'mlp', 'width': 32, 'opt': 'Adam', 'lr': 0.001,
+                            'mean_test_mse': 'SECRET_SCORE', 'correct_letter': 'A'},
+            'candidate_a': {'arch_key': json.dumps({'type': 'mlp', 'width': 16, 'result': 'SECRET_RESULT'}),
+                            'opt_key': json.dumps({'type': 'SGD', 'lr': 0, 'answer': 'SECRET_ANSWER'}),
+                            'budget': 120, 'steps': 4, 'batch_size': 30},
+        }},
+    }]
+    observer.poll_once()
+    row = source.list_questions()['items'][0]
+    assert {candidate['candidate_id']: candidate for candidate in row['candidate_configs']} == {
+        'candidate_z': {'candidate_id': 'candidate_z', 'model': {'type': 'mlp', 'width': 32},
+         'optimizer': {'type': 'Adam', 'lr': 0.001}, 'loss': {}, 'budget': {}},
+        'candidate_a': {'candidate_id': 'candidate_a', 'model': {'type': 'mlp', 'width': 16},
+         'optimizer': {'type': 'SGD', 'lr': 0}, 'loss': {},
+         'budget': {'total_samples_seen': 120, 'training_steps': 4, 'batch_size': 30}},
+    }
+    assert row['cached'] is False and not calls
+    assert 'SECRET_' not in json.dumps(row)
+    assert all('letter' not in candidate for candidate in row['candidate_configs'])
+    with sqlite3.connect(source.database) as conn:
+        assert conn.execute('SELECT payload,content_hash FROM questions').fetchone() == (None, None)
+    # Public list metadata outlives the observer's bounded evidence window.
+    value['claim_details']['C1']['evidence'] = []
+    observer.poll_once()
+    assert source.list_questions()['items'][0]['candidate_configs'] == row['candidate_configs']
+
+
+def test_frozen_public_candidates_override_source_briefs_without_rewriting_frozen_payload(bridge):
+    source, observer, value, calls = bridge
+    frozen = source.freeze_question('q_generated')
+    with sqlite3.connect(source.database) as conn:
+        before = conn.execute('SELECT payload,content_hash FROM questions').fetchone()
+    value['claim_details']['C1']['counterexamples'] = {'items': [{
+        'question_id': 'q_generated', 'round': 1,
+        'question': {'candidates': {'unrelated': {'model_type': 'linear', 'width': 999}}},
+    }]}
+    observer.poll_once()
+    row = source.list_questions()['items'][0]
+    assert [candidate['letter'] for candidate in row['candidate_configs']] == ['A', 'B', 'C']
+    assert [candidate['model']['width'] for candidate in row['candidate_configs']] == [32, 16, 8]
+    assert row['rag_ready'] is True
+    assert row['key'] == frozen['metadata']['key']
+    assert calls == ['q_generated']
+    with sqlite3.connect(source.database) as conn:
+        assert conn.execute('SELECT payload,content_hash FROM questions').fetchone() == before
+
+
+def test_candidate_briefs_use_counterexample_window_and_ignore_malformed_records(bridge):
+    source, observer, value, calls = bridge
+    value['claim_details']['C1']['counterexamples'] = {'items': [{
+        'question_id': 'q_generated', 'round': 1, 'outcome': 'SECRET',
+        'question': {'candidates': {'original': {'model_type': 'mlp', 'width': 8},
+                                     'malformed': None}},
+    }]}
+    observer.poll_once()
+    row = source.list_questions()['items'][0]
+    assert row['candidate_configs'] == [{'candidate_id': 'original', 'model': {'type': 'mlp', 'width': 8},
+                                        'optimizer': {}, 'loss': {}, 'budget': {}}]
+    assert not calls and 'SECRET' not in json.dumps(row)
+
+
+def test_generation_candidates_are_available_without_any_claim_evidence(bridge):
+    source, observer, value, calls = bridge
+    value['claim_details'] = {}
+    value['round_details']['1']['generation']['items'][0]['question'] = {
+        'candidates': {'original': {'model_type': 'mlp', 'depth': 3, 'width': 32,
+                                    'answer': 'SECRET_ANSWER', 'test_mse': 'SECRET_SCORE'}},
+        'winner': 'SECRET_WINNER', 'comparisons': 'SECRET_COMPARISON',
+    }
+    observer.poll_once()
+    row = source.list_questions()['items'][0]
+    assert row['candidate_configs'] == [{'candidate_id': 'original',
+        'model': {'type': 'mlp', 'depth': 3, 'width': 32}, 'optimizer': {}, 'loss': {}, 'budget': {}}]
+    assert not calls and row['cached'] is False
+    assert 'SECRET_' not in json.dumps(row)
+
+
 def test_freeze_public_question_then_read_offline_and_after_source_switch(bridge, tmp_path):
     source, observer, _, calls = bridge
     first = source.freeze_question('q_generated')
