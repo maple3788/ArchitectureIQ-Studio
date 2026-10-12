@@ -14,7 +14,7 @@ from .task_explanations import explain_task_prediction, public_validated_scope
 
 def kb_description(item):
     return {**{key: deepcopy(item[key]) for key in ('id', 'version', 'name', 'kind')},
-            **{key: deepcopy(item[key]) for key in ('source_kind', 'round_index', 'source_status_counts', 'skipped_claims') if key in item},
+            **{key: deepcopy(item[key]) for key in ('source_kind', 'round_index', 'source_claim_id', 'source_claim_version', 'source_status_counts', 'skipped_claims') if key in item},
             'summary': item.get('summary', ''),
             'verification': 'research_hypothesis' if item['kind'] == 'research_rules' else
                             'experience_unverified' if item['kind'] == 'experience' else 'per_rule_scope'}

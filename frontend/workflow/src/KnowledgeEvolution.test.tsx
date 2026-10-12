@@ -228,3 +228,53 @@ it('recovers a failed generation detail when synchronization returns without a n
  expect(await screen.findByText('没有符合条件的生成记录')).toBeTruthy();
  expect(screen.queryByText('详情暂时无法同步，请稍后重新打开。')).toBeNull();
 });
+
+const taskSeed={question_key:null,kb_selection:{mode:'manual',ref:{id:'evolution-kb',version:'frozen-kb'}},kb:{id:'evolution-kb',version:'frozen-kb',name:'C0001',kind:'research_rules'},name:'知识解答',mode:'rules'};
+function taskEntryFixture(override?:(url:string,init?:RequestInit)=>Response|Promise<Response>|undefined){
+ const snapshot={...fixture(),observation:{source_identity:'source-one',sequence:8}};install(snapshot);
+ const requests:{url:string;method:string;body:any}[]=[];
+ vi.stubGlobal('fetch',async(url:string,init?:RequestInit)=>{
+  requests.push({url,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):undefined});
+  const special=override?.(url,init);if(special)return special;
+  const data=url.endsWith('/claims/C0001')?{observation:snapshot.observation,claim:snapshot.claims![0],history:[],evidence:[{question_id:'q_saved',round:1,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
+   :url.endsWith('/rounds/2')?{...snapshot.rounds![0],observation:{source_identity:'source-one',sequence:7},generation:{total:1,completed:1,ok:1,failed:0,pending:0,items:[{item_id:'i1',question_id:'q_saved',family:'xor_classification',question_type:'mixed',purpose:'explore',targets:[],status:'ok'}]}}
+   :url.endsWith('/questions/q_saved')?{metadata:{id:'q_saved'},public:{id:'q_saved',family:'xor_classification',prompt:'公开题面',choices:[]},observation:{content_hash:'question-frozen-hash',captured_at:1}}
+   :url.endsWith('/tasks/evolution/selection')?taskSeed:snapshot;
+  return new Response(JSON.stringify(data));
+ });
+ return {snapshot,requests};
+}
+it('carries only the currently read claim to Task after freezing its observed version',async()=>{
+ const {requests}=taskEntryFixture(),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));fireEvent.click(await screen.findByRole('button',{name:'去 Task 解答'}));
+ await waitFor(()=>expect(onTask).toHaveBeenCalledWith(taskSeed));
+ expect(requests.filter(row=>row.method==='POST')).toEqual([{url:'/api/studio/tasks/evolution/selection',method:'POST',body:{observation:{source_identity:'source-one',sequence:8},claim_ref:{id:'C0001',version:2}}}]);
+});
+it('keeps the evidence parent claim and observation when newer snapshots arrive while reading its question',async()=>{
+ let advanced=false;
+ const {snapshot,requests}=taskEntryFixture(url=>advanced&&url.endsWith('/claims/C0001')?new Response(JSON.stringify({observation:{source_identity:'source-two',sequence:9},claim:{...fixture().claims![0],version:3},history:[],evidence:[],evidence_total:0,evidence_truncated:false})):undefined),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));fireEvent.click((await screen.findByText('q_saved')).closest('summary')!);fireEvent.click(screen.getByRole('button',{name:'阅读完整题目 q_saved'}));
+ await screen.findByRole('tab',{name:'原始 Prompt'});
+ advanced=true;act(()=>Source.instances[0].emit('snapshot',{...snapshot,sequence:9,observation:{source_identity:'source-two',sequence:9}}));
+ await waitFor(()=>expect(requests.filter(row=>row.url.endsWith('/claims/C0001'))).toHaveLength(2));
+ fireEvent.click(screen.getByRole('button',{name:'去 Task 解答'}));await waitFor(()=>expect(onTask).toHaveBeenCalledOnce());
+ expect(requests.find(row=>row.method==='POST')?.body).toEqual({observation:{source_identity:'source-one',sequence:8},question_id:'q_saved',expected_question_hash:'question-frozen-hash',claim_ref:{id:'C0001',version:2}});
+});
+it('carries a generated question with the viewed round observation and without an unrelated claim',async()=>{
+ const {requests}=taskEntryFixture(),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
+ fireEvent.click(await screen.findByRole('button',{name:/生成新题/}));fireEvent.click(await screen.findByRole('button',{name:'阅读完整题目 q_saved'}));
+ fireEvent.click(await screen.findByRole('button',{name:'去 Task 解答'}));await waitFor(()=>expect(onTask).toHaveBeenCalledOnce());
+ expect(requests.find(row=>row.method==='POST')?.body).toEqual({observation:{source_identity:'source-one',sequence:7},question_id:'q_saved',expected_question_hash:'question-frozen-hash'});
+});
+it('keeps selection failures in the current reader and allows retry',async()=>{
+ taskEntryFixture(url=>url.endsWith('/tasks/evolution/selection')?new Response(JSON.stringify({detail:'这份知识快照暂不可使用'}),{status:409}):undefined);
+ const onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));fireEvent.click(await screen.findByRole('button',{name:'去 Task 解答'}));
+ expect(await screen.findByText('这份知识快照暂不可使用')).toBeTruthy();expect(screen.getByRole('dialog',{name:'知识与证据'})).toBeTruthy();expect((screen.getByRole('button',{name:'去 Task 解答'}) as HTMLButtonElement).disabled).toBe(false);expect(onTask).not.toHaveBeenCalled();
+});
+it('does not navigate after leaving a question while its Task selection is still pending',async()=>{
+ let resolve!:(response:Response)=>void;
+ const {requests}=taskEntryFixture(url=>url.endsWith('/tasks/evolution/selection')?new Promise<Response>(done=>{resolve=done;}):undefined),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
+ fireEvent.click(await screen.findByRole('button',{name:/生成新题/}));fireEvent.click(await screen.findByRole('button',{name:'阅读完整题目 q_saved'}));
+ const button=await screen.findByRole('button',{name:'去 Task 解答'});fireEvent.click(button);fireEvent.click(button);await waitFor(()=>expect(resolve).toBeTruthy());expect(requests.filter(row=>row.method==='POST')).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'返回生成记录'}));await act(async()=>{resolve(new Response(JSON.stringify(taskSeed)));});expect(onTask).not.toHaveBeenCalled();expect(screen.getByRole('dialog',{name:'本轮新题'})).toBeTruthy();
+});

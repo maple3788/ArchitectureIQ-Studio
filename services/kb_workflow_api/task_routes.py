@@ -75,6 +75,13 @@ def register_task_routes(api, *, catalog, models, jobs, inventory_provider, requ
         return invoke(operation)
 
     # Register this fixed path before the identity route.
+    @api.post(prefix + '/evolution/selection')
+    def evolution_selection(body: dict = Body(...)):
+        def operation():
+            seed = evolution.selection(body)
+            return {**seed, 'kb': kb_description(seed['kb'])}
+        return invoke(operation)
+
     @api.get(prefix + '/evolution/questions')
     def evolution_questions(search: str = Query('', max_length=200), offset: int = Query(0, ge=0),
                             limit: int = Query(25, ge=1, le=100)):

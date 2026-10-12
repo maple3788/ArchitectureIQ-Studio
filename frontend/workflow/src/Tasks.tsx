@@ -9,22 +9,24 @@ import {RagKnowledge} from './Rag';
 import {formatTimestamp} from './time';
 import {ruleConditions,sourceStatus} from './ruleKnowledgePresentation';
 import {newTask,taskFields,taskRunLabel,taskSignature} from './taskTypes';
-import type {TaskCard,TaskFields,TaskKB,TaskPrediction,TaskPreview,TaskRun} from './taskTypes';
+import type {TaskCard,TaskFields,TaskKB,TaskPrediction,TaskPreview,TaskRun,TaskSeed} from './taskTypes';
 import type {Action} from './Questions';
 import type {Json,ModelProfile} from './types';
 import './tasks.css';
 
-type Props={version:number;act:Action;models:ModelProfile[];executionEnabled:boolean;questionKey?:string;onQuestionConsumed?:()=>void;onRun:(id:string)=>void};
+type Props={version:number;act:Action;models:ModelProfile[];executionEnabled:boolean;questionKey?:string;seed?:TaskSeed;onSeedConsumed?:()=>void;onQuestionConsumed?:()=>void;onRun:(id:string)=>void};
 const kbKey=(kb:{id:string;version:string})=>`${kb.id}@${kb.version}`;
-const kbName=(kb:TaskKB)=>kb.source_kind==='knowledge_evolution'?`知识演化 · 第 ${kb.round_index} 轮 · 研究候选`:kb.name;
+const kbName=(kb:TaskKB)=>kb.source_kind==='knowledge_evolution'?`知识演化 · ${kb.source_claim_id||`第 ${kb.round_index} 轮`} · 研究候选`:kb.name;
 export function Tasks(props:Props){
- const [active,setActive]=useState<TaskCard|'new'|undefined>(()=>props.questionKey?'new':undefined);
+ const [active,setActive]=useState<TaskCard|'new'|undefined>(()=>props.seed||props.questionKey?'new':undefined);
  const [refresh,setRefresh]=useState(0);
  const list=useResource<{items:TaskCard[];total:number}>('/tasks',props.version+refresh);
  const [questionSeed,setQuestionSeed]=useState(props.questionKey);
- useEffect(()=>{if(props.questionKey){setQuestionSeed(props.questionKey);setActive('new');props.onQuestionConsumed?.();}},[props.questionKey]);
- const close=()=>{setActive(undefined);setQuestionSeed(undefined);setRefresh(value=>value+1);};
- if(active)return <TaskWorkspace key={active==='new'?`new:${questionSeed||''}`:active.id} {...props} initial={active==='new'?undefined:active} questionSeed={active==='new'?questionSeed:undefined} onClose={close} onSaved={card=>{setActive(card);setRefresh(value=>value+1);}}/>;
+ const [taskSeed,setTaskSeed]=useState(props.seed);
+ useEffect(()=>{if(props.seed){setTaskSeed(props.seed);setQuestionSeed(undefined);setActive('new');props.onSeedConsumed?.();}},[props.seed]);
+ useEffect(()=>{if(props.questionKey){setTaskSeed(undefined);setQuestionSeed(props.questionKey);setActive('new');props.onQuestionConsumed?.();}},[props.questionKey]);
+ const close=()=>{setActive(undefined);setQuestionSeed(undefined);setTaskSeed(undefined);setRefresh(value=>value+1);};
+ if(active)return <TaskWorkspace key={active==='new'?`new:${JSON.stringify([questionSeed,taskSeed])}`:active.id} {...props} initial={active==='new'?undefined:active} questionSeed={active==='new'?questionSeed:undefined} seed={active==='new'?taskSeed:undefined} onClose={close} onSaved={card=>{setActive(card);setRefresh(value=>value+1);}}/>;
  const cards=list.data?.items||[];
  return <section className="tasks-page"><header className="tasks-heading"><div><span className="eyebrow">TASKS</span><h1>解答任务</h1><p>为每个问题选择模型与知识，保留独立的作答记录。</p></div><button className="primary" onClick={()=>setActive('new')}><Plus size={17}/>新建任务</button></header>
   <ErrorBox error={list.error}/>{list.loading?<Loading/>:!cards.length?<div className="tasks-empty"><FlaskConical size={30}/><h2>从一个问题开始</h2><p>模型结合 KB 作答，或让匹配到的规则直接给出结论。<br/>每个任务单独配置，结果留在各自的卡片里。</p></div>:<>
@@ -33,8 +35,8 @@ export function Tasks(props:Props){
  </section>;
 }
 
-function TaskWorkspace({initial,questionSeed,onClose,onSaved,...props}:Props&{initial?:TaskCard;questionSeed?:string;onClose:()=>void;onSaved:(card:TaskCard)=>void}){
- const [base,setBase]=useState(initial),[form,setForm]=useState<TaskFields>(()=>initial?taskFields(initial):newTask(questionSeed));
+function TaskWorkspace({initial,questionSeed,seed,onClose,onSaved,...props}:Props&{initial?:TaskCard;questionSeed?:string;onClose:()=>void;onSaved:(card:TaskCard)=>void}){
+ const [base,setBase]=useState(initial),[form,setForm]=useState<TaskFields>(()=>initial?taskFields(initial):newTask(questionSeed,seed));
  const [picker,setPicker]=useState(false),[error,setError]=useState(''),[conflict,setConflict]=useState(false),[busy,setBusy]=useState<'save'|'preview'|'run'|'reload'|undefined>();
  const [preview,setPreview]=useState<{data:TaskPreview;signature:string;key:string}>();
  const [historyRefresh,setHistoryRefresh]=useState(0),[recentRun,setRecentRun]=useState<TaskRun>();
@@ -99,6 +101,7 @@ function TaskWorkspace({initial,questionSeed,onClose,onSaved,...props}:Props&{in
   catch(caught){if(mounted.current)await fail(caught,'reload');}finally{lock.current=false;if(mounted.current)setBusy(undefined);}
  };
  const records=[...(history.data?.items||[])];if(recentRun&&!records.some(run=>run.id===recentRun.id))records.unshift(recentRun);
+ const switchedSelection=form.kb_selection.mode==='manual'&&form.kb_selection.ref?.id.startsWith('evolution_kb_')?form.kb_selection:{mode:'auto' as const};
  const selectedKB=form.kb_selection.ref,options=kbs.data?.items||[],activeKB=options.find(kb=>selectedKB&&kbKey(kb)===kbKey(selectedKB)),hasOption=!!activeKB;
  return <section className="tasks-page task-workspace">
   <button className="task-back" aria-label="返回任务列表" disabled={!!busy} onClick={onClose}><ArrowLeft size={17}/>全部任务</button>
@@ -106,7 +109,7 @@ function TaskWorkspace({initial,questionSeed,onClose,onSaved,...props}:Props&{in
   <ErrorBox error={server.error}/>{!initialized?<Loading/>:<>
   <div className="task-config"><div className="task-config-main"><Field label="任务名称"><input value={form.name} maxLength={120} placeholder="例如：比较小样本下的架构选择" disabled={frozen} onChange={event=>update({name:event.target.value})}/></Field>
    <section className="task-question"><div><span className="task-section-index">01</span><h2>研究问题</h2></div>{form.question_key?<><div className="task-question-choice"><span className="task-selected-question">{question.data?.metadata?.source_kind==='knowledge_evolution'?<>{question.data.public?.id}<small>来自知识演化 · 第 {question.data.metadata.round_index} 轮</small></>:form.question_key}</span><button className="task-text-action" disabled={frozen} onClick={()=>setPicker(true)}>更换题目</button></div><details className="task-disclosure"><summary>阅读完整题目</summary>{question.loading?<Loading/>:question.data?<><QuestionReader record={question.data}/>{question.data.metadata?.source_kind==='knowledge_evolution'&&<details className="task-disclosure"><summary>题目固定记录</summary><code>{form.question_key}</code></details>}</>:<ErrorBox error={question.error}/>}</details></>:<button className="task-question-empty" aria-label="选择题目" disabled={frozen} onClick={()=>setPicker(true)}><Plus size={18}/>选择题目<span>从题库或知识演化中选择</span></button>}</section>
-   <section className="task-method"><div className="task-section-heading"><span className="task-section-index">02</span><h2>解答方式</h2></div><fieldset className="task-mode"><legend className="sr-only">解答方式</legend><label className={form.mode==='llm'?'selected':''}><input type="radio" name="task-mode" value="llm" aria-label="LLM + KB" checked={form.mode==='llm'} disabled={frozen} onChange={()=>update({mode:'llm',kb_selection:{mode:'auto'}})}/><Sparkles size={19}/><span><strong>LLM + KB</strong><small>匹配知识，交给模型作答</small></span></label><label className={form.mode==='rules'?'selected':''}><input type="radio" name="task-mode" value="rules" aria-label="KB 直接解答" checked={form.mode==='rules'} disabled={frozen} onChange={()=>update({mode:'rules',model_id:null,kb_selection:{mode:'auto'}})}/><BookOpen size={19}/><span><strong>KB 直接解答</strong><small>程序执行规则，无需模型</small></span></label></fieldset>
+   <section className="task-method"><div className="task-section-heading"><span className="task-section-index">02</span><h2>解答方式</h2></div><fieldset className="task-mode"><legend className="sr-only">解答方式</legend><label className={form.mode==='llm'?'selected':''}><input type="radio" name="task-mode" value="llm" aria-label="LLM + KB" checked={form.mode==='llm'} disabled={frozen} onChange={()=>update({mode:'llm',kb_selection:switchedSelection})}/><Sparkles size={19}/><span><strong>LLM + KB</strong><small>匹配知识，交给模型作答</small></span></label><label className={form.mode==='rules'?'selected':''}><input type="radio" name="task-mode" value="rules" aria-label="KB 直接解答" checked={form.mode==='rules'} disabled={frozen} onChange={()=>update({mode:'rules',model_id:null,kb_selection:switchedSelection})}/><BookOpen size={19}/><span><strong>KB 直接解答</strong><small>程序执行规则，无需模型</small></span></label></fieldset>
     {form.mode==='llm'&&<Field label="作答模型"><select value={form.model_id||''} disabled={frozen} onChange={event=>update({model_id:event.target.value||null})}><option value="">选择模型</option>{props.models.filter(model=>model.enabled).map(model=><option key={model.id} value={model.id}>{model.name}</option>)}{form.model_id&&!props.models.some(model=>model.enabled&&model.id===form.model_id)&&<option value={form.model_id}>原模型暂不可用</option>}</select></Field>}
     <div className="task-kb-fields"><Field label="知识来源"><select value={form.kb_selection.mode} disabled={frozen} onChange={event=>update({kb_selection:{mode:event.target.value as 'auto'|'manual'}})}><option value="auto">自动匹配 KB</option><option value="manual">指定 KB</option></select></Field>{form.kb_selection.mode==='manual'&&<Field label="指定 KB"><select disabled={frozen||kbs.loading} value={selectedKB?kbKey(selectedKB):''} onChange={event=>{const kb=options.find(item=>kbKey(item)===event.target.value);update({kb_selection:{mode:'manual',...(kb?{ref:{id:kb.id,version:kb.version}}:{})}});}}><option value="">选择知识库</option>{options.map(kb=><option key={kbKey(kb)} value={kbKey(kb)}>{kbName(kb)}</option>)}{selectedKB&&!hasOption&&<option value={kbKey(selectedKB)}>原知识库暂不可用</option>}</select></Field>}</div><ErrorBox error={kbs.error}/>{missingManualKB&&<p className="task-explanation" role="status">请先选择一个知识库，再保存任务。</p>}
     <p className="task-explanation">{form.mode==='rules'?'检查规则的适用条件；冲突或未覆盖时保留原因，不强行选答案。':'模型接收公开题面与匹配知识，回答与引用一并保存。'}</p>{form.mode==='llm'&&<details className="task-disclosure task-advanced"><summary>更多设置</summary><Field label="知识条数"><input type="number" min={1} max={12} disabled={frozen} value={form.knowledge_limit} onChange={event=>update({knowledge_limit:Number(event.target.value)})}/></Field></details>}

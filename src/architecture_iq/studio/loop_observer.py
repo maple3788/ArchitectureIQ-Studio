@@ -234,8 +234,12 @@ class LoopObserver:
             'configured': self.configured, 'name': '知识演化',
             'sequence': row['sequence'] if row else 0,
             'captured_at': row['captured_at'] if row else None,
+            'observation': self._observation_ref(row) if row else None,
             'sync': sync if sync is not None else self.sync(),
         }
+
+    def _observation_ref(self, row):
+        return {'source_identity': self.config.identity, 'sequence': row['sequence']}
 
     def _latest(self):
         if not self.configured:
@@ -246,13 +250,24 @@ class LoopObserver:
     def snapshot(self) -> dict:
         return self._public_capture(self._latest())
 
-    def capture(self) -> dict | None:
+    def capture(self, *, source_identity: str | None = None, sequence: int | None = None) -> dict | None:
         """Read one complete persisted observation for local artifact adapters.
 
         Unlike snapshot/SSE, this internal read includes round manifests. It
         never polls a remote source and does not mix fields from two captures.
         """
-        row = self._latest()
+        if source_identity is None and sequence is None:
+            row = self._latest()
+        else:
+            if (not isinstance(source_identity, str) or not re.fullmatch(r'[0-9a-f]{64}', source_identity)
+                    or type(sequence) is not int or not 1 <= sequence <= 2**63-1):
+                raise ValueError('Invalid observation reference')
+            if not self.config or self.config.identity != source_identity:
+                raise KeyError('Observation source changed')
+            with self._connect() as connection:
+                row = connection.execute('SELECT * FROM captures WHERE sequence=?', (sequence,)).fetchone()
+            if not row:
+                raise KeyError('Observation unavailable')
         if not row:
             return None
         value = _decode(row['payload'])
@@ -268,13 +283,13 @@ class LoopObserver:
         row = self._latest()
         if not row:
             raise KeyError('命题记录不可用')
-        return _decode(row['payload'])['claim_details'][identifier]
+        return {**_decode(row['payload'])['claim_details'][identifier], 'observation': self._observation_ref(row)}
 
     def round(self, number: int) -> dict:
         row = self._latest()
         if not row:
             raise KeyError('轮次记录不可用')
-        return _decode(row['payload'])['round_details'][str(number)]
+        return {**_decode(row['payload'])['round_details'][str(number)], 'observation': self._observation_ref(row)}
 
     def question(self, identifier: str) -> dict:
         """Return a frozen public question, persisted independently of SSE."""

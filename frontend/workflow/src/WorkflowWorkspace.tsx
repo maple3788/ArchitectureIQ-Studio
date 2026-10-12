@@ -1,5 +1,6 @@
 import {RuleRefinementRun} from './RuleRefinementRun';
 import {KnowledgeEvolution} from './KnowledgeEvolution';
+import type {TaskSeed} from './taskTypes';
 import { useEffect, useState, type ReactNode } from "react";
 import { items } from "./api";
 import { ErrorBox, Loading, Empty, Tabs, useResource } from "./ui";
@@ -10,8 +11,8 @@ import type { Action } from "./Questions";
 import type { List, Run } from "./types";
 import "./workflow-workspace.css";
 
-export function WorkflowWorkspace({ children, version, selectedRun, act, loopEnabled=false }: {
-  children: ReactNode; version: number; selectedRun?: string; act: Action; loopEnabled?:boolean;
+export function WorkflowWorkspace({ children, version, selectedRun, act, loopEnabled=false, onTask }: {
+  children: ReactNode; version: number; selectedRun?: string; act: Action; loopEnabled?:boolean; onTask?:(seed:TaskSeed)=>void;
 }) {
   const [mode, setMode] = useState(selectedRun ? "运行追踪" : loopEnabled ? "知识演化" : "编辑工作流");
   const [editorVisited, setEditorVisited] = useState(!selectedRun&&!loopEnabled);
@@ -34,7 +35,7 @@ export function WorkflowWorkspace({ children, version, selectedRun, act, loopEna
       <span>{mode === "知识演化" ? "观察正在进行的研究" : mode === "运行追踪" ? "查看实际执行与节点输入输出" : "配置下一次研究"}</span>
     </div>
 
-    {mode === "知识演化" && <KnowledgeEvolution/>}
+    {mode === "知识演化" && <KnowledgeEvolution onTask={onTask}/>}
 
     {mode === "运行追踪" && <section className="workflow-monitor" aria-label="工作流运行追踪">
       <div className="workflow-monitor-toolbar">

@@ -136,3 +136,33 @@ it('preserves the current fields and asks for explicit reload on a true run revi
  fireEvent.click(await screen.findByRole('button',{name:'打开任务 架构选择实验'}));await screen.findByLabelText('任务名称');fireEvent.click(screen.getByRole('button',{name:'匹配并预览'}));fireEvent.click(await screen.findByRole('button',{name:'执行并记录'}));
  expect(await screen.findByRole('button',{name:'载入服务器版本'})).toBeTruthy();expect((screen.getByRole('button',{name:'匹配并预览'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe(card.name);
 });
+it('prefills both frozen evolution inputs without saving or running, and retains KB when choosing a model',async()=>{
+ const evolved={...kb,id:'evolution_kb_source_C4',version:'frozen4',source_kind:'knowledge_evolution',source_claim_id:'C0004',round_index:2};
+ const c=setup([],async path=>path.includes('/tasks/kbs')?new Response(JSON.stringify({items:[evolved]})):undefined);
+ const seed={question_key:'evolution_question4',mode:'rules' as const,name:'知识演化 · C0004',kb_selection:{mode:'manual' as const,ref:{id:evolved.id,version:'frozen4'}},kb:evolved};
+ const consumed=vi.fn();c.rerender(<Tasks {...c.props} seed={seed} onSeedConsumed={consumed}/>);
+ await screen.findByRole('heading',{name:'新建解答任务'});
+ expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('知识演化 · C0004');
+ expect((screen.getByLabelText('KB 直接解答') as HTMLInputElement).checked).toBe(true);
+ await screen.findByRole('option',{name:'知识演化 · C0004 · 研究候选'});
+ expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
+ expect(screen.getAllByText('evolution_question4').length).toBeGreaterThan(0);
+ expect(c.calls.filter(call=>call.method==='POST')).toHaveLength(0);
+ fireEvent.click(screen.getByLabelText('LLM + KB'));
+ expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
+ fireEvent.change(screen.getByLabelText('作答模型'),{target:{value:'glm'}});
+ fireEvent.click(screen.getByRole('button',{name:'保存任务'}));
+ await waitFor(()=>expect(c.calls.find(call=>call.path.endsWith('/tasks')&&call.method==='POST')?.body).toMatchObject({question_key:'evolution_question4',mode:'llm',model_id:'glm',kb_selection:{mode:'manual',ref:{id:'evolution_kb_source_C4',version:'frozen4'}}}));
+ expect(consumed).toHaveBeenCalledTimes(1);
+});
+it('opens a KB-only seed without selecting an arbitrary question and clears it when leaving the new task',async()=>{
+ const c=setup([]);const seed={question_key:null,mode:'rules' as const,name:'知识演化 · C0004',kb_selection:{mode:'manual' as const,ref:{id:'kb1',version:'hash1'}}};
+ c.rerender(<Tasks {...c.props} seed={seed}/>);
+ await screen.findByRole('heading',{name:'新建解答任务'});await screen.findByRole('option',{name:'架构规则'});
+ expect(screen.getByRole('button',{name:'选择题目'})).toBeTruthy();
+ expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('kb1@hash1');
+ expect(c.calls.filter(call=>call.method==='POST')).toHaveLength(0);
+ fireEvent.click(screen.getByRole('button',{name:'返回任务列表'}));fireEvent.click(await screen.findByRole('button',{name:'新建任务'}));
+ expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('');
+ expect((screen.getByLabelText('知识来源') as HTMLSelectElement).value).toBe('auto');
+});

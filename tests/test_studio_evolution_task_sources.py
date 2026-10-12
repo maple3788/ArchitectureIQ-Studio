@@ -207,3 +207,17 @@ def test_source_revision_required_before_executable_claim_can_be_frozen(bridge):
     item = source.inventory()['items'][0]
     assert item['snapshot']['rules'] == []
     assert item['skipped_claims'][0]['reason'] == 'invalid_identity'
+
+
+def test_evidence_question_outside_recent_generation_window_can_be_carried(bridge):
+    source, observer, value, _ = bridge
+    value['round_details']['1']['generation']['items'] = []
+    value['claim_details']['C1']['evidence'] = [{
+        'question_id': 'q_generated', 'round': 1, 'outcome': 'support',
+        'question': {'family': 'univariate_regression', 'type': 'architecture_only'},
+    }]
+    observer.poll_once()
+    token = observer.snapshot()['observation']
+    result = source.selection({'observation': token, 'question_id': 'q_generated',
+                               'claim_ref': {'id': 'C1', 'version': 2}})
+    assert source.get_question(result['question_key'])['public']['id'] == 'q_generated'

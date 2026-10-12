@@ -1,5 +1,6 @@
 import type {KBRef} from './ruleRefinementTypes';
 import {Tasks} from './Tasks';
+import type {TaskSeed} from './taskTypes';
 import {DataWorkspace} from './DataWorkspace';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -50,6 +51,7 @@ export default function App() {
   const locked = useRef(false);
   const [sidebar, setSidebar] = useState(false);
   const [ragQuestion,setRagQuestion]=useState<string>();
+  const [taskSeed,setTaskSeed]=useState<TaskSeed>();
   const [ruleKB,setRuleKB]=useState<KBRef>();
   const [setId, setSetId] = useState<string>();
   const [runId, setRunId] = useState<string>();
@@ -231,9 +233,9 @@ export default function App() {
               {page === "generation" && <Generation capabilities={data.capabilities} version={version} act={act} executionEnabled={executionEnabled} onRun={onRun} />}
             </DataWorkspace>
           ) : page === "rag" ? (
-            <Tasks version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestionConsumed={()=>setRagQuestion(undefined)} onRun={onRun}/>
+            <Tasks version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} seed={taskSeed} onSeedConsumed={()=>setTaskSeed(undefined)} questionKey={ragQuestion} onQuestionConsumed={()=>setRagQuestion(undefined)} onRun={onRun}/>
           ) : page === "workflow" ? (
-            data ? <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act} loopEnabled={data.service.knowledge_loop_configured===true}>
+            data ? <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act} loopEnabled={data.service.knowledge_loop_configured===true} onTask={seed=>{setRagQuestion(undefined);setTaskSeed(seed);navigate("rag");}}>
               <Workflow
                 bootstrap={data}
                 rolePrompts={data?.role_prompts}

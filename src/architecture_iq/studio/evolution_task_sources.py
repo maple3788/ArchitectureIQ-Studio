@@ -17,6 +17,7 @@ from architecture_iq.kb.store import canonical_hash
 from .loop_question import public_question
 from .rag_inputs import rag_ready
 from .rule_refinement.artifacts import RuleArtifactStore, _revision, validate_snapshot
+from .tasks import TaskConflict
 
 _STATUSES = ('candidate', 'verified', 'flagged', 'retired')
 _QUESTION_ID = re.compile(r'q_[A-Za-z0-9_-]{1,80}')
@@ -94,6 +95,23 @@ class EvolutionTaskSources:
         with self._connect() as conn:
             conn.executemany('INSERT OR IGNORE INTO questions (key,source_identity,question_id,summary) VALUES (?,?,?,?)', rows)
 
+    def _index_evidence_question(self, capture, evidence):
+        # Evidence can outlive the observer's recent generation window. Admit
+        # only its public identity here; the existing observer reader still
+        # requires the original successful build receipt to fetch the artifact.
+        observation, qid = capture['observation'], evidence['question_id']
+        public = evidence.get('question') or {}
+        source = observation['source_identity']
+        key = _question_key(source, qid)
+        summary = {'key': key, 'id': qid, 'source_kind': 'knowledge_evolution',
+                   'round_index': evidence['round'], 'family': public.get('family', ''),
+                   'type': public.get('type', ''), 'question_type': public.get('type', ''),
+                   'purpose': public.get('purpose', ''),
+                   'source_id': observation['source_id'], 'source_identity': source}
+        with self._connect() as conn:
+            conn.execute('INSERT OR IGNORE INTO questions (key,source_identity,question_id,summary) VALUES (?,?,?,?)',
+                         (key, source, qid, _json(summary)))
+
     def list_questions(self, *, search='', offset=0, limit=25):
         if (not isinstance(search, str) or len(search) > 300 or type(offset) is not int or offset < 0
                 or type(limit) is not int or not 1 <= limit <= 100):
@@ -114,10 +132,10 @@ class EvolutionTaskSources:
                            'connected': self.observer.sync()['status'] == 'connected',
                            'sequence': capture['observation']['sequence'] if capture else 0}}
 
-    def freeze_question(self, identifier):
+    def freeze_question(self, identifier, *, capture=None):
         if not isinstance(identifier, str) or not _QUESTION_ID.fullmatch(identifier) or not self.observer.config:
             raise KeyError('该题目没有已保存的成功生成记录')
-        self._index_questions(self._capture())
+        self._index_questions(capture if capture is not None else self._capture())
         key = _question_key(self.observer.config.identity, identifier)
         with self._connect() as conn:
             row = conn.execute('SELECT * FROM questions WHERE key=?', (key,)).fetchone()
@@ -164,21 +182,28 @@ class EvolutionTaskSources:
             raise ValueError('已保存题目的完整性校验失败')
         return record
 
-    def _freeze_kb(self, capture):
+    def _freeze_kb(self, capture, *, update_head=True, claim_ref=None):
         observation = capture['observation']
         source_identity = observation['source_identity']
         claims = [{k: deepcopy(claim[k]) for k in _CLAIM_FIELDS if k in claim}
                   for claim in capture.get('claims', []) if isinstance(claim, dict)]
+        if claim_ref is not None:
+            claims = [claim for claim in claims if claim.get('id') == claim_ref['id']
+                      and claim.get('version') == claim_ref['version']]
+            if len(claims) != 1:
+                raise TaskConflict('这条知识的阅读记录已变化，请重新打开后重试')
+            update_head = False
         claims.sort(key=lambda claim: str(claim.get('id', '')))
         claims_hash = canonical_hash(claims)
         with self._connect() as conn:
             head = conn.execute('SELECT * FROM kb_heads WHERE source_identity=?', (source_identity,)).fetchone()
-        if head and head['claims_hash'] == claims_hash:
+        if update_head and head and head['claims_hash'] == claims_hash:
             return self.resolve_kb({'id': head['id'], 'version': head['version']})
         if not claims:
             # Empty new source is an explicit empty current KB, never a stale head.
-            with self._connect() as conn:
-                conn.execute('DELETE FROM kb_heads WHERE source_identity=?', (source_identity,))
+            if update_head:
+                with self._connect() as conn:
+                    conn.execute('DELETE FROM kb_heads WHERE source_identity=?', (source_identity,))
             return None
         round_index = capture.get('round', {}).get('index')
         counts = {status: sum(claim.get('status') == status for claim in claims) for status in _STATUSES}
@@ -244,11 +269,16 @@ class EvolutionTaskSources:
                              'round_index': round_index}],
                 'provenance': {**observation, 'claims_hash': claims_hash},
                 'updated_at': observation['captured_at']}
+        if claim_ref is not None:
+            item.update(id=item['id'] + '_claim_' + canonical_hash(claim_ref['id']),
+                        name='知识演化 · ' + claim_ref['id'],
+                        source_claim_id=claim_ref['id'], source_claim_version=claim_ref['version'])
         with self._connect() as conn:
             conn.execute('INSERT OR IGNORE INTO kb_items VALUES (?,?,?,?)',
                          (item['id'], item['version'], canonical_hash(item), _json(item)))
-            conn.execute('INSERT OR REPLACE INTO kb_heads VALUES (?,?,?,?)',
-                         (source_identity, claims_hash, item['id'], item['version']))
+            if update_head:
+                conn.execute('INSERT OR REPLACE INTO kb_heads VALUES (?,?,?,?)',
+                             (source_identity, claims_hash, item['id'], item['version']))
         return self.resolve_kb({'id': item['id'], 'version': item['version']})
 
     def resolve_kb(self, reference):
@@ -275,3 +305,58 @@ class EvolutionTaskSources:
             if not any(item['id'] == pinned['id'] and item['version'] == pinned['version'] for item in items):
                 items.append(pinned)
         return {'items': items, 'total': len(items), 'warnings': []}
+
+    def selection(self, body):
+        """Prepare a Task seed from exactly the observation that was displayed."""
+        allowed = {'observation', 'question_id', 'expected_question_hash', 'claim_ref'}
+        if not isinstance(body, dict) or set(body) - allowed or 'observation' not in body:
+            raise ValueError('快捷选择需要完整的阅读记录')
+        token, qid, claim = body['observation'], body.get('question_id'), body.get('claim_ref')
+        if not isinstance(token, dict) or set(token) != {'source_identity', 'sequence'}:
+            raise ValueError('阅读记录引用无效')
+        if (not isinstance(token['source_identity'], str)
+                or not re.fullmatch(r'[0-9a-f]{64}', token['source_identity'])
+                or type(token['sequence']) is not int or not 1 <= token['sequence'] <= 2**63-1):
+            raise ValueError('阅读记录引用无效')
+        if not qid and not claim:
+            raise ValueError('请选择题目或知识')
+        if qid is not None and (not isinstance(qid, str) or not _QUESTION_ID.fullmatch(qid)):
+            raise ValueError('题目标识无效')
+        if claim is not None and (not isinstance(claim, dict) or set(claim) != {'id', 'version'}
+                or not isinstance(claim['id'], str) or not 1 <= len(claim['id']) <= 1000
+                or type(claim['version']) is not int or not 1 <= claim['version'] <= 100000):
+            raise ValueError('知识版本引用无效')
+        expected = body.get('expected_question_hash')
+        if expected is not None and (qid is None or not isinstance(expected, str)
+                                     or not re.fullmatch(r'[0-9a-f]{64}', expected)):
+            raise ValueError('题面保存记录无效')
+        try:
+            capture = self.observer.capture(**token)
+        except KeyError as exc:
+            raise TaskConflict('知识演化来源或阅读记录已变化，请重新打开后重试') from exc
+        if capture is None:
+            raise TaskConflict('阅读记录暂时不可用，请重新打开后重试')
+        if claim is not None and not any(c.get('id') == claim['id'] and c.get('version') == claim['version']
+                                         for c in capture['claims']):
+            raise TaskConflict('这条知识的阅读记录已变化，请重新打开后重试')
+        question = None
+        if qid is not None:
+            known = any(row.get('status') == 'ok' and row.get('question_id') == qid
+                for detail in capture['round_details'].values()
+                for row in detail.get('generation', {}).get('items', []))
+            if not known:
+                evidence = next((row for detail in capture['claim_details'].values()
+                                 for row in detail.get('evidence', []) if row.get('question_id') == qid
+                                 and type(row.get('round')) is int and row['round'] > 0), None)
+                if evidence is None:
+                    raise TaskConflict('该阅读记录中没有这道题的生成结果或证据，请重新打开后重试')
+                self._index_evidence_question(capture, evidence)
+            question = self.freeze_question(qid, capture=capture)
+            if expected is not None and question['observation']['content_hash'] != expected:
+                raise TaskConflict('题面保存记录与正在阅读的内容不同，请重新打开后重试')
+        kb = self._freeze_kb(capture, update_head=False, claim_ref=claim)
+        if kb is None:
+            raise TaskConflict('该阅读记录没有可携带的 KB，请等待知识保存后重试')
+        return {'question_key': question['metadata']['key'] if question else None,
+                'kb_selection': {'mode': 'manual', 'ref': {k: kb[k] for k in ('id', 'version')}},
+                'kb': kb, 'name': f"{qid} · {kb['name']}" if qid else kb['name'], 'mode': 'rules'}

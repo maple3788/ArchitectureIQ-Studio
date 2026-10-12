@@ -20,6 +20,8 @@ export const claimStateLabels: Record<string,string> = {
   candidate:'候选', verified:'来源已验证', flagged:'存疑', retired:'停用',
 };
 export type EvolutionSync = {status:string; last_success_at?:Timestamp; last_attempt_at?:Timestamp; message?:string};
+export type EvolutionObservation = {source_identity:string;sequence:number};
+export type EvolutionTaskContext = {observation:EvolutionObservation;claim_ref?:{id:string;version:number}};
 export type EvolutionClaim = {
   id:string; version:number; text:string; rules:Json[]; status:string; registered_round:number;
   needs_revision:boolean; revisions:number; stats?:Json|null; parent?:Json|null; rationale?:string;
@@ -33,14 +35,16 @@ export type EvolutionRound = {
 };
 export type EvolutionSnapshot = {
   configured:boolean; name?:string; sequence:number; sync:EvolutionSync;
+  observation?:EvolutionObservation;
   captured_at?:Timestamp; source_updated_at?:Timestamp;
   execution?:{status:string;stop_requested:boolean;alert:boolean};
   round?:EvolutionRound|null; kb?:{claims:number;candidate:number;verified:number;flagged:number;retired:number};
   evidence?:{questions:number;verdicts:number}; claims?:EvolutionClaim[]; rounds?:EvolutionRound[]; thresholds?:Json;
 };
-export type EvolutionClaimDetail = {claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number;evidence_truncated:boolean};
+export type EvolutionClaimDetail = {observation?:EvolutionObservation;claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number;evidence_truncated:boolean};
 export type EvolutionGeneration = {total:number;completed:number;ok:number;failed:number;pending:number;items:{item_id:string;family:string;question_type:string;budget?:Json;purpose:string;targets:string[];status:string;seconds?:number;question_id?:string}[]};
 export type EvolutionRoundDetail = EvolutionRound & {
+  observation?:EvolutionObservation;
   generation?:EvolutionGeneration;
   score?:Json|null; judge_events?:Json[]; proposals?:{new_count:number;revision_count:number;rejections:Json;qwen:Json}|null;
   registration?:{count:number;hash?:string;hash_matches?:boolean|null}|null; registered?:Json[];
