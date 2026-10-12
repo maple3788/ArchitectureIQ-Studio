@@ -85,6 +85,23 @@
 .evolution-block-note{display:block;font-size:11px;color:#8c9c90}
 .evolution-hash{display:block;font-size:10px;overflow-wrap:anywhere}
 .knowledge-evolution pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+.loop-open-question,.loop-back{display:inline-flex;align-items:center;gap:7px;padding:7px 0;border:0;background:transparent;box-shadow:none;color:#527b65;font-size:12px;font-weight:500}
+.loop-open-question{margin:5px 0 8px}.loop-back{margin:0 0 20px}
+.loop-question-panel .question-reader{border:0;box-shadow:none;padding:0;background:transparent}
+.loop-question-panel .question-reader-intro h2{font-size:21px}
+.loop-generation-sync{display:flex;align-items:center;gap:7px;color:#678d75;font-size:12px;margin-top:0}
+.loop-generation-sync i{width:5px;height:5px;border-radius:50%;background:currentColor}.loop-generation-sync.is-stale{color:#9c8159}
+.loop-generation-counts{display:flex;gap:40px;margin:22px 0 25px;padding:20px 0;border-block:1px solid #e3eae4}
+.loop-generation-counts dt{font-size:11px;color:#8b9a90}.loop-generation-counts dd{font-size:25px;color:#365c44;margin:8px 0 0;font-variant-numeric:tabular-nums}
+.loop-generation-filter{display:flex;gap:12px;margin-bottom:14px}.loop-generation-filter input{min-width:0;flex:1}.loop-generation-filter select{width:155px;flex-shrink:0}
+.loop-generation-filter input,.loop-generation-filter select{font-size:12px;padding:10px 12px;background:#f7faf7;border-color:#e2e9e3}
+.loop-generation-row{display:flex;width:100%;align-items:center;text-align:left;gap:13px;padding:17px 0;border:0;border-bottom:1px solid #e8ede9;border-radius:0;background:transparent;box-shadow:none;color:#577361;font-weight:400}
+button.loop-generation-row:hover{background:#f7faf7}.loop-generation-icon{display:grid;place-items:center;width:33px;height:33px;border-radius:10px;background:#f2f5f2;color:#9da99f;flex-shrink:0}
+.loop-generation-icon.is-ok{background:#eef5ef;color:#769b81}.loop-generation-icon.is-failed,.loop-generation-icon.is-crashed{color:#ad8c66;background:#f8f3ea}
+.loop-generation-row-copy{flex:1;min-width:0}.loop-generation-row-copy strong{font-size:13px;line-height:1.6;font-weight:500;display:block}.loop-generation-row-copy small{display:block;font-size:10px;color:#98a69b;margin-top:5px;overflow-wrap:anywhere}
+.loop-generation-outcome{font-size:11px;color:#94a096;text-align:right;flex-shrink:0}.loop-generation-outcome small{display:block;font-size:10px;margin-top:5px}.loop-generation-outcome.is-ok{color:#769781}.loop-generation-outcome.is-failed,.loop-generation-outcome.is-crashed{color:#ae8c69}
+.loop-generation-row>svg{color:#9daf9f;flex-shrink:0}.loop-show-more{width:100%;border:0;box-shadow:none;background:transparent;font-size:12px;color:#698571;margin-top:15px}
+@media(max-width:520px){.loop-generation-filter{flex-direction:column}.loop-generation-filter select{width:100%}.loop-generation-row{gap:9px}.loop-generation-row-copy strong{font-size:12px}.loop-generation-counts{gap:28px}.loop-generation-row>svg{display:none}}
 @media(max-width:900px){.evolution-claims{grid-template-columns:1fr}.knowledge-evolution .research-path-board{height:540px}}
 @media(max-width:760px){.knowledge-evolution{padding:22px 16px 30px}.evolution-header{gap:12px;margin-bottom:22px}.evolution-header h1{font-size:24px}.evolution-connection{font-size:10px}.evolution-connection small{max-width:145px;line-height:1.6}.evolution-current{gap:18px;padding:17px 18px}.evolution-kb-counts{gap:16px}.knowledge-evolution .research-path-board{height:520px}.evolution-canvas-heading small{font-size:9px}}
 @media(max-width:520px){.evolution-header{flex-direction:column;gap:9px}.evolution-connection{text-align:left;padding:0}.evolution-connection>span{justify-content:flex-start}.evolution-connection small{max-width:none}.evolution-current{grid-template-columns:1fr;gap:17px}.evolution-round-heading{flex-direction:row;align-items:center;gap:15px}.evolution-kb-counts{gap:13px}.knowledge-evolution .research-path-board{height:440px}.evolution-canvas-heading small{display:none}.evolution-claim-row{padding:16px}.evolution-library-heading{gap:5px}.evolution-library-heading select{max-width:140px}.evolution-claim-meta{gap:7px}}

@@ -59,6 +59,15 @@ def register_loop_observer_routes(api, *, observer):
         except KeyError as exc:
             raise HTTPException(404, '轮次记录不可用') from exc
 
+    @api.get(prefix + '/questions/{identifier}')
+    def question(identifier: str):
+        try:
+            return observer.question(identifier)
+        except KeyError as exc:
+            raise HTTPException(404, '来源尚无这道题的完整题面') from exc
+        except Exception as exc:
+            raise HTTPException(503, '完整题面暂时无法读取，请稍后重试') from exc
+
     @api.get(prefix + '/stream')
     def stream(request: Request, after: int = Query(0, ge=0, le=2**63-1)):
         previous = request.headers.get('last-event-id')

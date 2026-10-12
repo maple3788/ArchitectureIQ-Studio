@@ -5,6 +5,7 @@ import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs} from './ui';
 import {ResearchPathCanvas} from './ResearchPathCanvas';
 import {ruleConditions} from './ruleKnowledgePresentation';
 import {formatTimestamp} from './time';
+import {initialGenerationView,LoopGenerationPanel,LoopQuestionPanel} from './LoopQuestionPanel';
 import type {Json} from './types';
 import {
   claimStateLabels,evolutionDescriptions,evolutionLabels,evolutionPresentation,useKnowledgeEvolution,
@@ -15,7 +16,7 @@ import './knowledge-evolution.css';
 const percent=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?`${(value*100).toFixed(1)}%`:'待判定';
 const count=(value:unknown)=>typeof value==='number'?value.toLocaleString('zh-CN'):'—';
 
-function useDetail<T>(path:string|undefined,sequence:number){
+function useDetail<T>(path:string|undefined,sequence:number,connected:boolean){
   const [result,setResult]=useState<{path?:string;data?:T;error?:string}>({});
   useEffect(()=>{
     let active=true;
@@ -23,7 +24,7 @@ function useDetail<T>(path:string|undefined,sequence:number){
       if(active)setResult(old=>({path,data:old.path===path?old.data:undefined,error:'详情暂时无法同步，请稍后重新打开。'}));
     });
     return()=>{active=false;};
-  },[path,sequence]);
+  },[path,sequence,connected]);
   return result.path===path?result:{};
 }
 
@@ -64,7 +65,7 @@ function EvidenceComparisons({row}:{row:Json}){
   </>;
 }
 
-function ClaimReader({data}:{data:EvolutionClaimDetail}){
+function ClaimReader({data,onQuestion}:{data:EvolutionClaimDetail;onQuestion:(id:string)=>void}){
   const claim=data.claim;
   return <div className="evolution-claim-reader">
     <span className={`evolution-claim-status is-${claim.status}`}>{claimStateLabels[claim.status]??claim.status}</span>
@@ -80,6 +81,7 @@ function ClaimReader({data}:{data:EvolutionClaimDetail}){
       {data.evidence.length?data.evidence.map((row,index)=><details className="evolution-evidence-row" key={`${row.question_id}-${row.round}-${index}`}>
         <summary><span>{row.question_id}</span><span>第 {row.round} 轮 · {({support:'支持',refute:'推翻'} as Record<string,string>)[row.outcome]??row.outcome}</span></summary>
         {row.question&&<p className="evolution-note">{row.question.family} · {row.question.type} · {row.question.purpose==='target'?'定向题':'探索题'}</p>}
+        <button className="loop-open-question" aria-label={`阅读完整题目 ${row.question_id}`} onClick={()=>onQuestion(row.question_id)}>阅读完整题目 <ArrowUpRight size={14}/></button>
         <EvidenceComparisons row={row}/>
       </details>):<p>登记后的适用题证据尚未积累。</p>}
     </section>
@@ -116,11 +118,14 @@ export function KnowledgeEvolution(){
   const {snapshot,connection}=useKnowledgeEvolution();
   const [tab,setTab]=useState('知识进展'),[stage,setStage]=useState<EvolutionStage>(),[filter,setFilter]=useState('all');
   const [claimId,setClaimId]=useState<string>(),[roundIndex,setRoundIndex]=useState<number>();
+  const [questionId,setQuestionId]=useState<string>();
+  const [generationView,setGenerationView]=useState(initialGenerationView);
+  useEffect(()=>setGenerationView(initialGenerationView()),[snapshot?.round?.index]);
   const sequence=snapshot?.sequence??0;
-  const claimDetail=useDetail<EvolutionClaimDetail>(claimId?`/kb-loop/claims/${encodeURIComponent(claimId)}`:undefined,sequence);
-  const selectedRound=roundIndex??(stage?snapshot?.round?.index:undefined);
-  const roundDetail=useDetail<EvolutionRoundDetail>(selectedRound!==undefined?`/kb-loop/rounds/${selectedRound}`:undefined,sequence);
   const connected=connection==='connected'&&snapshot?.sync.status==='connected';
+  const claimDetail=useDetail<EvolutionClaimDetail>(claimId?`/kb-loop/claims/${encodeURIComponent(claimId)}`:undefined,sequence,connected);
+  const selectedRound=roundIndex??(stage?snapshot?.round?.index:undefined);
+  const roundDetail=useDetail<EvolutionRoundDetail>(selectedRound!==undefined?`/kb-loop/rounds/${selectedRound}`:undefined,sequence,connected);
   const stale=connection==='disconnected'||['disconnected','stale'].includes(snapshot?.sync.status??'');
   const graph=evolutionPresentation(snapshot,connected),round=snapshot?.round,execution=snapshot?.execution;
   const claims=(snapshot?.claims??[]).filter(claim=>filter==='all'||claim.status===filter);
@@ -135,7 +140,7 @@ export function KnowledgeEvolution(){
       {round?<div className="evolution-current"><div className="evolution-round-heading"><strong>第 {round.index} 轮</strong><span>{activity}</span></div><div className="evolution-build"><div><span>本轮出题</span><strong>{count(round.build?.completed)} <small>/ {count(round.plan?.total)}</small></strong></div>{round.plan?.total? <progress aria-label="本轮出题进度" value={round.build?.completed??0} max={round.plan.total}/>:null}<small>{count(round.build?.ok)} 道有效题 · {count(round.build?.failed)} 组未生成有效题</small></div></div>:<p className="evolution-note">等待来源保存首轮研究记录。</p>}
       {snapshot.kb&&<div className="evolution-kb-counts" aria-label="来源知识状态">{(['candidate','verified','flagged','retired'] as const).map(state=><span key={state} className={`is-${state}`}><i/>{claimStateLabels[state]} <b>{count(snapshot.kb?.[state])}</b></span>)}</div>}
       <ResearchPathCanvas nodes={graph.nodes} edges={graph.edges} selectedId={stage??''} onSelect={id=>setStage(id as EvolutionStage)} ariaLabel="知识演化研究路径" inspectorPresentation="overlay"
-        inspector={stage&&<StageReader stage={stage} snapshot={snapshot} detail={roundIndex===undefined||roundIndex===round?.index?roundDetail.data:undefined} onClose={()=>setStage(undefined)}/>}
+        inspector={stage&&stage!=='build'&&<StageReader stage={stage} snapshot={snapshot} detail={roundIndex===undefined||roundIndex===round?.index?roundDetail.data:undefined} onClose={()=>setStage(undefined)}/>}
         toolbar={<div className="evolution-canvas-heading"><span>研究路径</span><small>节点状态来自已保存的阶段记录</small></div>}
         interactionHint="拖动画布 · 点击查看证据"
         footer={<p className="evolution-note">命题登记后用新题检验，已收录知识持续复验。来源验证状态与人工审核分别保留。</p>}/>
@@ -143,7 +148,9 @@ export function KnowledgeEvolution(){
         {tab==='知识进展'?claims.length?<div className="evolution-claims">{claims.map(claim=><button className="evolution-claim-row" aria-label={`阅读命题 ${claim.id}`} key={claim.id} onClick={()=>setClaimId(claim.id)}><div><span className="evolution-claim-id">{claim.id}</span><span className={`evolution-claim-status is-${claim.status}`}>{claimStateLabels[claim.status]??claim.status}</span>{claim.needs_revision&&<small>待修订</small>}</div><p>{claim.text}</p><span className="evolution-claim-meta">支持 {count(claim.evidence?.support)} / {count(claim.evidence?.applicable)} 道适用题 <span>统计下界 {percent(claim.stats?.lower_bound)}</span><ArrowUpRight size={16}/></span></button>)}</div>:<Empty title="尚无这一状态的命题">新的证据与登记结果会自动显示。</Empty>:snapshot.rounds?.length?<div className="evolution-rounds">{[...snapshot.rounds].sort((a,b)=>b.index-a.index).map(item=><button key={item.index} onClick={()=>setRoundIndex(item.index)} aria-label={`阅读第 ${item.index} 轮`}><strong>第 {item.index} 轮</strong><span>{item.completed?'已归档':'未归档'}<small>{count(item.build?.ok)} / {count(item.plan?.total)} 道有效题</small></span><ChevronRight size={17}/></button>)}</div>:<Empty title="还没有轮次记录">完成的阶段与报告会在这里保存。</Empty>}
       </section>
     </>}
-    {claimId&&<Drawer title="知识与证据" subtitle={claimId} onClose={()=>setClaimId(undefined)}><ErrorBox error={claimDetail.error}/>{claimDetail.data?<ClaimReader data={claimDetail.data}/>:!claimDetail.error&&<Loading/>}</Drawer>}
-    {roundIndex!==undefined&&<Drawer title={`第 ${roundIndex} 轮研究`} onClose={()=>setRoundIndex(undefined)}><ErrorBox error={roundDetail.error}/>{roundDetail.data?<RoundReader data={roundDetail.data}/>:!roundDetail.error&&<Loading/>}</Drawer>}
+    {!questionId&&claimId&&<Drawer title="知识与证据" subtitle={claimId} onClose={()=>setClaimId(undefined)}><ErrorBox error={claimDetail.error}/>{claimDetail.data?<ClaimReader data={claimDetail.data} onQuestion={setQuestionId}/>:!claimDetail.error&&<Loading/>}</Drawer>}
+    {!questionId&&roundIndex!==undefined&&<Drawer title={`第 ${roundIndex} 轮研究`} onClose={()=>setRoundIndex(undefined)}><ErrorBox error={roundDetail.error}/>{roundDetail.data?<RoundReader data={roundDetail.data}/>:!roundDetail.error&&<Loading/>}</Drawer>}
+    {!questionId&&!claimId&&roundIndex===undefined&&stage==='build'&&<Drawer title="本轮新题" subtitle={`第 ${round?.index??'—'} 轮 · 生成记录`} onClose={()=>setStage(undefined)}><LoopGenerationPanel data={roundDetail.data?.generation} error={roundDetail.error} connected={connected} onQuestion={setQuestionId} view={generationView} onView={setGenerationView}/></Drawer>}
+    {questionId&&<Drawer title="完整题目" subtitle={questionId} onClose={()=>setQuestionId(undefined)}><LoopQuestionPanel key={questionId} id={questionId} backLabel={claimId?'返回知识与证据':'返回生成记录'} onBack={()=>setQuestionId(undefined)}/></Drawer>}
   </section>;
 }

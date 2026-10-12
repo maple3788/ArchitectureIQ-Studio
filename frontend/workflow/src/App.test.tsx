@@ -2,7 +2,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import App from './App';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();location.hash='';});
-it('question shortcut opens RAG with exact version key and leaves workflow storage intact',async()=>{
+it('question shortcut opens a new Task with exact version key and leaves workflow storage intact',async()=>{
  const storage=new Map<string,string>();vi.stubGlobal('localStorage',{setItem:(key:string,value:string)=>storage.set(key,value),getItem:(key:string)=>storage.get(key)||null,removeItem:(key:string)=>storage.delete(key)});
  location.hash='questions';localStorage.setItem('workflow-draft-test','preserve');
  vi.stubGlobal('fetch',async(path:string)=>{
@@ -17,9 +17,15 @@ it('question shortcut opens RAG with exact version key and leaves workflow stora
  expect(modules.getByRole('button',{name:'Data'}).getAttribute('aria-current')).toBe('page');
  fireEvent.click(await screen.findByRole('button',{name:'打开 q1'}));
  fireEvent.click(await screen.findByRole('button',{name:'用 RAG 匹配 KB 作答'}));
- expect(await screen.findByRole('heading',{name:'RAG 作答'})).toBeTruthy();expect(screen.getAllByText('q1@rev').length).toBeGreaterThan(0);
+ expect(await screen.findByRole('heading',{name:'新建解答任务'})).toBeTruthy();expect(screen.getAllByText('q1@rev').length).toBeGreaterThan(0);
  expect(location.hash).toBe('#rag');expect(localStorage.getItem('workflow-draft-test')).toBe('preserve');localStorage.removeItem('workflow-draft-test');
  expect(modules.getByRole('button',{name:'Task'}).getAttribute('aria-current')).toBe('page');
+ fireEvent.click(screen.getByRole('button',{name:'返回任务列表'}));
+ location.hash='#models';fireEvent(window,new HashChangeEvent('hashchange'));
+ await screen.findByRole('heading',{name:'配置模型接入。'});
+ fireEvent.click(modules.getByRole('button',{name:'Task'}));
+ expect(await screen.findByRole('heading',{name:'解答任务'})).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'新建解答任务'})).toBeNull();
 });
 it('opens Data by default while preserving existing named routes',async()=>{
  location.hash='';
@@ -46,10 +52,10 @@ it('keeps model deep links inside Harness and follows browser hash navigation',a
  expect(await screen.findByRole('heading',{name:'配置模型接入。'})).toBeTruthy();
  expect(screen.getByRole('button',{name:'Harness'}).getAttribute('aria-current')).toBe('page');
  fireEvent.click(screen.getByRole('button',{name:'Task'}));
- expect(await screen.findByRole('heading',{name:'RAG 作答'})).toBeTruthy();
+ expect(await screen.findByRole('heading',{name:'解答任务'})).toBeTruthy();
  location.hash='#rag_one';
  fireEvent(window,new HashChangeEvent('hashchange'));
- expect(screen.getByRole('heading',{name:'RAG 作答'})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'解答任务'})).toBeTruthy();
  expect(screen.getByRole('button',{name:'Task'}).getAttribute('aria-current')).toBe('page');
  location.hash='#models';
  fireEvent(window,new HashChangeEvent('hashchange'));

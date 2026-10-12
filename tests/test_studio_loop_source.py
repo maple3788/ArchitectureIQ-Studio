@@ -149,3 +149,33 @@ def test_source_evidence_list_is_bounded_but_exact_total_is_retained(source):
     assert detail['evidence_truncated'] is True
     assert len(detail['evidence']) == 100
     assert detail['claim']['evidence']['support'] == 130
+
+
+def test_generation_items_follow_saved_results_and_never_infer_active_worker(source):
+    dump(source, 'rounds/round_0002/plan.json', [
+        {'item_id': 'a', 'family': 'xor_classification', 'question_type': 'mixed', 'budget': 4096,
+         'purpose': 'target', 'targets': ['C1'], 'seed_base': 123},
+        {'item_id': 'b', 'family': 'multivariate_regression', 'question_type': 'architecture_only',
+         'budget': 8192, 'purpose': 'explore', 'targets': []},
+        {'item_id': 'c', 'family': 'bigram_lm', 'question_type': 'optimizer_only',
+         'budget': 4096, 'purpose': 'explore', 'targets': []},
+    ])
+    rows(source, 'rounds/round_0002/build.jsonl', [
+        {'item_id': 'a', 'status': 'failed', 'notes': ['PRIVATE_PATH']},
+        {'item_id': 'a', 'status': 'ok', 'question_id': 'q_good', 'seconds': 7.5,
+         'question_path': '/PRIVATE_PATH/question.json'},
+        {'item_id': 'a', 'status': 'crashed', 'traceback': 'PRIVATE_TRACE'},
+        {'item_id': 'b', 'status': 'crashed', 'traceback': 'PRIVATE_TRACE'},
+    ])
+    value = collect(source, 'running')['round_details']['2']['generation']
+    assert {key: value[key] for key in ('total', 'completed', 'ok', 'failed', 'pending')} == {
+        'total': 3, 'completed': 2, 'ok': 1, 'failed': 1, 'pending': 1}
+    assert value['items'] == [
+        {'item_id': 'a', 'family': 'xor_classification', 'question_type': 'mixed', 'budget': 4096,
+         'purpose': 'target', 'targets': ['C1'], 'status': 'ok', 'seconds': 7.5, 'question_id': 'q_good'},
+        {'item_id': 'b', 'family': 'multivariate_regression', 'question_type': 'architecture_only',
+         'budget': 8192, 'purpose': 'explore', 'targets': [], 'status': 'crashed'},
+        {'item_id': 'c', 'family': 'bigram_lm', 'question_type': 'optimizer_only',
+         'budget': 4096, 'purpose': 'explore', 'targets': [], 'status': 'pending'},
+    ]
+    assert 'PRIVATE_' not in json.dumps(value)

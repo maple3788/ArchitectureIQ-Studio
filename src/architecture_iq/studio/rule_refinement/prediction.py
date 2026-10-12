@@ -74,7 +74,12 @@ def _paths(graph, origin):
     return {k: v for k, v in paths.items() if k != origin}
 
 
-def predict_question(case: dict, kb: dict) -> dict:
+def predict_question(case: dict, kb: dict, *, rule_admission=None) -> dict:
+    """Execute the canonical solver; an optional public-only gate can narrow scope.
+
+    The gate is supplied by trusted server code, never a browser expression.
+    Existing research runs retain their original behavior when it is omitted.
+    """
     result = {"question_ref": deepcopy(case.get("ref")), "kb_version": kb.get("version"),
               "executable_hash": kb.get("executable_hash"), "predictor_version": PREDICTOR_VERSION,
               "status": "invalid", "answer_id": None, "edges": [], "paths": {}, "issues": []}
@@ -87,6 +92,8 @@ def predict_question(case: dict, kb: dict) -> dict:
         for a, b in combinations(range(len(ids)), 2):
             for rule in kb["rules"]:
                 if rule["state"] != "active":
+                    continue
+                if rule_admission is not None and not rule_admission(rule, views[a], views[b]):
                     continue
                 predicted = match_rule(rule["rule"], views[a], views[b])
                 if predicted is None:

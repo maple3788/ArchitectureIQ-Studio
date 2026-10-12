@@ -53,6 +53,7 @@ class ObserverConfig:
     python: str
     poll_seconds: float = 5
     timeout_seconds: float = 15
+    artifact_root: str | None = None
 
     @classmethod
     def from_dict(cls, value: dict, *, authorized_host: str) -> 'ObserverConfig':
@@ -60,7 +61,7 @@ class ObserverConfig:
             required = {'source_id', 'host', 'user', 'port', 'root', 'python'}
             if not isinstance(value, dict) or not required <= set(value):
                 raise ValueError()
-            if set(value) - required - {'poll_seconds', 'timeout_seconds'}:
+            if set(value) - required - {'poll_seconds', 'timeout_seconds', 'artifact_root'}:
                 raise ValueError()
             if not authorized_host.strip() or value['host'] != authorized_host:
                 raise ValueError()
@@ -77,6 +78,11 @@ class ObserverConfig:
             if (not isinstance(root, str) or not PurePosixPath(root).is_absolute()
                     or '\x00' in root or '\n' in root or '..' in PurePosixPath(root).parts):
                 raise ValueError()
+            if value.get('artifact_root') is not None:
+                artifact = value['artifact_root']
+                if (not isinstance(artifact, str) or not PurePosixPath(artifact).is_absolute()
+                        or '\x00' in artifact or '\n' in artifact or '..' in PurePosixPath(artifact).parts):
+                    raise ValueError()
             executable = value['python']
             if (not isinstance(executable, str)
                     or not re.fullmatch(r'python(?:[0-9]+(?:\.[0-9]+)*)?', PurePosixPath(executable).name)
@@ -109,14 +115,24 @@ class ObserverConfig:
     def identity(self) -> str:
         # A configuration change must never reinterpret an old source's journal.
         fields = {key: value for key, value in asdict(self).items()
-                  if key not in {'poll_seconds', 'timeout_seconds'}}
+                  if key not in {'poll_seconds', 'timeout_seconds'} and value is not None}
         return hashlib.sha256(_json(fields).encode()).hexdigest()
 
 
 class SSHSourceReader:
     def __call__(self, config: ObserverConfig) -> dict:
+        return self._read(config, [])
+
+    def question(self, config: ObserverConfig, identifier: str) -> dict:
+        if not config.artifact_root:
+            raise RuntimeError('Question source unavailable')
+        if not re.fullmatch(r'q_[A-Za-z0-9_-]{1,80}', identifier):
+            raise KeyError('Question unavailable')
+        return self._read(config, ['--question', config.artifact_root, identifier])
+
+    def _read(self, config: ObserverConfig, arguments: list[str]) -> dict:
         collector = Path(__file__).with_name('loop_source.py').read_text()
-        command = shlex.join([config.python, '-', config.root])
+        command = shlex.join([config.python, '-', config.root, *arguments])
         started = time.monotonic()
         for attempt in range(2):
             remaining = config.timeout_seconds - (time.monotonic() - started) if attempt else config.timeout_seconds
@@ -131,6 +147,9 @@ class SSHSourceReader:
             )
             if len(response.stdout.encode()) > _MAX_CAPTURE_BYTES:
                 break
+            if response.returncode == 2 and arguments:
+                if json.loads(response.stdout) == {'error': 'question_missing'}:
+                    raise KeyError('Question unavailable')
             if response.returncode == 1 and attempt == 0:
                 # A concurrently changing source cannot be published. Retry
                 # only that explicit reader failure, within the same deadline.
@@ -148,9 +167,11 @@ class SSHSourceReader:
 
 class LoopObserver:
     def __init__(self, state_root: Path, *, config: ObserverConfig | None = None,
-                 reader: Callable[[ObserverConfig], dict] | None = None):
+                 reader: Callable[[ObserverConfig], dict] | None = None,
+                 question_reader: Callable[[ObserverConfig, str], dict] | None = None):
         self.config = config
         self.reader = reader or SSHSourceReader()
+        self.question_reader = question_reader or SSHSourceReader().question
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._thread_lock = threading.Lock()
@@ -170,6 +191,10 @@ class LoopObserver:
                         status TEXT NOT NULL, last_attempt_at REAL, last_success_at REAL
                     );
                     INSERT OR IGNORE INTO sync VALUES (1, 'connecting', NULL, NULL);
+                    CREATE TABLE IF NOT EXISTS question_artifacts (
+                        question_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
+                        captured_at REAL NOT NULL, payload BLOB NOT NULL
+                    );
                 ''')
 
     @property
@@ -232,6 +257,35 @@ class LoopObserver:
         if not row:
             raise KeyError('轮次记录不可用')
         return _decode(row['payload'])['round_details'][str(number)]
+
+    def question(self, identifier: str) -> dict:
+        """Return a frozen public question, persisted independently of SSE."""
+        from .loop_question import public_question
+
+        if not isinstance(identifier, str) or not re.fullmatch(r'q_[A-Za-z0-9_-]{1,80}', identifier):
+            raise KeyError('Question unavailable')
+        if not self.config or not self.config.artifact_root:
+            raise RuntimeError('Question source unavailable')
+        # Cross-process cache admission; never write to the remote artifact tree.
+        with (self.directory / 'question.lock').open('a') as guard:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+            with self._connect() as connection:
+                row = connection.execute('SELECT * FROM question_artifacts WHERE question_id=?', (identifier,)).fetchone()
+            if row:
+                value = _decode(row['payload'])
+                if hashlib.sha256(_json(value).encode()).hexdigest() != row['content_hash']:
+                    raise RuntimeError('Question capture integrity check failed')
+                return {**value, 'observation': {'content_hash': row['content_hash'], 'captured_at': row['captured_at']}}
+            value = public_question(self.question_reader(self.config, identifier), identifier)
+            serialized = _json(value)
+            if len(serialized.encode()) > _MAX_CAPTURE_BYTES:
+                raise RuntimeError('Question capture too large')
+            digest = hashlib.sha256(serialized.encode()).hexdigest()
+            captured = time.time()
+            with self._connect() as connection:
+                connection.execute('INSERT INTO question_artifacts VALUES (?,?,?,?)',
+                                   (identifier, digest, captured, zlib.compress(serialized.encode())))
+            return {**value, 'observation': {'content_hash': digest, 'captured_at': captured}}
 
     def events(self, *, after: int = 0, limit: int = 200) -> list[dict]:
         if type(after) is not int or not 0 <= after <= 2**63-1 or type(limit) is not int or not 1 <= limit <= 200:

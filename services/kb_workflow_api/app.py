@@ -791,6 +791,11 @@ def create_app(
                         inventory_provider=knowledge,
                         require_execution=require_execution, allowed_roots=sources)
 
+    from .task_routes import register_task_routes
+    register_task_routes(api, catalog=catalog, models=models, jobs=jobs,
+                         inventory_provider=knowledge,
+                         require_execution=require_execution, allowed_roots=sources)
+
     from .rule_refinement_routes import register_rule_refinement_routes
     register_rule_refinement_routes(api, catalog=catalog, datasets=datasets, models=models, jobs=jobs,
                                     inventory_provider=knowledge, require_execution=require_execution)

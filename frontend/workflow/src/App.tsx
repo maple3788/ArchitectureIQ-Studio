@@ -1,5 +1,5 @@
 import type {KBRef} from './ruleRefinementTypes';
-import {Rag} from './Rag';
+import {Tasks} from './Tasks';
 import {DataWorkspace} from './DataWorkspace';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -31,7 +31,7 @@ const modules = [
 ];
 const modulePages = {
   harness: [{id: "workflow", name: "工作流"}, {id: "models", name: "模型配置"}],
-  task: [{id: "rag", name: "RAG 作答"}, {id: "runs", name: "评测与记录"}],
+  task: [{id: "rag", name: "解答任务"}, {id: "runs", name: "评测与记录"}],
 };
 const pageFromHash = () => {
   const id = location.hash.slice(1);
@@ -231,7 +231,7 @@ export default function App() {
               {page === "generation" && <Generation capabilities={data.capabilities} version={version} act={act} executionEnabled={executionEnabled} onRun={onRun} />}
             </DataWorkspace>
           ) : page === "rag" ? (
-            <Rag version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
+            <Tasks version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestionConsumed={()=>setRagQuestion(undefined)} onRun={onRun}/>
           ) : page === "workflow" ? (
             data ? <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act} loopEnabled={data.service.knowledge_loop_configured===true}>
               <Workflow

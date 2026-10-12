@@ -39,7 +39,9 @@ export type EvolutionSnapshot = {
   evidence?:{questions:number;verdicts:number}; claims?:EvolutionClaim[]; rounds?:EvolutionRound[]; thresholds?:Json;
 };
 export type EvolutionClaimDetail = {claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number;evidence_truncated:boolean};
+export type EvolutionGeneration = {total:number;completed:number;ok:number;failed:number;pending:number;items:{item_id:string;family:string;question_type:string;budget?:Json;purpose:string;targets:string[];status:string;seconds?:number;question_id?:string}[]};
 export type EvolutionRoundDetail = EvolutionRound & {
+  generation?:EvolutionGeneration;
   score?:Json|null; judge_events?:Json[]; proposals?:{new_count:number;revision_count:number;rejections:Json;qwen:Json}|null;
   registration?:{count:number;hash?:string;hash_matches?:boolean|null}|null; registered?:Json[];
 };

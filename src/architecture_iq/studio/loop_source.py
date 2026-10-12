@@ -25,6 +25,18 @@ MAX_EVIDENCE = 100
 STATS = ('support', 'applicable', 'rate', 'lower_bound', 'alpha', 'recent_support', 'recent_applicable')
 THRESHOLDS = ('min_applicable', 'promote_rate', 'promote_lower_bound', 'alpha', 'flag_rate',
               'recent_rounds', 'recent_min_applicable', 'max_revisions')
+# The transport is standalone, so it cannot import Studio's Catalog on the
+# execution host. Limit its spec payload to public structural names; the local
+# Catalog applies its shared, stricter typed schemas before persistence.
+SPEC_KEYS = 'schema_version candidate_id dataset_id family profile profile_hash budget model optimizer loss execution trainable_parameter_count selection_metric params seeds seed synthesis task'.split()
+SPEC_PARTS = {
+    'model': 'depth width input_dim output_dim vocab_size context_length d_model embed_dim num_layers num_heads d_ff ff_dim type activation activations layer_norm residual layer_residual leaky_relu_slope',
+    'optimizer': 'type lr weight_decay momentum betas', 'loss': 'loss_id type lambda',
+    'params': 'instance_seed input_dim output_dim num_classes train_size test_size vocab_size context_length sequence_seed table_seed n_active_features alpha spiral_turns noise_std margin label_noise scale expression rule_family layout domain active_features sampler point_sampling',
+    'budget': 'training_steps batch_size total_samples_seen mixed', 'execution': 'device',
+    'seeds': 'expression point sequence table', 'sampler': 'id seed max_depth retry',
+    'point_sampling': 'distribution seed',
+}
 
 
 class SourceUnavailable(ValueError):
@@ -33,6 +45,14 @@ class SourceUnavailable(ValueError):
 
 def _pick(value, keys):
     return {key: value[key] for key in keys if key in value} if isinstance(value, dict) else {}
+
+
+def _transport_spec(value, keys=SPEC_KEYS):
+    result = _pick(value, keys)
+    for key, item in list(result.items()):
+        if isinstance(item, dict):
+            result[key] = _transport_spec(item, SPEC_PARTS.get(key, '').split())
+    return result
 
 
 def _json(raw):
@@ -152,6 +172,20 @@ def _round(reader, index):
             'explore': sum(row.get('purpose') == 'explore' for row in planned)}
     ok = sum(row.get('status') == 'ok' for row in built.values())
     build = {'completed': len(built), 'ok': ok, 'failed': len(built) - ok}
+    items = []
+    for row in planned:
+        item = _pick(row, ('item_id', 'family', 'question_type', 'budget', 'purpose', 'targets'))
+        saved = built.get(row['item_id'])
+        item['status'] = saved['status'] if saved else 'pending'
+        if saved:
+            item.update(_pick(saved, ('seconds',)))
+            if saved['status'] == 'ok':
+                item.update(_pick(saved, ('question_id',)))
+        items.append(item)
+    generation = {'total': len(items), 'completed': sum(item['status'] != 'pending' for item in items),
+                  'ok': sum(item['status'] == 'ok' for item in items),
+                  'failed': sum(item['status'] in ('failed', 'crashed') for item in items),
+                  'pending': sum(item['status'] == 'pending' for item in items), 'items': items}
     result = {'index': index, 'completed': 'report' in completed, 'completed_stages': completed,
               'plan': plan, 'build': build, 'report': _report(reader.json(prefix + 'report.json'))}
     judge = reader.json(prefix + 'judge.json', {})
@@ -160,7 +194,8 @@ def _round(reader, index):
     registration = _json(raw_registration) if raw_registration else None
     digest = reader.read(prefix + 'preregistered.sha256')
     digest = digest.decode().strip() if digest else None
-    detail = {**result, 'score': _pick(reader.json(prefix + 'score.json'), ('questions', 'verdicts', 'added')),
+    detail = {**result, 'generation': generation,
+              'score': _pick(reader.json(prefix + 'score.json'), ('questions', 'verdicts', 'added')),
               'judge_events': [_pick(event, ('round', 'claim_id', 'version', 'from', 'to', 'needs_revision', *STATS))
                                for event in judge.get('events', [])],
               'proposals': {'new_count': len(props.get('new', [])), 'revision_count': len(props.get('revisions', {})),
@@ -265,10 +300,102 @@ def process_state(root: Path) -> str:
     return 'unknown' if unknown else 'stopped'
 
 
+def collect_question(root: Path, artifact_root: Path, identifier: str) -> dict:
+    """Read one completed question, without importing or running the engine.
+
+    Source build receipts authorize the lookup. The browser's identifier never
+    becomes a filesystem path. Public spec projection is applied again locally
+    before the result is persisted or delivered.
+    """
+    if not isinstance(identifier, str) or not re.fullmatch(r'q_[A-Za-z0-9_-]{1,80}', identifier):
+        raise KeyError('Question unavailable')
+    source, artifacts = Reader(root), Reader(artifact_root)
+    references = set()
+    for name in source.names('rounds'):
+        if not re.fullmatch(r'round_\d{4,}', name):
+            continue
+        built = {}
+        for row in source.rows(f'rounds/{name}/build.jsonl'):
+            if row['status'] == 'ok' or row['item_id'] not in built:
+                built[row['item_id']] = row
+        for row in built.values():
+            if row.get('status') == 'ok' and row.get('question_id') == identifier:
+                reference = row.get('question_path')
+                if not isinstance(reference, str):
+                    raise SourceUnavailable('Question receipt unavailable')
+                references.add(reference)
+    if not references:
+        raise KeyError('Question unavailable')
+    if len(references) != 1:
+        raise SourceUnavailable('Ambiguous question receipts')
+    path = Path(references.pop())
+    if '..' in path.parts or path.name != 'question.json' or path.parent.name != identifier:
+        raise SourceUnavailable('Invalid question artifact')
+    if path.is_absolute():
+        try:
+            path = path.relative_to(artifacts.root)
+        except ValueError as exc:
+            raise SourceUnavailable('Question outside artifact root') from exc
+    question = artifacts.json(str(path), required=True)
+    if not isinstance(question, dict) or question.get('question_id') != identifier:
+        raise SourceUnavailable('Question identity mismatch')
+    family, dataset_id = question.get('family'), question.get('dataset_id')
+    if any(not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value)
+           for value in (family, dataset_id)):
+        raise SourceUnavailable('Invalid dataset identity')
+    dataset_path = Path('datasets') / family / dataset_id
+    dataset = artifacts.json(str(dataset_path / 'dataset_spec.json'), required=True)
+    if dataset.get('dataset_id') != dataset_id or dataset.get('family') != family:
+        raise SourceUnavailable('Dataset identity mismatch')
+    prompt = artifacts.read(str(path.parent / 'prompt.txt'), required=True).decode('utf-8')
+    if not prompt.strip():
+        raise SourceUnavailable('Question prompt unavailable')
+    ds_files = {'dataset_spec.json': _transport_spec(dataset)}
+    synthesis = artifacts.read(str(dataset_path / 'synthesize.py'))
+    if synthesis is not None:
+        ds_files['synthesize.py'] = synthesis.decode('utf-8')
+    raw_choices = question.get('choices')
+    if not isinstance(raw_choices, list) or not 1 <= len(raw_choices) <= 26:
+        raise SourceUnavailable('Question choices unavailable')
+    choices, details, ids, letters = [], [], set(), set()
+    for item in raw_choices:
+        cid, letter, reference = item.get('candidate_id'), item.get('letter'), item.get('candidate_path')
+        if (not isinstance(cid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', cid)
+                or not isinstance(letter, str) or not re.fullmatch(r'[A-Z]', letter)
+                or cid in ids or letter in letters or not isinstance(reference, str)):
+            raise SourceUnavailable('Invalid question choice')
+        candidate = Path(reference)
+        if (candidate.is_absolute() or '..' in candidate.parts
+                or not candidate.is_relative_to(dataset_path / 'candidates') or candidate.name != cid):
+            raise SourceUnavailable('Invalid candidate path')
+        spec = artifacts.json(str(candidate / 'candidate_spec.json'), required=True)
+        if spec.get('candidate_id') != cid or spec.get('dataset_id') != dataset_id or spec.get('family') != family:
+            raise SourceUnavailable('Candidate identity mismatch')
+        files = {'candidate_spec.json': _transport_spec(spec)}
+        for filename in ('model.py', 'optimizer.py', 'loss.py', 'train.py'):
+            code = artifacts.read(str(candidate / filename))
+            if code is not None:
+                files[filename] = code.decode('utf-8')
+        choices.append({'id': cid, 'letter': letter, 'view': {}})
+        details.append({'candidateId': cid, 'letter': letter, 'files': files})
+        ids.add(cid)
+        letters.add(letter)
+    source.finish()
+    artifacts.finish()
+    return {'metadata': {'id': identifier, **_pick(question, ('family', 'dataset_id', 'type', 'profile')),
+                         'metric': question.get('evaluation', {}).get('selection_metric') or dataset.get('selection_metric')},
+            'public': {'id': identifier, 'family': family, 'dataset_id': dataset_id, 'prompt': prompt, 'choices': choices},
+            'detail': {'prompt': prompt, 'dataset': {'files': ds_files}, 'choices': details}}
+
+
 if __name__ == '__main__':
     try:
         source_root = Path(sys.argv[1])
-        print(json.dumps(collect(source_root, process_state(source_root)), ensure_ascii=False, allow_nan=False))
+        result = collect_question(source_root, Path(sys.argv[3]), sys.argv[4]) if len(sys.argv) == 5 and sys.argv[2] == '--question' else collect(source_root, process_state(source_root))
+        print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+    except KeyError:
+        print(json.dumps({'error': 'question_missing'}))
+        sys.exit(2)
     except Exception:
         # Never send raw paths, source config or tracebacks over the public API.
         print(json.dumps({'error': 'source_unavailable'}))

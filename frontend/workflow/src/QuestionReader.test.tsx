@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QuestionReader } from "./QuestionReader";
+import { useLayoutEffect } from "react";
 
 afterEach(cleanup);
 const choice = (letter: string, activation: string, budget: number) => ({
@@ -28,6 +29,17 @@ const record = {
     prompt: 'Exact\n\n<answer>A</answer>\n<script>not executed</script>',
   },
 };
+
+it('retains an immediate first tab selection instead of overwriting it in a delayed mount reset',()=>{
+  function ImmediatelyReadPrompt(){
+    // The controls are already committed. Select the tab at the earliest
+    // possible interaction boundary, before passive effects are flushed.
+    useLayoutEffect(()=>{screen.getByRole('tab',{name:'原始 Prompt'}).click();},[]);
+    return <QuestionReader record={record}/>;
+  }
+  render(<ImmediatelyReadPrompt/>);
+  expect(screen.getByRole('article',{name:'公开题面'}).textContent).toBe(record.detail.prompt);
+});
 
 it("compares effective candidate specs and highlights differences without assuming equal budgets", () => {
   render(<QuestionReader record={record}/>);

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useLayoutEffect, useId, useState } from "react";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -129,7 +129,9 @@ function viewGroups(view: Json): Record<string, Json> {
 export function QuestionReader({record,interactive=false,questionKey}: {record:Json;interactive?:boolean;questionKey?:string}) {
   const [selected,setSelected]=useState<string>();
   const [compared,setCompared]=useState<string[]>([]);
-  useEffect(()=>{setSelected(undefined);setCompared([]);setTab("structured");},[questionKey]);
+  // Reset before the new question can be interacted with; a passive mount
+  // effect could otherwise overwrite an immediate first tab selection.
+  useLayoutEffect(()=>{setSelected(undefined);setCompared([]);setTab("structured");},[questionKey]);
   const [tab,setTab] = useState("structured");
   const readerId = useId();
   const detail = object(record.detail), pub = object(record.public), metadata = object(record.metadata);
