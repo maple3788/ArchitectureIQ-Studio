@@ -154,8 +154,19 @@ def _rules_preview(catalog, card, inventory):
 
 def prepare_task(card, *, catalog, models, inventory, allowed_roots):
     from .jobs import source_fingerprint
+    from .task_review import freeze_question_record
     if not card['question_key']:
         raise ValueError('请先选择题目并保存任务')
+    record = catalog.get_question(card['question_key'], include_private=False)
+    class FrozenCatalog:
+        root = catalog.root
+
+        def get_question(self, key, *, include_private=False):
+            if key != card['question_key'] or include_private:
+                raise ValueError('Only the selected public question is available')
+            return deepcopy(record)
+
+    catalog = FrozenCatalog()
     inventory = _selected_inventory(card, inventory)
     if card['mode'] == 'rules':
         config, shown = _rules_preview(catalog, card, inventory)
@@ -174,7 +185,8 @@ def prepare_task(card, *, catalog, models, inventory, allowed_roots):
                  'reserved_tokens': result['reserved_tokens'], 'blocked_reason': result['blocked_reason'],
                  'warnings': [] if result['can_answer'] else [{'code': result['blocked_reason'],
                     'message': '没有可用于当前题目的知识，请调整 KB 选择'}]}
-    config = {**config, 'task_id': card['id'], 'task_revision': card['revision']}
+    config = {**config, 'task_id': card['id'], 'task_revision': card['revision'],
+              'question_record': freeze_question_record(record)}
     return config, {**shown, 'task_id': card['id'], 'task_revision': card['revision'], 'mode': card['mode'],
                     'preview_hash': canonical_hash({'card': card, 'config': config, 'source_fingerprint': source_fingerprint()})}
 

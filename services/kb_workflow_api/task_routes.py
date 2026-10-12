@@ -4,6 +4,7 @@ from architecture_iq.kb.store import canonical_hash
 from architecture_iq.studio.tasks import TaskStore, TaskConflict
 from architecture_iq.studio.task_answers import eligible_kbs, kb_description, prepare_task, public_task_run
 from architecture_iq.studio.evolution_task_sources import EvolutionTaskSources
+from architecture_iq.studio.task_review import task_run_detail
 
 
 def register_task_routes(api, *, catalog, models, jobs, inventory_provider, require_execution, allowed_roots, observer):
@@ -173,3 +174,8 @@ def register_task_routes(api, *, catalog, models, jobs, inventory_provider, requ
                 dispatch(receipt)
                 return public_task_run(receipt, jobs)
         return invoke(operation)
+
+    @api.get(prefix + '/{identifier}/runs/{answer_id}')
+    def answer_detail(identifier: str, answer_id: str):
+        return invoke(lambda: task_run_detail(tasks.answer(identifier, answer_id), jobs=jobs,
+            catalog=catalog, evolution=evolution, observer=observer))

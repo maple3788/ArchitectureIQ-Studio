@@ -158,7 +158,23 @@ def _report(value):
     }
 
 
-def _claim_detail(raw, history, evidence, questions):
+def question_support_counts(records):
+    """Count saved question outcomes, retaining contradictions across repeats."""
+    outcomes = {}
+    for row in records:
+        qid = row.get('question_id')
+        if not isinstance(qid, str) or not qid.strip():
+            return {'unit': 'distinct_questions', 'complete': False,
+                    'support_questions': None, 'refute_questions': None, 'unknown_questions': None}
+        outcome = row.get('outcome')
+        outcomes.setdefault(qid, set()).add(outcome if outcome in {'support', 'refute'} else 'unknown')
+    refute = sum('refute' in values for values in outcomes.values())
+    support = sum(values == {'support'} for values in outcomes.values())
+    return {'unit': 'distinct_questions', 'complete': True, 'support_questions': support,
+            'refute_questions': refute, 'unknown_questions': len(outcomes) - support - refute}
+
+
+def _claim_detail(raw, history, evidence, questions, support_records=None):
     """Project a bounded evidence window after the caller fixes its scope."""
     claim = _claim(raw)
     claim['evidence'] = {'applicable': len(evidence),
@@ -172,6 +188,8 @@ def _claim_detail(raw, history, evidence, questions):
     rows = [evidence_row(row) for row in reversed(evidence[-MAX_EVIDENCE:])]
     refutes = [row for row in evidence if row['outcome'] == 'refute']
     return {'claim': claim, 'history': [_claim(v) for v in history],
+            'support_summary': {'claim_id': raw['id'], 'version': raw['version'],
+                                **question_support_counts(evidence if support_records is None else support_records)},
             'evidence': rows, 'evidence_total': len(evidence), 'evidence_truncated': len(evidence) > len(rows),
             'counterexamples': {'items': [evidence_row(row) for row in reversed(refutes[-MAX_EVIDENCE:])],
                                 'total': len(refutes), 'truncated': len(refutes) > MAX_EVIDENCE}}
@@ -291,7 +309,9 @@ def collect(root: Path, process_state='unknown') -> dict:
     for cid, raw in raw_claims.items():
         evidence = [row for row in ledger_by_version.get((cid, raw['version']), [])
                     if row['round'] > raw['registered_round']]
-        details[cid] = _claim_detail(raw, history_by_claim.get(cid, []), evidence, questions)
+        support_records = [row for row in ledger_history.get((cid, raw['version']), [])
+                           if row['round'] > raw['registered_round']]
+        details[cid] = _claim_detail(raw, history_by_claim.get(cid, []), evidence, questions, support_records)
         claims.append(details[cid]['claim'])
     counts = Counter(claim['status'] for claim in claims)
     names = [name for name in reader.names('rounds') if re.fullmatch(r'round_\d{4,}', name)]
@@ -321,8 +341,9 @@ def collect(root: Path, process_state='unknown') -> dict:
                 raw = _claim_at_judgment(raw, events[cid, version])
             # Apply the cutoff before deduplication: a later repeated question
             # must not replace its earlier persisted result in an older round.
-            evidence = list({row['question_id']: row for row in ledger_history.get((cid, version), [])
-                             if raw['registered_round'] < row['round'] <= index}.values())
+            support_records = [row for row in ledger_history.get((cid, version), [])
+                               if raw['registered_round'] < row['round'] <= index]
+            evidence = list({row['question_id']: row for row in support_records}.values())
             history = [item for item in history_by_claim.get(cid, [])
                        if item['version'] <= version and item.get('registered_round', index + 1) <= index]
             for row in evidence:
@@ -335,7 +356,7 @@ def collect(root: Path, process_state='unknown') -> dict:
                         (question for question in reversed(question_history.get(row['question_id'], []))
                          if question['round'] <= row['round']),
                         key=lambda question: question['round'], default=None)
-            saved = _claim_detail(raw, history[-MAX_EVIDENCE:], evidence, historical_questions)
+            saved = _claim_detail(raw, history[-MAX_EVIDENCE:], evidence, historical_questions, support_records)
             saved.update(reading_round=index, evidence_unavailable=False,
                          history_truncated=len(history) > MAX_EVIDENCE)
             round_claims.setdefault(cid, {})[str(version)] = saved

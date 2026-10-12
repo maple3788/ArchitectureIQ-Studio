@@ -147,3 +147,11 @@ class TaskStore:
             self._get(identifier)
             values = [self._receipt(path) for path in (self.directory(identifier) / 'runs').glob('*.json')]
         return sorted(values, key=lambda value: (value['created_at'], value['id']), reverse=True)
+
+    def answer(self, identifier, answer_id):
+        if not isinstance(answer_id, str) or not re.fullmatch(r'answer_[a-f0-9]{16}', answer_id):
+            raise KeyError('作答记录不存在')
+        for receipt in self.history(identifier):
+            if receipt['id'] == answer_id and receipt['task_id'] == identifier:
+                return receipt
+        raise KeyError('作答记录不存在')

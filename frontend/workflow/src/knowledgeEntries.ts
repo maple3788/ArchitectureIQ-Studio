@@ -12,7 +12,13 @@ export function knowledgeEntries(records:Json[]):KnowledgeEntry[]{
    const recordKey=knowledgeVersionKey(record);
    if(seenRecords.has(recordKey))continue;
    seenRecords.add(recordKey);
-   const snapshot=record.snapshot??{},parts:Json[]=isExperience(record)?snapshot.lessons??[]:record.kind==='research_rules'?snapshot.rules??[]:snapshot.claims??[];
+   const snapshot=record.snapshot??{},stored:Json[]=isExperience(record)?snapshot.lessons??[]:record.kind==='research_rules'?snapshot.rules??[]:snapshot.claims??[];
+   const represented=new Set(stored.map(part=>part.metadata?.claim_id??part.source_claim_id??part.rule_id??part.id));
+   const reading:Json[]=record.source_kind==='knowledge_evolution'&&Array.isArray(record.reading_claims)?record.reading_claims:[];
+   const parts:Json[]=[...stored,...reading.filter(claim=>!represented.has(claim.id)).flatMap(claim=>{
+    const rules=Array.isArray(claim.rules)&&claim.rules.length?claim.rules:[undefined];
+    return rules.map((rule:Json|undefined)=>({...claim,source_claim_id:claim.id,source_status:claim.status,revision:claim.version,rule,library_only:true}));
+   })];
    const grouped=new Map<string,Json[]>();
    parts.forEach((part,index)=>{const id=String(part.metadata?.claim_id??part.source_claim_id??part.rule_id??part.id??`record-${index}`);grouped.set(id,[...(grouped.get(id)??[]),part]);});
    for(const [claimId,parts] of grouped){
@@ -27,6 +33,7 @@ export function entryText(revision:KnowledgeRevision){return [...new Set(revisio
 export function entryState(revision:KnowledgeRevision){
  const parts=revision.parts.filter(part=>part.state!=='retired'&&part.status!=='retired');
  if(!parts.length)return revision.parts.length?'retired':'pending';
+ if(parts.some(part=>part.status==='flagged'))return 'flagged';
  if(isExperience(revision.record))return 'pending';
  if(parts.some(part=>part.status==='refuted'||part.metadata?.validity_status==='refuted'))return 'refuted';
  if(parts.every(part=>revision.record.kind==='research_rules'
@@ -34,7 +41,13 @@ export function entryState(revision:KnowledgeRevision){
   :part.status==='replicated_in_scope'))return 'verified';
  return 'pending';
 }
-export const entryStateLabels:Record<string,string>={retired:'已停用',refuted:'存在反例',verified:'范围内已验证',pending:'待验证'};
+export const entryStateLabels:Record<string,string>={retired:'已停用',flagged:'来源已标记',refuted:'存在反例',verified:'范围内已验证',pending:'待验证'};
+export function evolutionSourceLabel(revision:KnowledgeRevision){
+ if(revision.record.source_kind!=='knowledge_evolution')return undefined;
+ const names:Record<string,string>={candidate:'候选',verified:'已验证',flagged:'已标记',retired:'已退役'};
+ const statuses=[...new Set(revision.parts.flatMap(part=>[part.source_status,...(Array.isArray(part.source_refs)?part.source_refs.map((ref:Json)=>ref.source_status):[])]).filter((value):value is string=>typeof value==='string'&&Boolean(value)))];
+ return statuses.length?`演化来源：${statuses.map(value=>names[value]??value).join('、')}`:'演化来源状态未记录';
+}
 export function revisionMatches(entry:KnowledgeEntry,revision:KnowledgeRevision,search:string){
  return [entry.claimId,entry.library.name,entryText(revision),revision.record.library?.version_label].join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 }

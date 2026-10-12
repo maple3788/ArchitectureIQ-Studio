@@ -341,6 +341,12 @@ class EvolutionTaskSources:
         validate_snapshot(value['snapshot'])
         return value
 
+    def list_kb_snapshots(self):
+        """Read all already frozen KB references without moving the current head."""
+        with self._connect() as conn:
+            refs = conn.execute('SELECT id,version FROM kb_items ORDER BY id,version').fetchall()
+        return [self.resolve_kb(dict(ref)) for ref in refs]
+
     def inventory(self, reference=None):
         capture = self._capture()
         current = self._freeze_kb(capture) if capture else None

@@ -779,14 +779,18 @@ def create_app(
             jobs.launch(job["id"])
         return public_job(jobs.get(job["id"]))
 
-    @api.get(prefix + "/kb")
     def knowledge():
         from architecture_iq.studio.knowledge import knowledge_inventory
 
         return knowledge_inventory(jobs, archives())
 
+    @api.get(prefix + "/kb")
+    def knowledge_library():
+        from architecture_iq.studio.knowledge_support import knowledge_library_inventory
+        return knowledge_library_inventory(knowledge(), jobs=jobs, evolution=api.state.task_sources)
+
     from .knowledge_question_routes import register_knowledge_question_routes
-    register_knowledge_question_routes(api, catalog=catalog, inventory_provider=knowledge)
+    register_knowledge_question_routes(api, catalog=catalog, inventory_provider=knowledge_library)
 
     from .human_practice_routes import register_human_practice_routes
     register_human_practice_routes(api, catalog=catalog, observer=observer)

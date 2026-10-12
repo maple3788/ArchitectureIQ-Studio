@@ -124,11 +124,12 @@ function viewGroups(view: Json): Record<string, Json> {
   return {model,optimizer,loss,budget,other};
 }
 
-type ReaderProps={record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode;reviewSource?:HumanReviewSource;knowledgeSource?:HumanReviewSource;knowledgeRef?:{id:string;version:string};showApplicableKnowledge?:boolean};
+export type QuestionAnswerMarkers={committedId?:string;correctId?:string};
+type ReaderProps={record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode;reviewSource?:HumanReviewSource;knowledgeSource?:HumanReviewSource;knowledgeRef?:{id:string;version:string};showApplicableKnowledge?:boolean;answerMarkers?:QuestionAnswerMarkers;compactDetails?:boolean};
 export function QuestionReader(props:ReaderProps){
   return <QuestionReaderContent key={JSON.stringify([props.questionKey,props.reviewSource])} {...props}/>;
 }
-function QuestionReaderContent({record,questionKey,evidence:providedEvidence,reviewSource,knowledgeSource,knowledgeRef,showApplicableKnowledge=true}:ReaderProps) {
+function QuestionReaderContent({record,questionKey,evidence:providedEvidence,reviewSource,knowledgeSource,knowledgeRef,showApplicableKnowledge=true,answerMarkers,compactDetails=false}:ReaderProps) {
   const [revealed,setRevealed]=useState(false);
   const evidence=reviewSource&&!revealed?undefined:providedEvidence;
   // Reset before the new question can be interacted with; a passive mount
@@ -171,7 +172,7 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
   const comparison=(controls?:PracticeChoiceControls)=><div className={`question-reader-comparison-workspace${evidence||showApplicableKnowledge&&applicableSource?' with-evidence':''}`}>
     <section className="question-reader-section"><div className="question-reader-section-title"><h3>选项</h3><span className="question-reader-legend"><i aria-hidden="true"/>高亮参数表示选项间存在差异</span></div>
       {controls&&<p className="question-reader-note">选择一个选项，提交后查看正确答案与已保存的训练曲线。</p>}
-      {choices.length ? <CandidateOptions choices={choices} rows={rows} controls={controls}/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
+      {choices.length ? <CandidateOptions choices={choices} rows={rows} controls={controls} markers={reviewSource?undefined:answerMarkers}/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
       {rows.some(row=>row.id==='model.layer_norm'||row.id==='model.layer_residual')&&<p className="question-reader-layer-help">逐层设置按层顺序排列：<code>(yes, no)</code> 表示第 1 层开启、第 2 层关闭。</p>}
       <details className="question-reader-parameter-help"><summary>如何阅读参数</summary><p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。单个 yes 或 no 保留原始配置含义，不按层数扩写。</p></details>
     </section>
@@ -210,7 +211,7 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
       {!reviewSource&&comparison()}
     </div>}
     {reviewSource&&<HumanQuestionPractice source={reviewSource} question={{id:pub.id??metadata.id,family,prompt,choices:choices.map((choice,index)=>({id:choice.identity,letter:choice.letter,label:briefs[index]?.label}))}} renderChoices={comparison} onRevealed={()=>setRevealed(true)}/>}
-    {tab==='structured'&&<div className="question-reader-details">
+    {tab==='structured'&&<details className="question-reader-disclosure question-reader-advanced" open={!compactDetails||undefined}><summary>配置、代码与来源</summary><div className="question-reader-details">
       <section className="question-reader-section"><h3>配置、代码与来源</h3><p className="question-reader-note">展开查看本题有效配置，以及模型、训练、优化器与损失文件。</p>
         {choices.map((choice,index)=><div className="question-reader-candidate" key={`${choice.letter}-${index}`}><h4>候选 {choice.letter}</h4>
           <FullConfig title={`${choice.letter} · 完整候选配置`} value={choice.full}/><CodeFiles files={choice.files} prefix={choice.letter}/>
@@ -222,7 +223,7 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
           <div key={key}><dt>{key}</dt><dd>{text(metadata[key] ?? pub[key])}</dd></div>)}</dl>
         {array(record.sources).map((source,index)=><p className="question-reader-source" key={index}>{text(source.origin ?? source.source_id)}</p>)}
       </details>
-    </div>}
+    </div></details>}
   </article>;
 }
 type ComparisonRow = {id:string;label:string;title:string;values:any[];different:boolean};
@@ -252,18 +253,20 @@ function comparisonRows(choices:Json[]): ComparisonRow[] {
   });
   return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value))).size>1}));
 }
-function CandidateOptions({choices,rows,controls}: {choices:Json[];rows:ComparisonRow[];controls?:PracticeChoiceControls}) {
+function CandidateOptions({choices,rows,controls,markers}: {choices:Json[];rows:ComparisonRow[];controls?:PracticeChoiceControls;markers?:QuestionAnswerMarkers}) {
   // Shared row tracks keep matching parameters aligned even when a value wraps.
   const rowCount=rows.length+1;
   return <div className="question-reader-options-scroll" role="group" aria-label="候选参数对比" tabIndex={0}>
     <div className="question-reader-option-cards" style={{gridTemplateColumns:`repeat(${choices.length}, minmax(180px, 1fr))`,gridTemplateRows:`repeat(${rowCount}, auto)`}}>
       {choices.map((choice,index)=><article key={`${choice.letter}-${index}`} aria-label={`候选 ${choice.letter}`}
-        className={`question-reader-option-card${controls?.selected===choice.identity?' is-selected':''}`}
+        className={`question-reader-option-card${controls?.selected===choice.identity?' is-selected':''}${markers?.committedId===choice.identity?' is-committed':''}${markers?.correctId===choice.identity?' is-correct-answer':''}`}
         style={{gridColumn:index+1,gridRow:`1 / span ${rowCount}`}}>
         <header className="question-reader-option-header">{controls?<label className="question-reader-choice-label">
           <span><strong>{choice.letter}</strong><small>{text(choice.groups.model?.type??"训练方案")}</small></span>
           <input type="radio" name={controls.name} aria-label={`选择 ${choice.letter}`} checked={controls.selected===choice.identity} disabled={controls.disabled} onChange={()=>controls.select(choice.identity)}/>
-        </label>:<span className="question-reader-choice-label"><span><strong>{choice.letter}</strong><small>{text(choice.groups.model?.type??"训练方案")}</small></span></span>}</header>
+        </label>:<span className="question-reader-choice-label"><span><strong>{choice.letter}</strong><small>{text(choice.groups.model?.type??"训练方案")}</small></span></span>}
+          {markers&&(markers.correctId===choice.identity||markers.committedId===choice.identity)&&<div className="question-reader-answer-markers">{markers.committedId===choice.identity&&<span>本次作答</span>}{markers.correctId===choice.identity&&<strong>正确答案</strong>}</div>}
+        </header>
         {rows.map((row,rowIndex)=><div key={row.id} data-parameter={row.id}
           className={`question-reader-option-row${row.different?' is-different':''}${rowIndex===0||rows[rowIndex-1].title!==row.title?' starts-group':''}`}>
           {(rowIndex===0||rows[rowIndex-1].title!==row.title)&&<small className="question-reader-row-group">{row.title}</small>}
