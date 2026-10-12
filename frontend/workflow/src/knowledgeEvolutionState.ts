@@ -110,6 +110,6 @@ export function evolutionPresentation(snapshot?:EvolutionSnapshot,connected=true
   connect('plan','build','right','left');connect('build','score','right','left');
   connect('score','judge','bottom','top');connect('judge','propose','left','right','证据与反例');
   connect('propose','register','left','right','通过检查');connect('register','report','bottom','top');
-  connect('report','plan','left','left','新一轮 · 持续复验',true);
+  connect('report','plan','left','left',undefined,true);
   return {nodes,edges};
 }
