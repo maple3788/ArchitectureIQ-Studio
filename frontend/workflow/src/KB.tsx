@@ -4,6 +4,7 @@ import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs,useResource} from './ui';
 import {RuleKnowledgeReader} from './RuleKnowledgeReader';
 import {KnowledgeSnapshot} from './KnowledgeSnapshot';
 import {KnowledgeQuestions} from './KnowledgeQuestions';
+import {KnowledgeEntryHistory} from './KnowledgeRevisionHistory';
 import {ExperienceSnapshot} from './ExperienceSnapshot';
 import {readableName} from './displayNames';
 import {formatTimestamp} from './time';
@@ -42,7 +43,7 @@ export function KB({version,onEvaluate}:{version:number;onEvaluate?:(ref:KBRef)=
   {selected&&current&&<Drawer title="知识详情" subtitle={current.claimId} onClose={()=>setSelection(undefined)}>
    {selected!==latest&&<p className="kb-history-notice">{latest?'正在阅读历史记录。':'当前库版本未收录此知识，正在阅读历史记录。'}{latest&&<button onClick={()=>setSelection({key:current.key,version:revisionKey(latest)})}>返回当前知识</button>}</p>}
    {selected.record.kind==='research_rules'?<RuleKnowledgeReader key={`${current.key}:${revisionKey(selected)}`} claimId={current.claimId} kbRef={{id:selected.record.id,version:selected.record.version}} record={selected.record} onEvaluate={onEvaluate}/>:isExperience(selected.record)?<ExperienceSnapshot key={`${current.key}:${revisionKey(selected)}`} snapshot={{...selected.record.snapshot,lessons:selected.parts}}/>:<FormalEntry key={`${current.key}:${revisionKey(selected)}`} entry={current} revision={selected}/>}
-   {current.revisions.length>1&&<details className="kb-source-details"><summary>查看修订记录</summary><label className="kb-history-picker">阅读记录<select aria-label="阅读记录" value={revisionKey(selected)} onChange={event=>setSelection({key:current.key,version:event.target.value})}>{current.revisions.map((revision,index)=><option key={revisionKey(revision)} value={revisionKey(revision)}>{revision===latest?'当前知识':`早期记录 ${current.revisions.length-index}`}</option>)}</select></label></details>}
+   <KnowledgeEntryHistory entry={current} selected={selected} onRead={setSelection}/>
    <details className="kb-source-details"><summary>来源与完整记录{selected.record.source_count?` · ${selected.record.source_count} 个来源`:''}</summary>{selected.record.sources?.map((source:Json,index:number)=><div className="source-row" key={`${source.id}:${index}`}><div><b>{readableName(source.name,source.kind==='archive'?'历史导入材料':'运行保存记录')}</b>{Boolean(source.created_at)&&<small>{formatTimestamp(source.created_at)}</small>}</div></div>)}<JsonView value={{knowledge:current.claimId,record:selected.record.id,version:selected.record.version,entries:selected.parts}}/></details>
   </Drawer>}
  </section>;

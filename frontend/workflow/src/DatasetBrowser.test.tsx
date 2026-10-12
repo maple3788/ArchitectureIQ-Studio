@@ -11,7 +11,9 @@ it('uses the same compact summary inside a Dataset and preserves source keys and
  vi.stubGlobal('fetch',async(input:string)=>{requests.push(input);return new Response(JSON.stringify(input.includes('/questions?')?{...page([row]),type_counts:{optimizer_only:1}}:datasetFixture));});
  render(<DatasetBrowser refValue={{collection_id:'ds_a',revision:'r1'}} version={0} onBack={()=>{}} onChanged={()=>{}} onRead={onRead}/>);
  const title=await screen.findByRole('button',{name:'阅读 Q1'});
- expect(title.textContent).toBe('MLP · 优化器 SGD / Adam / AdamW');expect(screen.queryByText('训练 200 步')).toBeNull();expect(screen.queryByText(/测试均方误差/)).toBeNull();expect(screen.getByText('MLP · 优化器 SGD')).toBeTruthy();expect(screen.getByText('MLP · 优化器 Adam')).toBeTruthy();expect(screen.getByText('MLP · 优化器 AdamW')).toBeTruthy();expect(screen.getByText('优化器对比 1 题')).toBeTruthy();expect(screen.queryByText(prompt)).toBeNull();
+ expect(title.textContent).toBe('MLP · 优化器 SGD / Adam / AdamW');expect(screen.queryByText('训练 200 步')).toBeNull();expect(screen.getByText('MLP · 优化器 SGD')).toBeTruthy();expect(screen.getByText('MLP · 优化器 Adam')).toBeTruthy();expect(screen.getByText('MLP · 优化器 AdamW')).toBeTruthy();expect(screen.getByText('优化器对比 1 题')).toBeTruthy();expect(screen.queryByText(prompt)).toBeNull();
+ const problem=screen.getByText(/测试均方误差最低？/);
+ expect(problem.compareDocumentPosition(title)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  fireEvent.change(screen.getByLabelText('搜索 Dataset 题目'),{target:{value:'candidate code'}});await waitFor(()=>expect(requests.some(input=>new URL(input,'http://studio').searchParams.get('search')==='candidate code')).toBe(true));
  fireEvent.click(await screen.findByRole('button',{name:'阅读 Q1'}));expect(onRead).toHaveBeenCalledWith('q1@v1');
 });

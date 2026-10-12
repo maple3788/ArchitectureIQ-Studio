@@ -30,11 +30,12 @@ it('selects a generated question through a persisted immutable record',async()=>
 it.each(['题库','知识演化'])('shows public question and candidate summaries in %s without resolving individual records',async(source)=>{
  const c=setup(path=>path.includes('/questions?')?new Response(JSON.stringify({items:[{
   key:'q_options@exact',id:'q_options',family:'univariate_regression',question_type:'architecture_only',round_index:7,
-  candidate_configs:candidates,answer:'SECRET_ANSWER',evaluation:{curves:'SECRET_CURVES'},prompt:'SECRET_PROMPT',
+  candidate_configs:candidates,metric:'test_mse',answer:'SECRET_ANSWER',evaluation:{curves:'SECRET_CURVES'},prompt:'SECRET_PROMPT',
  }],total:1})):undefined);
  if(source==='知识演化')fireEvent.click(screen.getByRole('tab',{name:source}));
  expect(await screen.findByText('MLP · 深度 2 / 4')).toBeTruthy();
- expect(screen.getByText('比较以下 2 个候选方案，选择表现最好的一个。')).toBeTruthy();
+ const problem=screen.getByText('按各候选的配置训练后，这 2 个方案中哪个的测试均方误差最低？');
+ expect(problem.compareDocumentPosition(screen.getByText('MLP · 深度 2 / 4'))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  expect(screen.getByText('一元回归 · 架构对比')).toBeTruthy();
  expect(screen.getByText('MLP · 深度 2')).toBeTruthy();
  expect(screen.getByText('MLP · 深度 4')).toBeTruthy();

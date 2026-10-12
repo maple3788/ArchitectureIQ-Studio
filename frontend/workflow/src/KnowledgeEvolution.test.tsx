@@ -157,6 +157,7 @@ it('opens the saved complete question from claim evidence and returns to that cl
  const requests:string[]=[];
  vi.stubGlobal('fetch',async(url:string)=>{
   requests.push(url);
+  if(url.endsWith('/questions/applicable-knowledge'))return new Response(JSON.stringify({scope:'public_applicability',items:[],total:0,feedback_released:false}));
   const data=url.endsWith('/claims/C0001')?{claim:snapshot.claims![0],history:[],evidence:[{question_id:'q-saved',round:1,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
    :url.endsWith('/questions/q-saved')?{metadata:{id:'q-saved',family:'xor_classification'},public:{id:'q-saved',choices:[{id:'x',letter:'B',view:{width:32}},{id:'y',letter:'A',view:{width:16}}],prompt:'## Dataset\nSaved complete data rule.\n## Candidates\nSaved candidate code.'},observation:{content_hash:'abc',captured_at:1791756000}}:snapshot;
   return new Response(JSON.stringify(data));
@@ -197,7 +198,8 @@ it('opens live generation rows, refreshes saved outcomes, and never calls pendin
 it('retains generation filters, expanded rows and reading position after reading a complete question',async()=>{
  const snapshot=fixture();install(snapshot);
  const items=Array.from({length:55},(_,index)=>({item_id:`i-${index}`,family:'xor_classification',question_type:'mixed',purpose:'explore',targets:[],status:'ok',question_id:`q_saved_${index}`}));
- vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/rounds/2')?{...snapshot.rounds![0],generation:{total:55,completed:55,ok:55,failed:0,pending:0,items}}
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/questions/applicable-knowledge')?{scope:'public_applicability',items:[],total:0,feedback_released:false}
+  :url.endsWith('/rounds/2')?{...snapshot.rounds![0],generation:{total:55,completed:55,ok:55,failed:0,pending:0,items}}
   :url.includes('/questions/')?{metadata:{id:'q_saved_0'},public:{id:'q_saved_0',choices:[],prompt:'saved question'}}:snapshot)));
  render(<KnowledgeEvolution/>);
  fireEvent.click(await screen.findByRole('button',{name:/生成新题/}));
@@ -237,6 +239,7 @@ function taskEntryFixture(override?:(url:string,init?:RequestInit)=>Response|Pro
  const requests:{url:string;method:string;body:any}[]=[];
  vi.stubGlobal('fetch',async(url:string,init?:RequestInit)=>{
   requests.push({url,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):undefined});
+  if(url.endsWith('/questions/applicable-knowledge'))return new Response(JSON.stringify({scope:'public_applicability',items:[],total:0,feedback_released:false}));
   const special=override?.(url,init);if(special)return special;
   const data=url.endsWith('/claims/C0001')?{observation:snapshot.observation,claim:snapshot.claims![0],history:[],evidence:[{question_id:'q_saved',round:1,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
    :url.endsWith('/rounds/2')?{...snapshot.rounds![0],observation:{source_identity:'source-one',sequence:7},generation:{total:1,completed:1,ok:1,failed:0,pending:0,items:[{item_id:'i1',question_id:'q_saved',family:'xor_classification',question_type:'mixed',purpose:'explore',targets:[],status:'ok'}]}}
@@ -250,7 +253,7 @@ it('carries only the currently read claim to Task after freezing its observed ve
  const {requests}=taskEntryFixture(),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
  fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));fireEvent.click(await screen.findByRole('button',{name:'去 Task 解答'}));
  await waitFor(()=>expect(onTask).toHaveBeenCalledWith(taskSeed));
- expect(requests.filter(row=>row.method==='POST')).toEqual([{url:'/api/studio/tasks/evolution/selection',method:'POST',body:{observation:{source_identity:'source-one',sequence:8},claim_ref:{id:'C0001',version:2}}}]);
+ expect(requests.filter(row=>row.method==='POST'&&!row.url.endsWith('/questions/applicable-knowledge'))).toEqual([{url:'/api/studio/tasks/evolution/selection',method:'POST',body:{observation:{source_identity:'source-one',sequence:8},claim_ref:{id:'C0001',version:2}}}]);
 });
 it('keeps the evidence parent claim and observation when newer snapshots arrive while reading its question',async()=>{
  let advanced=false;
@@ -260,13 +263,13 @@ it('keeps the evidence parent claim and observation when newer snapshots arrive 
  advanced=true;act(()=>Source.instances[0].emit('snapshot',{...snapshot,sequence:9,observation:{source_identity:'source-two',sequence:9}}));
  await waitFor(()=>expect(requests.filter(row=>row.url.endsWith('/claims/C0001'))).toHaveLength(2));
  fireEvent.click(screen.getByRole('button',{name:'去 Task 解答'}));await waitFor(()=>expect(onTask).toHaveBeenCalledOnce());
- expect(requests.find(row=>row.method==='POST')?.body).toEqual({observation:{source_identity:'source-one',sequence:8},question_id:'q_saved',expected_question_hash:'question-frozen-hash',claim_ref:{id:'C0001',version:2}});
+ expect(requests.find(row=>row.method==='POST'&&!row.url.endsWith('/questions/applicable-knowledge'))?.body).toEqual({observation:{source_identity:'source-one',sequence:8},question_id:'q_saved',expected_question_hash:'question-frozen-hash',claim_ref:{id:'C0001',version:2}});
 });
 it('carries a generated question with the viewed round observation and without an unrelated claim',async()=>{
  const {requests}=taskEntryFixture(),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
  fireEvent.click(await screen.findByRole('button',{name:/生成新题/}));fireEvent.click(await screen.findByRole('button',{name:'阅读完整题目 q_saved'}));
  fireEvent.click(await screen.findByRole('button',{name:'去 Task 解答'}));await waitFor(()=>expect(onTask).toHaveBeenCalledOnce());
- expect(requests.find(row=>row.method==='POST')?.body).toEqual({observation:{source_identity:'source-one',sequence:7},question_id:'q_saved',expected_question_hash:'question-frozen-hash'});
+ expect(requests.find(row=>row.method==='POST'&&!row.url.endsWith('/questions/applicable-knowledge'))?.body).toEqual({observation:{source_identity:'source-one',sequence:7},question_id:'q_saved',expected_question_hash:'question-frozen-hash'});
 });
 it('keeps selection failures in the current reader and allows retry',async()=>{
  taskEntryFixture(url=>url.endsWith('/tasks/evolution/selection')?new Response(JSON.stringify({detail:'这份知识快照暂不可使用'}),{status:409}):undefined);
@@ -277,7 +280,7 @@ it('does not navigate after leaving a question while its Task selection is still
  let resolve!:(response:Response)=>void;
  const {requests}=taskEntryFixture(url=>url.endsWith('/tasks/evolution/selection')?new Promise<Response>(done=>{resolve=done;}):undefined),onTask=vi.fn();render(<KnowledgeEvolution onTask={onTask}/>);
  fireEvent.click(await screen.findByRole('button',{name:/生成新题/}));fireEvent.click(await screen.findByRole('button',{name:'阅读完整题目 q_saved'}));
- const button=await screen.findByRole('button',{name:'去 Task 解答'});fireEvent.click(button);fireEvent.click(button);await waitFor(()=>expect(resolve).toBeTruthy());expect(requests.filter(row=>row.method==='POST')).toHaveLength(1);
+ const button=await screen.findByRole('button',{name:'去 Task 解答'});fireEvent.click(button);fireEvent.click(button);await waitFor(()=>expect(resolve).toBeTruthy());expect(requests.filter(row=>row.method==='POST'&&!row.url.endsWith('/questions/applicable-knowledge'))).toHaveLength(1);
  fireEvent.click(screen.getByRole('button',{name:'返回生成记录'}));await act(async()=>{resolve(new Response(JSON.stringify(taskSeed)));});expect(onTask).not.toHaveBeenCalled();expect(screen.getByRole('dialog',{name:'本轮新题'})).toBeTruthy();
 });
 
@@ -288,6 +291,7 @@ it('opens round knowledge at its saved version and returns through question, kno
  const detail={...snapshot.rounds![0],observation,judge_events:[{claim_id:'C0001',version:1,from:'candidate',to:'verified',support:15,applicable:18,lower_bound:.6}],registered:[{id:'C0002',version:1,text:'本轮新登记的规则'}]};
  vi.stubGlobal('fetch',async(url:string)=>{
   requests.push(url);
+  if(url.endsWith('/questions/applicable-knowledge'))return new Response(JSON.stringify({scope:'public_applicability',items:[],total:0,feedback_released:false}));
   const data=url.includes('/rounds/2/claims/')?{observation,reading_round:2,claim:{...snapshot.claims![0],version:1,text:'本轮封存的知识内容'},history:[],evidence:[{question_id:'q_round',round:2,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
    :url.endsWith('/rounds/2')?detail
    :url.endsWith('/questions/q_round')?{metadata:{id:'q_round'},public:{id:'q_round',prompt:'本轮完整题面',choices:[{id:'candidate-a',letter:'A'},{id:'candidate-b',letter:'B'}]},observation:{content_hash:'hash'}}
@@ -326,4 +330,20 @@ it('does not substitute current knowledge when round reference is missing',async
  fireEvent.click(await screen.findByRole('tab',{name:'轮次记录'}));
  fireEvent.click(screen.getByRole('button',{name:'阅读第 2 轮'}));
  expect((await screen.findByRole('button',{name:'查看第 2 轮知识 C0001'}) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('reads saved original wording and changes from claim history without relabeling current evidence',async()=>{
+ const snapshot=fixture();install(snapshot);
+ const original={...snapshot.claims![0],version:1,text:'最初登记的知识原文',registered_round:0,rules:[]};
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/claims/C0001')?{
+  claim:snapshot.claims![0],history:[original,snapshot.claims![0]],evidence:[],evidence_total:0,evidence_truncated:false,
+ }:snapshot)));
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));
+ fireEvent.click(await screen.findByText('登记与修订记录'));
+ const history=await screen.findByRole('region',{name:'知识修订历史'});
+ expect(within(history).getByText('第一版原文')).toBeTruthy();
+ expect(within(history).getByText('最初登记的知识原文')).toBeTruthy();
+ expect(within(history).getByText('较 C0001 · 第 1 版：正文、执行规则已调整。')).toBeTruthy();
+ expect(within(history).queryByText(/支持|适用题/)).toBeNull();
 });

@@ -35,7 +35,7 @@ it('offers backend verification for an uncertain run without a final result',asy
 });
 
 it('opens retained first-test evidence and current feedback from the run canvas without starting work',async()=>{
- const fetched: string[]=[];vi.stubGlobal('fetch',async(url:string)=>{fetched.push(url);return new Response('{}');});
+ const fetched: string[]=[];vi.stubGlobal('fetch',async(url:string)=>{fetched.push(url);return new Response(JSON.stringify(url.endsWith('/questions/applicable-knowledge')?{scope:'public_applicability',items:[],total:0,feedback_released:false}:{}));});
  const row={scorable:true,correct:false,prediction:{status:'conflict',edges:[],paths:{}},case:{ref:{key:'q1',hash:'h1'},question:{id:'conflicting-case',prompt:'A retained research question',choices:[{id:'a',letter:'A'},{id:'b',letter:'B'}]},dataset_spec:{},candidate_specs:[]}};
  const current={...score,correct:2,conflicts:1,all_pass:false,per_question:{q1:row},problems:[{type:'conflict',question_ref:{key:'q1'}}]};
  render(<RuleRefinementRun run={{...run,result:{...run.result,score:current,fresh_batches:[{batch_id:'b1',index:1,actual:3,requested:3,batch_passed:false,first_score:current}]}}} act={async f=>f()}/>);
@@ -49,7 +49,7 @@ it('opens retained first-test evidence and current feedback from the run canvas 
  fireEvent.change(screen.getByLabelText('问题分类'),{target:{value:'conflict'}});
  expect(screen.getByLabelText('查看题目').textContent).toContain('conflicting-case');
  expect(screen.getByRole('heading',{name:'规则如何得出结论'})).toBeTruthy();
- expect(fetched).toEqual([]);
+ expect(fetched.filter(url=>!url.endsWith('/questions/applicable-knowledge'))).toEqual([]);
 });
 
 it('opens revision calls and rejected acceptance evidence from their stages',async()=>{

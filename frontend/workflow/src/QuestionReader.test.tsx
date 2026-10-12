@@ -80,7 +80,7 @@ it("uses public views when files are unavailable, supports arbitrary choices, an
     {letter:"Y",view:{model_type:"custom-model",width:48}},
     {letter:"Z",view:{model_type:"custom-model",width:96}},
   ]}}}/>);
-  expect(screen.getByText("future_family")).toBeTruthy();
+  expect(screen.getByRole("heading",{name:"future_family"})).toBeTruthy();
   expect(within(screen.getByRole("table",{name:"候选参数对比"})).getByRole("columnheader",{name:"候选 Z"})).toBeTruthy();
   expect(screen.getByText("累计处理量").closest("tr")!.textContent).toContain("未记录");
   expect(screen.queryByText("训练集样本数")).toBeNull();
@@ -203,7 +203,7 @@ it('places supplied knowledge evidence immediately after the candidate compariso
  expect(table.compareDocumentPosition(evidence)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  const workspace=table.closest('.question-reader-comparison-workspace');
  expect(workspace?.contains(evidence)).toBe(true);
- expect(evidence.compareDocumentPosition(screen.getByRole('heading',{name:'数据与条件'}))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'数据与条件'}).compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('does not lose explicit empty sections or literal dotted keys when flattening candidate parameters',()=>{
@@ -229,18 +229,34 @@ it('keeps human feedback and evidence unread until a choice has been committed, 
  const source={kind:'catalog' as const,key:'q@first'};
  const value={...record,public:{id:'q',choices:[{id:'candidate-A',letter:'A'},{id:'candidate-B',letter:'B'}]}};
  const view=render(<QuestionReader record={value} questionKey="q@first" reviewSource={source} evidence={<Evidence/>}/>);
- expect(calls).toEqual([]);expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
+ expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual([]);expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
  const practice=screen.getByRole('region',{name:'人工检查题目'}),data=screen.getByRole('heading',{name:'数据与条件'});
- expect(practice.compareDocumentPosition(data)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(screen.getByRole('radio',{name:'选择 A'}).closest('label')?.textContent).toContain('MLP');
- fireEvent.click(screen.getByRole('radio',{name:'选择 A'}));expect(calls).toEqual([]);
+ expect(data.compareDocumentPosition(practice)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByRole('radio',{name:'选择 A'}).closest('label')?.textContent).toContain('mlp');
+ fireEvent.click(screen.getByRole('radio',{name:'选择 A'}));expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual([]);
  fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
  await screen.findByText('正确答案 B');
- await waitFor(()=>expect(calls).toEqual(['/api/studio/questions/review','/research-evidence']));
+ await waitFor(()=>expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual(['/api/studio/questions/review','/research-evidence']));
  expect(screen.getByLabelText('已提交后的知识证据')).toBeTruthy();
  fireEvent.click(screen.getByRole('tab',{name:'数据与规则'}));fireEvent.click(screen.getByRole('tab',{name:'题目概览'}));
  expect(screen.getByText('正确答案 B')).toBeTruthy();
  view.rerender(<QuestionReader record={value} questionKey="q@second" reviewSource={{kind:'catalog',key:'q@second'}} evidence={<Evidence/>}/>);
  expect(screen.queryByText('正确答案 B')).toBeNull();expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
  expect(screen.getByRole('button',{name:'提交并查看结果'})).toBeTruthy();
+});
+
+it('presents the concrete problem and dataset conditions before selectable candidate configurations',()=>{
+ const prompt='## Task\nPredict a scalar from five input features.\n\n## Choices\nCandidate configurations.';
+ const value={...record,detail:{...record.detail,prompt},public:{id:'q',choices:[{id:'candidate-A',letter:'A'},{id:'candidate-B',letter:'B'}]}};
+ render(<QuestionReader record={value} reviewSource={{kind:'catalog',key:'q@first'}}/>);
+ const problem=screen.getByText(/^Predict a scalar from five input features\./);
+ const data=screen.getByRole('heading',{name:'数据与条件'});
+ const table=screen.getByRole('table',{name:'候选参数对比'});
+ expect(problem.compareDocumentPosition(data)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(data.compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(within(table).getByRole('radio',{name:'选择 A'})).toBeTruthy();
+ expect(screen.getAllByRole('radio')).toHaveLength(2);
+ fireEvent.click(within(table).getByRole('radio',{name:'选择 B'}));
+ expect((screen.getByRole('button',{name:'提交并查看结果'}) as HTMLButtonElement).disabled).toBe(false);
+ expect(document.querySelector('.human-practice-reveal')).toBeNull();
 });

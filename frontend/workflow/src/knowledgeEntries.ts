@@ -45,3 +45,30 @@ export function currentEntryRevision(entry:KnowledgeEntry){
 export function displayedEntryRevision(entry:KnowledgeEntry,search:string){
  return entry.revisions.find(revision=>revisionMatches(entry,revision,search));
 }
+
+export type KnowledgeHistoryEntry={key:string;entryKey:string;claimId:string;revision:KnowledgeRevision;parentKeys:string[];missingParents:boolean};
+/** Read ancestry only within an explicitly grouped library and exact snapshot/rule references. */
+export function knowledgeEntryHistory(entry:KnowledgeEntry):KnowledgeHistoryEntry[]{
+ const nodes=knowledgeEntries(entry.library.versions).flatMap(item=>item.revisions.map(revision=>({
+  key:`${item.key}@${revisionKey(revision)}`,entryKey:item.key,claimId:item.claimId,revision,parentKeys:[] as string[],missingParents:false,
+ })));
+ const chosen=new Map<string,KnowledgeHistoryEntry>();
+ function visit(node:KnowledgeHistoryEntry){
+  if(chosen.has(node.key))return;
+  chosen.set(node.key,node);
+  const refs:Json[]=node.revision.parts.flatMap(part=>Array.isArray(part.parents)?part.parents:[]);
+  for(const ref of refs){
+   if(!ref||typeof ref.rule_id!=='string'||typeof ref.revision!=='string'||typeof node.revision.record.snapshot?.parent_version!=='string'){node.missingParents=true;continue;}
+   const parents=nodes.filter(candidate=>candidate.revision.record.version===node.revision.record.snapshot?.parent_version&&candidate.revision.parts.some(part=>part.rule_id===ref.rule_id&&part.revision===ref.revision));
+   if(!parents.length)node.missingParents=true;
+   for(const parent of parents){if(!node.parentKeys.includes(parent.key))node.parentKeys.push(parent.key);visit(parent);}
+  }
+  if(!refs.length){
+   const versions=nodes.filter(candidate=>candidate.entryKey===node.entryKey);
+   const previous=versions[versions.indexOf(node)+1];
+   if(previous){node.parentKeys.push(previous.key);visit(previous);}
+  }
+ }
+ nodes.filter(node=>node.entryKey===entry.key).forEach(visit);
+ return [...chosen.values()].sort((a,b)=>entry.library.versions.indexOf(b.revision.record)-entry.library.versions.indexOf(a.revision.record)||a.claimId.localeCompare(b.claimId));
+}

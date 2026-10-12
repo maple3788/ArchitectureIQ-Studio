@@ -802,6 +802,10 @@ def create_app(
                          inventory_provider=knowledge,
                          require_execution=require_execution, allowed_roots=sources, observer=observer)
 
+    from .question_applicability_routes import register_question_applicability_routes
+    register_question_applicability_routes(api, catalog=catalog, observer=observer,
+                                          evolution=api.state.task_sources, inventory_provider=knowledge)
+
     from .rule_refinement_routes import register_rule_refinement_routes
     register_rule_refinement_routes(api, catalog=catalog, datasets=datasets, models=models, jobs=jobs,
                                     inventory_provider=knowledge, require_execution=require_execution)

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { questionLabel, runLabel, readableName, familyLabel, questionListSummary, candidateListSummary } from './displayNames';
+import { questionLabel, runLabel, readableName, familyLabel, questionListSummary, candidateListSummary, questionPromptSummary } from './displayNames';
 
 it('uses public question metadata and list positions while retaining opaque identities separately', () => {
   expect(questionLabel({id:'q_deadbeef',family:'multivariate_regression',type:'architecture_only'}, 4)).toBe('多元回归 · 架构对比 · 第 4 题');
@@ -20,13 +20,26 @@ it('keeps user titles but replaces auto-generated identity-only names', () => {
 });
 it('builds question list summaries from public metadata instead of contradictory raw prompt text',()=>{
  const value=questionListSummary({id:'q_bcb233',family:'bigram_lm',type:'mixed',choices:3,model_types:['gru_lm','transformer_lm'],budget:{total_samples_seen:16384},metric:'test_ce',prompt:'## Dataset\nUnivariate regression\n'+ 'long code '.repeat(1000)});
- expect(value.title).toBe('GRU vs Transformer');expect(value.description).toBe('二元序列建模 · 训练方案比较');expect(value.shortId).toBe('q_bcb233');expect(value.candidates).toEqual([]);
+ expect(value.title).toBe('GRU vs Transformer');expect(value.description).toBe('按各候选的配置训练后，这 3 个方案中哪个的测试交叉熵最低？');expect(value.category).toBe('二元序列建模 · 混合对比');expect(value.shortId).toBe('q_bcb233');expect(value.candidates).toEqual([]);
  expect(JSON.stringify(value)).not.toContain('Univariate regression');
 });
 it('keeps unknown metadata readable and avoids invented counts or budget units',()=>{
  const value=questionListSummary({family:'new_family',type:'new_intervention',model_types:['new_model','new_model'],metric:'custom_metric',budget:4096});
- expect(value.title).toBe('new_model · 其他题型 · new_intervention');expect(value.description).toBe('new_family · 其他题型 · new_intervention');expect(value.candidates).toEqual([]);
- expect(questionListSummary({prompt:'do something'})).toEqual({title:'训练方案对比',description:'',candidates:[],shortId:''});
+ expect(value.title).toBe('new_model · 其他题型 · new_intervention');expect(value.category).toBe('new_family · 其他题型 · new_intervention');expect(value.description).toContain('custom_metric');expect(value.description).not.toMatch(/最高|最低/);expect(value.candidates).toEqual([]);
+ expect(questionListSummary({prompt:'do something'})).toEqual({title:'训练方案对比',description:'按各候选的配置训练后，哪个方案表现最好？评价指标未记录。',category:'',candidates:[],shortId:''});
+});
+it('asks for the recorded test metric without claiming equal budgets or inferring a missing metric from family',()=>{
+ expect(questionPromptSummary({metric:'test_mse',candidateCount:2})).toContain('测试均方误差最低');
+ expect(questionPromptSummary({metric:'test_accuracy'})).toContain('测试准确率最高');
+ expect(questionPromptSummary({metric:'test_loss'})).toContain('测试损失最低');
+ expect(questionPromptSummary({metric:'future_metric'})).toContain('在 future_metric 指标上表现最好');
+ for(const budgets of [[128,128],[128,256]]){
+  const value=questionListSummary({family:'univariate_regression',metric:'test_mse',candidate_configs:budgets.map((budget,index)=>({letter:'AB'[index],budget:{total_samples_seen:budget},model:{type:'mlp'}}))});
+  expect(value.description).toContain('测试均方误差最低');expect(value.description).not.toMatch(/相同|统一|同等/);
+ }
+ expect(questionListSummary({family:'bigram_lm'}).description).toContain('评价指标未记录');
+ expect(questionPromptSummary({candidateCount:NaN})).not.toContain('NaN');
+ expect(questionPromptSummary({candidateCount:1})).not.toContain('1 个');
 });
 it('names actual candidate differences and keeps each candidate separate when model types repeat',()=>{
  const configs=[2,4,8].map((depth,index)=>({letter:'ABC'[index],model:{type:'mlp',depth,width:64},optimizer:{type:'Adam',lr:0.001}}));

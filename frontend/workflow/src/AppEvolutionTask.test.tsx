@@ -16,7 +16,8 @@ it.each([false,true])('carries viewed evolution knowledge to Task, with evidence
  vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{
   const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path,method:init?.method,body});
   let value:unknown={items:[],total:0};
-  if(path.endsWith('/bootstrap'))value={service:{execution_enabled:false,knowledge_loop_configured:true,host:'local'},stats:{},models:[]};
+  if(path.endsWith('/questions/applicable-knowledge'))value={scope:'public_applicability',items:[],total:0,feedback_released:false};
+  else if(path.endsWith('/bootstrap'))value={service:{execution_enabled:false,knowledge_loop_configured:true,host:'local'},stats:{},models:[]};
   else if(path.endsWith('/kb-loop'))value={configured:true,sequence:7,observation,sync:{status:'connected'},claims:[claim],rounds:[],kb:{claims:1,candidate:1,verified:0,flagged:0,retired:0}};
   else if(path.endsWith('/kb-loop/claims/C0004'))value={observation,claim,history:[],evidence:[{question_id:'q_generated',round:1,outcome:'support'}],evidence_total:1,evidence_truncated:false};
   else if(path.includes('/kb-loop/questions/'))value=record;
@@ -36,7 +37,7 @@ it.each([false,true])('carries viewed evolution knowledge to Task, with evidence
  expect((screen.getByLabelText('KB 直接解答') as HTMLInputElement).checked).toBe(true);
  if(withQuestion)expect((await screen.findAllByText('q_generated')).length).toBeGreaterThan(0);
  else expect(screen.getByRole('button',{name:'选择题目'})).toBeTruthy();
- const posts=calls.filter(call=>call.method==='POST');expect(posts).toHaveLength(1);
+ const posts=calls.filter(call=>call.method==='POST'&&!call.path.endsWith('/questions/applicable-knowledge'));expect(posts).toHaveLength(1);
  expect(posts[0]).toMatchObject({path:'/api/studio/tasks/evolution/selection',body:{observation,claim_ref:{id:'C0004',version:3}}});
  if(withQuestion)expect(posts[0].body).toMatchObject({question_id:'q_generated',expected_question_hash:'qhash'});
  fireEvent.click(screen.getByRole('button',{name:'返回任务列表'}));

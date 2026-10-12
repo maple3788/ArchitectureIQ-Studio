@@ -6,7 +6,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const rule=(claimId:string,text:string,index=0)=>({rule_id:`${claimId}:${index}`,revision:'rule-fixed',state:'active',text,
  rule:{scope:['model_type','eq','mlp'],predict:{higher_better:'depth'}},
  metadata:{claim_id:claimId,clause_index:index,validity_status:'proposed',validation_origin:'source_reported'}});
-const libraryVersion=(label:string,order:number,parts=[rule('R1',`版本 ${label} 的知识`)])=>({
+const libraryVersion=(label:string,order:number,parts:Json[]=[rule('R1',`版本 ${label} 的知识`)])=>({
  id:`builtin:kb-${label}`,version:`hash-${label}`,kind:'research_rules',name:`KB ${label}`,
  library:{id:'builtin:architecture-rules',name:'架构与优化器规则',version_label:label,version_order:order},
  snapshot:{source_document:{version_label:label},rules:parts},sources:[]
@@ -41,7 +41,7 @@ it('keeps exact KB references across library revisions and historical search',as
  fireEvent.click(within(dialog).getByRole('button',{name:'在 Task 中检查此知识所在 KB'}));
  expect(onEvaluate).toHaveBeenLastCalledWith({id:'builtin:kb-v10',version:'hash-v10'});
  fireEvent.click(within(dialog).getByText('查看修订记录'));
- fireEvent.change(within(dialog).getByLabelText('阅读记录'),{target:{value:'builtin:kb-v9:hash-v9'}});
+ fireEvent.click(await within(dialog).findByRole('button',{name:'阅读 R1 · v9 的知识与题目'}));
  fireEvent.click(within(dialog).getByRole('button',{name:'在 Task 中检查此知识所在 KB'}));
  expect(onEvaluate).toHaveBeenLastCalledWith({id:'builtin:kb-v9',version:'hash-v9'});
  expect(within(dialog).getByText('正在阅读历史记录。')).toBeTruthy();
@@ -66,6 +66,19 @@ it('keeps independent identically named experiments as distinct knowledge entrie
  expect(screen.getByText('2 条知识')).toBeTruthy();fireEvent.click(first);
  const dialog=screen.getByRole('dialog');expect(within(dialog).getByText('条件1')).toBeTruthy();
  expect(within(dialog).queryByText('研究经验2')).toBeNull();expect(within(dialog).queryByText('查看修订记录')).toBeNull();
+});
+it('reads renamed parent knowledge through its own exact snapshot and question scope',async()=>{
+ const previous=libraryVersion('v9',9,[{...rule('R1','修订前的原始命题'),revision:'parent-rule'}]);
+ const latest=libraryVersion('v10',10,[{...rule('R2','由旧命题修订的知识'),parents:[{rule_id:'R1:0',revision:'parent-rule'}]}]);
+ latest.snapshot={...latest.snapshot,parent_version:'hash-v9'} as typeof latest.snapshot;
+ const paths=inventory([latest,previous]);render(<KB version={0}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读 R2 由旧命题修订的知识'}));
+ fireEvent.click(screen.getByText('查看修订记录'));
+ fireEvent.click(await screen.findByRole('button',{name:'阅读 R1 · v9 的知识与题目'}));
+ const dialog=screen.getByRole('dialog',{name:'知识详情'});
+ expect(within(dialog).getByRole('heading',{name:'修订前的原始命题'})).toBeTruthy();
+ fireEvent.click(within(dialog).getByRole('tab',{name:'适用题目'}));
+ await waitFor(()=>expect(paths.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('kb_id')==='builtin:kb-v9'&&query.get('kb_version')==='hash-v9'&&query.get('claim_id')==='R1';})).toBe(true));
 });
 it('filters the actually displayed revision rather than borrowing verification from a newer revision',async()=>{
  const latest=libraryVersion('current',2,[{...rule('R1','现在的知识'),metadata:{claim_id:'R1',clause_index:0,validity_status:'replicated_in_scope',validation_origin:'source_reported'}}]);

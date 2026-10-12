@@ -4,6 +4,7 @@ import {api} from './api';
 import {evidenceQuestionSummary} from './evidenceQuestionSummary';
 import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs} from './ui';
 import {ResearchPathCanvas} from './ResearchPathCanvas';
+import {EvolutionRevisionHistory} from './KnowledgeRevisionHistory';
 import {ruleConditions} from './ruleKnowledgePresentation';
 import {formatTimestamp} from './time';
 import {EvolutionTaskEntry,initialGenerationView,LoopGenerationPanel,LoopQuestionPanel} from './LoopQuestionPanel';
@@ -85,7 +86,7 @@ function ClaimReader({data,onQuestion,onTask}:{data:EvolutionClaimDetail;onQuest
         <EvidenceComparisons row={row}/>
       </details>):<p>{data.evidence_unavailable?'这份历史记录的题目证据暂不可用。':'登记后的适用题证据尚未积累。'}</p>}
     </section>
-    <details className="evolution-source"><summary>登记与修订记录</summary><p>第 {claim.registered_round} 轮登记 · 修订 {claim.revisions} 次</p><JsonView value={{id:claim.id,version:claim.version,parent:claim.parent,history:data.history}}/></details>
+    <EvolutionRevisionHistory data={data}/>
   </div>;
 }
 

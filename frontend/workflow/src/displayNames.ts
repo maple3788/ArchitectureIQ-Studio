@@ -52,18 +52,28 @@ export function candidateListSummary(input:unknown,type?:string):{title:string;c
     label:[modelName(config.model?.type),...changed.map(([group,key,label])=>`${label} ${displayValue(config[group]?.[key])}`)].join(' · ')}));
   return {title,candidates};
 }
+/** A selection question from recorded public metrics; budgets need not match. */
+export function questionPromptSummary({metric,candidateCount}:{metric?:unknown;candidateCount?:number}={}):string{
+ const name=typeof metric==='string'?metric.trim():'';
+ const subject=typeof candidateCount==='number'&&Number.isInteger(candidateCount)&&candidateCount>=2?`这 ${candidateCount} 个方案中哪个`:'哪个方案';
+ const targets:Record<string,string>={test_ce:'的测试交叉熵最低',test_mse:'的测试均方误差最低',test_loss:'的测试损失最低',test_accuracy:'的测试准确率最高',test_acc:'的测试准确率最高'};
+ const target=name?(targets[name]||`在 ${compact(name,64)} 指标上表现最好`):'表现最好';
+ return `按各候选的配置训练后，${subject}${target}？${name?'':'评价指标未记录。'}`;
+}
 /** Compact list copy uses public metadata, never prompt excerpts or stored answers. */
-export function questionListSummary(question?:Json):{title:string;description:string;candidates:CandidateBrief[];shortId:string}{
+export function questionListSummary(question?:Json):{title:string;description:string;category:string;candidates:CandidateBrief[];shortId:string}{
   const q=question?.metadata??question?.public??question??{};
   const comparisons:Record<string,string>={architecture_only:'架构选择',architecture:'架构选择',optimizer_only:'优化器选择',optimizer:'优化器选择',loss_only:'损失函数选择',loss:'损失函数选择',mixed:'训练方案比较'};
   const kind=q.type?(comparisons[q.type]||typeLabel(q.type)):'';
-  const description=[q.family?familyLabel(q.family):'',kind].filter(Boolean).join(' · ');
+  const category=[q.family?familyLabel(q.family):'',q.type?typeLabel(q.type):''].filter(Boolean).join(' · ');
   const actual=candidateListSummary(q.candidate_configs,q.type);
+  const candidateCount=actual.candidates.length|| (Array.isArray(q.choices)?q.choices.length:q.choices);
+  const description=questionPromptSummary({metric:q.metric??q.selection_metric,candidateCount});
   const models=[...new Set<string>((Array.isArray(q.model_types)?q.model_types:[]).filter((value:unknown)=>typeof value==='string'&&value).map(modelName))];
   const fallback=models.length>1?models.join(' vs '):[models[0]||familyLabel(q.family),kind].filter(Boolean).join(' · ');
   const id=typeof q.id==='string'?q.id.split('@')[0].split('/').pop()||'':'';
   const shortId=id.startsWith('q_')?id.slice(0,10):compact(id,14);
-  return {title:actual.title||fallback,description,candidates:actual.candidates,shortId};
+  return {title:actual.title||fallback,description,category,candidates:actual.candidates,shortId};
 }
 export function datasetTypeDistribution(counts?:Record<string,number>):string[]{
   return Object.entries(counts??{}).filter(([,count])=>Number.isInteger(count)&&count>0)

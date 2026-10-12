@@ -18,9 +18,9 @@ export function GlobalQuestionBank({version,onRead,selected,onSelect,filters:ini
   {data.loading&&<Loading/>}
   {data.data?.items.map(item=>{const summary=questionListSummary(item.summary);return <article className="data-question" key={item.equivalence_id}>
    {onSelect&&<input type="checkbox" aria-label={item.summary.id} checked={item.keys.some(k=>selected?.includes(k))} onChange={e=>onSelect(e.target.checked?[...selected||[],item.representative_key]:(selected||[]).filter(k=>!item.keys.includes(k)))}/>}
-   <div className="data-question-body"><div className="data-question-meta"><span className="data-question-id" title={item.summary.id}>{summary.shortId||item.summary.id}</span>{!item.summary.ready&&<span className="data-question-pending">资料待补充</span>}</div>
-    {onRead?<button className="data-title-button" aria-label={`阅读 ${item.summary.id}`} onClick={()=>onRead(item.representative_key)}>{summary.title}</button>:<h3>{summary.title}</h3>}
+   <div className="data-question-body"><div className="data-question-meta"><span className="data-question-id" title={item.summary.id}>{summary.shortId||item.summary.id}</span>{summary.category&&<span>{summary.category}</span>}{!item.summary.ready&&<span className="data-question-pending">资料待补充</span>}</div>
     <p className="data-question-summary">{summary.description}</p>
+    {onRead?<button className="data-title-button" aria-label={`阅读 ${item.summary.id}`} onClick={()=>onRead(item.representative_key)}>{summary.title}</button>:<h3>{summary.title}</h3>}
     {summary.candidates.length>0&&<div className="data-candidate-list" aria-label="题目候选">{summary.candidates.map((candidate,index)=><div key={`${candidate.letter}-${index}`}><b>{candidate.letter}</b><span>{candidate.label}</span></div>)}</div>}
     <div className="data-question-foot"><span>{item.keys.length} 个来源版本</span>{item.datasets.map(d=><span className="data-tag" key={d.collection_id}>{d.name}</span>)}</div>
    </div>

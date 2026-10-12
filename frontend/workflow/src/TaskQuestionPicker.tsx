@@ -58,8 +58,8 @@ export function TaskQuestionPicker({version,onSelectQuestion,onClose}:{version:n
     return <article className={`task-picker-row${chosen?' is-selected':''}`} key={row.key||row.id}>
      <label><input type="radio" name="task-question" checked={!!chosen} disabled={unavailable||busy} aria-label={`选择 ${row.id}`} onChange={()=>{setSelected(choice);setError('');}}/>
       <span className="task-picker-copy"><span className="task-picker-kind">{familyLabel(row.family)} · {typeLabel(questionType)}</span>
+       <span className="task-picker-question">{summary.description}</span>
        <strong>{summary.title}</strong>
-       {summary.candidates.length>=2&&<span className="task-picker-question">比较以下 {summary.candidates.length} 个候选方案，选择表现最好的一个。</span>}
        {summary.candidates.length?<span className="task-picker-candidates" role="list" aria-label={`${row.id} 的公开候选`}>
         {summary.candidates.map((candidate,index)=><span role="listitem" key={`${candidate.letter}-${index}`}><b aria-hidden={candidate.letter==='?'?true:undefined}>{candidate.letter==='?'?'·':candidate.letter}</b><span>{candidate.label}</span></span>)}
        </span>:<span className="task-picker-summary-note">候选摘要暂未记录，可阅读完整题目。</span>}

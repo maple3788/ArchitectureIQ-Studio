@@ -26,7 +26,10 @@ it('shows a compact semantic question card while retaining full-text search and 
  vi.stubGlobal('fetch',async(input:string)=>{requests.push(input);return new Response(JSON.stringify(page([item])));});
  render(<GlobalQuestionBank version={0} onRead={onRead}/>);
  const button=await screen.findByRole('button',{name:'阅读 q_bcb233'}),article=button.closest('article')!;
- expect(button.textContent).toBe('GRU vs Transformer');expect(article.textContent?.length).toBeLessThan(300);expect(within(article).getAllByText('GRU')).toHaveLength(2);expect(within(article).getByText('Transformer')).toBeTruthy();expect(within(article).getByText('q_bcb233')).toBeTruthy();expect(article.textContent).not.toMatch(/训练总量|16,384|测试交叉熵/);expect(screen.queryByText(prompt)).toBeNull();
+ expect(button.textContent).toBe('GRU vs Transformer');expect(article.textContent?.length).toBeLessThan(300);expect(within(article).getAllByText('GRU')).toHaveLength(2);expect(within(article).getByText('Transformer')).toBeTruthy();expect(within(article).getByText('q_bcb233')).toBeTruthy();expect(article.textContent).not.toMatch(/训练总量|16,384|相同训练/);expect(screen.queryByText(prompt)).toBeNull();
+ const problem=within(article).getByText(/测试交叉熵最低？/);
+ expect(problem.compareDocumentPosition(button)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(within(article).getByText('二元序列建模 · 混合对比')).toBeTruthy();
  fireEvent.change(screen.getByLabelText('搜索总题库'),{target:{value:'huge_candidate_code'}});await waitFor(()=>expect(requests.some(input=>new URL(input,'http://studio').searchParams.get('search')==='huge_candidate_code')).toBe(true));
  fireEvent.click(await screen.findByRole('button',{name:'阅读 q_bcb233'}));expect(onRead).toHaveBeenCalledWith('q_bcb233@fixed');
 });

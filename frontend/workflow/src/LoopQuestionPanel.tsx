@@ -36,7 +36,7 @@ export function LoopQuestionPanel({id,backLabel,onBack,taskContext,onTask,onQues
       {onTask&&question.data&&<EvolutionTaskEntry selection={taskContext&&question.data.observation?.content_hash?{...taskContext,question_id:id,expected_question_hash:question.data.observation.content_hash}:undefined} onTask={onTask} hint={taskContext?.claim_ref?'带入题目与当前知识':'带入题目与本次知识快照'}/>}
     </div>
     {question.loading?<Loading/>:question.error?<><Empty title="完整题面暂时不可用">保留已有验证证据，等待来源题目恢复后再读取。</Empty><ErrorBox error={question.error}/><button className="secondary" onClick={()=>setRetry(value=>value+1)}>重新读取题目</button></>:question.data?<>
-      <QuestionReader record={question.data} questionKey={id} reviewSource={reviewSource} evidence={showKnowledgeEvidence&&reviewSource&&taskContext&&<QuestionKnowledgeEvidence id={id} record={question.data} context={taskContext} onQuestion={onQuestion}/>}/>
+      <QuestionReader record={question.data} questionKey={id} reviewSource={reviewSource} showApplicableKnowledge={showKnowledgeEvidence} evidence={showKnowledgeEvidence&&reviewSource&&taskContext&&<QuestionKnowledgeEvidence id={id} record={question.data} context={taskContext} onQuestion={onQuestion}/>}/>
       <details className="evolution-source"><summary>题面保存记录</summary><p>读取来源已保存的公开题面与候选配置。</p><small>{formatTimestamp(question.data.observation?.captured_at)}</small><code className="evolution-hash">{question.data.observation?.content_hash}</code></details>
     </>:null}
   </div>;

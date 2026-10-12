@@ -14,7 +14,8 @@ function setup(initial:any[]=[card],extra?:(path:string,init:RequestInit|undefin
   const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path,body,method:init?.method});
   const override=await extra?.(path,init);if(override)return override;
   let value:any={};
-  if(path.endsWith('/tasks')&&init?.method==='POST'){value={...card,...body,id:'created',revision:1};cards.push(value);}
+  if(path.endsWith('/questions/applicable-knowledge'))value={scope:'public_applicability',items:[],total:0,feedback_released:false};
+  else if(path.endsWith('/tasks')&&init?.method==='POST'){value={...card,...body,id:'created',revision:1};cards.push(value);}
   else if(path.endsWith('/tasks'))value={items:cards,total:cards.length};
   else if(path.includes('/tasks/kbs'))value={items:[kb],total:1};
   else if(path.includes('/tasks/questions/'))value=question;
@@ -147,7 +148,7 @@ it('prefills both frozen evolution inputs without saving or running, and retains
  await screen.findByRole('option',{name:'知识演化 · C0004 · 研究候选'});
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
  expect(screen.getAllByText('evolution_question4').length).toBeGreaterThan(0);
- expect(c.calls.filter(call=>call.method==='POST')).toHaveLength(0);
+ expect(c.calls.filter(call=>call.method==='POST'&&!call.path.endsWith('/questions/applicable-knowledge'))).toHaveLength(0);
  fireEvent.click(screen.getByLabelText('LLM + KB'));
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
  fireEvent.change(screen.getByLabelText('作答模型'),{target:{value:'glm'}});
@@ -161,7 +162,7 @@ it('opens a KB-only seed without selecting an arbitrary question and clears it w
  await screen.findByRole('heading',{name:'新建解答任务'});await screen.findByRole('option',{name:'架构规则'});
  expect(screen.getByRole('button',{name:'选择题目'})).toBeTruthy();
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('kb1@hash1');
- expect(c.calls.filter(call=>call.method==='POST')).toHaveLength(0);
+ expect(c.calls.filter(call=>call.method==='POST'&&!call.path.endsWith('/questions/applicable-knowledge'))).toHaveLength(0);
  fireEvent.click(screen.getByRole('button',{name:'返回任务列表'}));fireEvent.click(await screen.findByRole('button',{name:'新建任务'}));
  expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('');
  expect((screen.getByLabelText('知识来源') as HTMLSelectElement).value).toBe('auto');

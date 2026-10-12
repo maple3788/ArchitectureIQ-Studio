@@ -1,4 +1,5 @@
 import {useEffect,useId,useRef,useState} from 'react';
+import type {ReactNode} from 'react';
 import {api} from './api';
 import {ErrorBox} from './ui';
 import {StoredTrainingResults} from './NodeStory';
@@ -9,11 +10,12 @@ export type HumanReviewSource={kind:'catalog';key:string}|{kind:'knowledge_evolu
 type Answer={id:string;letter:string};
 type Choice=Answer&{label?:string};
 type Review={selected_answer:Answer;correct_answer:Answer|null;correct:boolean|null;feedback:Json;notice?:string};
-type Props={source:HumanReviewSource;question:Json;onRevealed?:()=>void};
+export type PracticeChoiceControls={selected:string;disabled:boolean;name:string;select:(id:string)=>void};
+type Props={source:HumanReviewSource;question:Json;onRevealed?:()=>void;renderChoices?:(controls:PracticeChoiceControls)=>ReactNode};
 export function HumanQuestionPractice(props:Props){
  return <PracticeAttempt key={JSON.stringify(props.source)} {...props}/>;
 }
-function PracticeAttempt({source,question,onRevealed}:Props){
+function PracticeAttempt({source,question,onRevealed,renderChoices}:Props){
  const [selected,setSelected]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<Review>();
  const live=useRef(true),locked=useRef(false),name=useId();
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
@@ -32,8 +34,8 @@ function PracticeAttempt({source,question,onRevealed}:Props){
   finally{locked.current=false;if(live.current)setBusy(false);}
  };
  return <section className="human-question-practice" aria-label="人工检查题目">
-  <div className="human-practice-heading"><h3>你的判断</h3><p>选择一个候选，再查看已保存的训练结果。</p></div>
-  <fieldset disabled={busy||!!result||!valid}><legend>选择答案</legend><div className="human-practice-options">{choices.map((choice,index)=><label className={selected===choice.id?'is-selected':''} key={`${choice.id}-${index}`}><input type="radio" name={name} aria-label={`选择 ${choice.letter}`} value={choice.id} checked={selected===choice.id} onChange={()=>setSelected(choice.id)}/><strong>{choice.letter}</strong><span>{choice.label||`候选 ${choice.letter}`}</span></label>)}</div></fieldset>
+  {!renderChoices&&<div className="human-practice-heading"><h3>你的判断</h3><p>选择一个候选，再查看已保存的训练结果。</p></div>}
+  {renderChoices?renderChoices({selected,disabled:busy||!!result||!valid,name,select:id=>{if(!busy&&!result&&valid)setSelected(id);}}):<fieldset disabled={busy||!!result||!valid}><legend>选择答案</legend><div className="human-practice-options">{choices.map((choice,index)=><label className={selected===choice.id?'is-selected':''} key={`${choice.id}-${index}`}><input type="radio" name={name} aria-label={`选择 ${choice.letter}`} value={choice.id} checked={selected===choice.id} onChange={()=>setSelected(choice.id)}/><strong>{choice.letter}</strong><span>{choice.label||`候选 ${choice.letter}`}</span></label>)}</div></fieldset>}
   {!valid&&<p className="human-practice-note">候选标识不完整或重复，暂不能提交人工检查。</p>}
   {!result&&<button className="primary human-practice-submit" disabled={!valid||!selected||busy} onClick={()=>void submit()}>{busy?'正在读取已保存结果…':'提交并查看结果'}</button>}
   <ErrorBox error={error}/>

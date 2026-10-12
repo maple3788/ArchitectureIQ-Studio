@@ -18,6 +18,7 @@ it('reads the exact version and navigates within the frozen Dataset filter',asyn
 it('reveals saved results for the exact catalog version only after the human submits an answer',async()=>{
  const posts:any[]=[];
  vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{
+  if(path.endsWith('/applicable-knowledge'))return new Response(JSON.stringify({items:[],total:0,feedback_released:false}));
   if(init?.method==='POST'){posts.push({path,body:JSON.parse(init.body as string)});return new Response(JSON.stringify({selected_answer:{id:'first',letter:'B'},correct_answer:{id:'other',letter:'A'},correct:false,feedback:{reveal:{curves:[]}}}));}
   return new Response(JSON.stringify(path.includes('/question-bank?')?page([]):{metadata:{key:'q1@v1'},public:{id:'q1',choices:[{id:'first',letter:'B'},{id:'other',letter:'A'}]}}));
  });

@@ -1,7 +1,9 @@
 import { useLayoutEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
-import { HumanQuestionPractice, type HumanReviewSource } from "./HumanQuestionPractice";
-import { candidateListSummary } from "./displayNames";
+import { HumanQuestionPractice, type HumanReviewSource, type PracticeChoiceControls } from "./HumanQuestionPractice";
+import { candidateListSummary, questionPromptSummary } from "./displayNames";
+import { questionPresentation } from "./questionPresentation";
+import {QuestionApplicableKnowledge} from "./QuestionApplicableKnowledge";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -69,18 +71,6 @@ function CodeFiles({files,prefix}: {files:Json;prefix:string}) {
     <details className="question-reader-disclosure" key={name}><summary>{prefix} · {name}</summary>
       <pre className="question-reader-code"><code>{source as string}</code></pre></details>)}</>;
 }
-function datasetText(prompt?: string) {
-  if (!prompt) return "";
-  const lines = prompt.split(/\r?\n/), selected: string[] = [];
-  let inside = false, fenced = false;
-  for (const line of lines) {
-    if (!inside) { if (/^##\s+Dataset\s*$/.test(line)) inside = true; continue; }
-    if (/^```/.test(line)) fenced = !fenced;
-    if (!fenced && /^##\s+/.test(line)) break;
-    selected.push(line);
-  }
-  return selected.join("\n").trim();
-}
 function InlineText({value}: {value:string}) {
   return <>{value.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part,index)=>part.startsWith("`") && part.endsWith("`")
     ? <code key={index}>{part.slice(1,-1)}</code> : part.startsWith("**") && part.endsWith("**")
@@ -133,11 +123,11 @@ function viewGroups(view: Json): Record<string, Json> {
   return {model,optimizer,loss,budget,other};
 }
 
-type ReaderProps={record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode;reviewSource?:HumanReviewSource};
+type ReaderProps={record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode;reviewSource?:HumanReviewSource;knowledgeSource?:HumanReviewSource;knowledgeRef?:{id:string;version:string};showApplicableKnowledge?:boolean};
 export function QuestionReader(props:ReaderProps){
   return <QuestionReaderContent key={JSON.stringify([props.questionKey,props.reviewSource])} {...props}/>;
 }
-function QuestionReaderContent({record,questionKey,evidence:providedEvidence,reviewSource}:ReaderProps) {
+function QuestionReaderContent({record,questionKey,evidence:providedEvidence,reviewSource,knowledgeSource,knowledgeRef,showApplicableKnowledge=true}:ReaderProps) {
   const [revealed,setRevealed]=useState(false);
   const evidence=reviewSource&&!revealed?undefined:providedEvidence;
   // Reset before the new question can be interacted with; a passive mount
@@ -155,7 +145,7 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
     const fallback = viewGroups(clean(object(item.view)));
     const groups = Object.keys(spec).length ? {
       ...Object.fromEntries(sections.filter(section=>section.key!=="other").map(section=>[section.key,spec[section.key]])),
-      other:Object.fromEntries(Object.entries(spec).filter(([key])=>!sections.some(section=>section.key!=="other"&&section.key===key))),
+      other:Object.fromEntries(Object.entries(spec).filter(([key])=>!sections.some(section=>section.key!=="other"&&section.key===key)&&!["candidate_id","dataset_id","family","files","profile","profile_hash","schema_version"].includes(key))),
     }:fallback;
     return {identity:String(item.id ?? item.candidateId ?? source.candidateId ?? spec.candidate_id ?? ""),letter:String(item.letter ?? source.letter ?? index+1), files, spec, groups,
       full:Object.keys(spec).length ? spec : clean(object(item.view))};
@@ -168,14 +158,23 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
   const family = datasetSpec.family ?? dataset.family ?? pub.family ?? metadata.family;
   const metric = datasetSpec.selection_metric ?? dataset.selectionMetric ?? metadata.metric ?? view.metric;
   const prompt = typeof detail.prompt === "string" ? detail.prompt : typeof pub.prompt === "string" ? pub.prompt : undefined;
-  const narrative = datasetText(prompt);
-  const profile = metadata.profile ?? choices.find(c=>c.spec.profile)?.spec.profile;
+  const presentation=questionPresentation(record);
+  const narrative=presentation.datasetNarrative;
   const facts = dataKeys.filter(key=>present(params[key]));
   const rows = comparisonRows(choices);
   const briefs=candidateListSummary(choices.map(choice=>({...choice.groups,letter:choice.letter})),metadata.type).candidates;
   const title = [family ? families[family] || text(family) : "训练方案对比", metadata.type ? types[metadata.type] || text(metadata.type) : undefined].filter(Boolean).join(" · ");
+  const applicableSource=knowledgeSource??reviewSource??(questionKey?{kind:"catalog" as const,key:questionKey}:undefined);
   const dataFacts = facts.length ? <dl className="question-reader-facts">{facts.map(key=><div key={key} className={key==="expression" ? "question-reader-expression" : ""}><dt>{labels[key] || key}</dt><dd>{text(params[key])}</dd></div>)}</dl>
     : <p className="question-reader-note">此记录未提供结构化数据条件，请查阅数据规则或原始 Prompt。</p>;
+  const comparison=(controls?:PracticeChoiceControls)=><div className={`question-reader-comparison-workspace${evidence||showApplicableKnowledge&&applicableSource?' with-evidence':''}`}>
+    <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">全部参数并排 · 差异高亮</span></div>
+      {controls&&<p className="question-reader-note">点击候选名称选择答案，提交后查看正确答案与已保存的训练曲线。</p>}
+      {choices.length ? <ComparisonTable choices={choices} rows={rows} label="候选参数对比" controls={controls}/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
+      <details className="question-reader-parameter-help"><summary>如何阅读参数</summary><p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。</p></details>
+    </section>
+    {(evidence||showApplicableKnowledge&&applicableSource)&&<aside className="question-reader-evidence">{showApplicableKnowledge&&applicableSource&&<QuestionApplicableKnowledge source={applicableSource} knowledgeRef={knowledgeRef}/>} {evidence}</aside>}
+  </div>;
   return <article className={`question-reader${evidence?' has-evidence':''}`}>
     <div className="question-reader-tabs" role="tablist" aria-label="题目阅读方式">
       {[{id:"structured",label:"题目概览"},{id:"data",label:"数据与规则"},{id:"original",label:"原始 Prompt"}].map(item=>
@@ -195,25 +194,21 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
     </section> : <div role="tabpanel" id={`${readerId}-structured`} aria-labelledby={`${readerId}-structured-tab`}>
       <header className="question-reader-intro"><span className="question-reader-kicker">题目任务</span>
         <h2>{title}</h2>
-        <p>依据数据规则与训练预算，选择训练后表现最好的候选。{metric && <>评价指标：<strong>{text(metric)}</strong>。</>}</p>
+        <p className="question-reader-task-description">{questionPromptSummary({metric,candidateCount:choices.length})}</p>
+        <p className="question-reader-context">{presentation.task}</p>
         <div className="question-reader-tags">
-          <span>{choices.length} 个候选</span>{profile && <span>Profile {text(profile)}</span>}
+          <span>{choices.length} 个候选</span>
         </div>
       </header>
-      <div className={`question-reader-comparison-workspace${evidence?' with-evidence':''}`}>
-      <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">高亮行表示候选间存在差异</span></div>
-        {rows.length ? <ComparisonTable choices={choices} rows={rows} label="候选参数对比"/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
-        <p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。</p>
+      <section className="question-reader-dataset"><h3>数据与条件</h3>
+        {presentation.facts.length?<dl className="question-reader-facts">{presentation.facts.filter(fact=>fact.key!=="instance_seed").map(fact=><div key={fact.key} className={fact.key==='expression'?'question-reader-expression':''}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>:dataFacts}
+        {!!presentation.examples.length&&<div className="question-reader-examples">{presentation.examples.map((example,index)=><div key={index}><span>输入示例 <code>{example.input}</code></span><span>输出 <code>{example.output}</code></span></div>)}</div>}
+        <details className="question-reader-disclosure"><summary>完整问题说明与数据规则</summary>{narrative?<DatasetNarrative value={narrative}/>:<p className="question-reader-note">此记录未提供独立的数据规则段。</p>}<button className="question-reader-text-button" onClick={()=>setTab("data")}>查看完整数据规则</button></details>
       </section>
-      {evidence&&<aside className="question-reader-evidence">{evidence}</aside>}
-      </div>
+      {!reviewSource&&comparison()}
     </div>}
-    {reviewSource&&<HumanQuestionPractice source={reviewSource} question={{id:pub.id??metadata.id,family,prompt,choices:choices.map((choice,index)=>({id:choice.identity,letter:choice.letter,label:briefs[index]?.label}))}} onRevealed={()=>setRevealed(true)}/>}
+    {reviewSource&&<HumanQuestionPractice source={reviewSource} question={{id:pub.id??metadata.id,family,prompt,choices:choices.map((choice,index)=>({id:choice.identity,letter:choice.letter,label:briefs[index]?.label}))}} renderChoices={comparison} onRevealed={()=>setRevealed(true)}/>}
     {tab==='structured'&&<div className="question-reader-details">
-      <section className="question-reader-section"><h3>数据与条件</h3>
-        {dataFacts}
-        <div className="question-reader-rule-link"><p className="question-reader-note">此页用于快速比较；解题请阅读完整数据生成规则与训练协议。</p><button onClick={()=>setTab("data")}>查看完整数据规则</button></div>
-      </section>
       <section className="question-reader-section"><h3>配置、代码与来源</h3><p className="question-reader-note">展开查看本题有效配置，以及模型、训练、优化器与损失文件。</p>
         {choices.map((choice,index)=><div className="question-reader-candidate" key={`${choice.letter}-${index}`}><h4>候选 {choice.letter}</h4>
           <FullConfig title={`${choice.letter} · 完整候选配置`} value={choice.full}/><CodeFiles files={choice.files} prefix={choice.letter}/>
@@ -255,9 +250,9 @@ function comparisonRows(choices:Json[]): ComparisonRow[] {
   });
   return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value??null))).size>1}));
 }
-function ComparisonTable({choices,rows,label}: {choices:Json[];rows:ComparisonRow[];label:string}) {
+function ComparisonTable({choices,rows,label,controls}: {choices:Json[];rows:ComparisonRow[];label:string;controls?:PracticeChoiceControls}) {
   return <div className="question-reader-table-wrap"><table className="question-reader-table" aria-label={label} style={choices.length>3?{minWidth:`${(choices.length+1)*115}px`}:undefined}><colgroup><col style={{width:'26%'}}/>{choices.map((choice,index)=><col key={`${choice.letter}-${index}`} style={{width:`${74/choices.length}%`}}/>)}</colgroup><thead><tr><th scope="col">比较项目</th>
-    {choices.map((choice,index)=><th scope="col" key={`${choice.letter}-${index}`}>候选 {choice.letter}</th>)}</tr></thead>
+    {choices.map((choice,index)=><th scope="col" aria-label={`候选 ${choice.letter}`} className={controls?.selected===choice.identity?"is-selected":""} key={`${choice.letter}-${index}`}>{controls?<label className="question-reader-choice-label"><input type="radio" name={controls.name} aria-label={`选择 ${choice.letter}`} checked={controls.selected===choice.identity} disabled={controls.disabled} onChange={()=>controls.select(choice.identity)}/><span>候选 {choice.letter}<small>{text(choice.groups.model?.type??"训练方案")}</small></span></label>:<>候选 {choice.letter}</>}</th>)}</tr></thead>
     <tbody>{rows.map((row,index)=><tr key={row.id} className={row.different ? "is-different" : ""}>
       <th scope="row">{(index===0 || rows[index-1].title!==row.title) && <small className="question-reader-row-group">{row.title}</small>}{row.label}</th>
       {row.values.map((value,index)=><td key={index}>{text(value)}</td>)}</tr>)}</tbody>
