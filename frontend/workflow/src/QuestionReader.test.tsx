@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { QuestionReader } from "./QuestionReader";
 import { useLayoutEffect } from "react";
@@ -81,7 +81,7 @@ it("uses public views when files are unavailable, supports arbitrary choices, an
     {letter:"Z",view:{model_type:"custom-model",width:96}},
   ]}}}/>);
   expect(screen.getByText("future_family")).toBeTruthy();
-  expect(within(screen.getByRole("table",{name:"候选差异"})).getByRole("columnheader",{name:"候选 Z"})).toBeTruthy();
+  expect(within(screen.getByRole("table",{name:"候选参数对比"})).getByRole("columnheader",{name:"候选 Z"})).toBeTruthy();
   expect(screen.getByText("总训练样本量").closest("tr")!.textContent).toContain("未记录");
   expect(screen.queryByText("训练集样本数")).toBeNull();
   fireEvent.click(screen.getByRole("tab",{name:"原始 Prompt"}));
@@ -100,18 +100,17 @@ it("opens complete authoritative dataset rules from the overview with safe forma
   expect(screen.getByText('数据说明中的代码').closest('details')!.open).toBe(false);
 });
 
-it("shows optimizer differences first when model settings are shared, with common settings collapsed",()=>{
+it("keeps shared parameters alongside differences without a collapsed common-settings section",()=>{
   const a=choice("A","gelu",8192), b=choice("B","gelu",8192);
   Object.assign(b.files["candidate_spec.json"].model,a.files["candidate_spec.json"].model);
   b.files["candidate_spec.json"].optimizer.lr=0.01;
   render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
   expect(screen.getByRole("tab",{name:"题目概览"}).getAttribute("aria-selected")).toBe("true");
-  const table=screen.getByRole("table",{name:"候选差异"});
-  expect(table.querySelector("tbody tr")!.textContent).toContain("学习率");
-  expect(table.textContent).not.toContain("隐藏宽度");
-  const common=screen.getByText("共同设置").closest("details")!;
-  expect(common.open).toBe(false);
-  expect(common.textContent).toContain("隐藏宽度");
+  const table=screen.getByRole("table",{name:"候选参数对比"});
+  expect(table.textContent).toContain("学习率");
+  expect(table.textContent).toContain("隐藏宽度");
+  expect(table.closest('details')).toBeNull();
+  expect(screen.queryByText("共同设置")).toBeNull();
 });
 
 it("aligns public choices by candidate id when letters are absent and source order differs", () => {
@@ -136,20 +135,74 @@ it("preserves layer patterns, language model axes and explicit zero values in mi
   expect(screen.getByText("动量").closest("tr")!.querySelector("td")!.textContent).toBe("0");
 });
 
-it('selects and compares candidates locally, supports keyboard movement and resets for a new exact question',()=>{
- const network=vi.fn();vi.stubGlobal('fetch',network);
+it('compares every candidate immediately without answer selection or comparison checkboxes',()=>{
  const third=choice('C','tanh',2048);
  const value={...record,detail:{...record.detail,choices:[...record.detail.choices,third]}};
  const {rerender}=render(<QuestionReader record={value} interactive questionKey="q@v1"/>);
- fireEvent.click(screen.getByRole('radio',{name:'候选 A'}));
- fireEvent.keyDown(screen.getByRole('radio',{name:'候选 A'}),{key:'ArrowRight'});
- expect((screen.getByRole('radio',{name:'候选 B'}) as HTMLInputElement).checked).toBe(true);
- fireEvent.click(screen.getByRole('checkbox',{name:'对比候选 A'}));fireEvent.click(screen.getByRole('checkbox',{name:'对比候选 C'}));
- const comparison=screen.getByRole('table',{name:'候选差异'});
- expect(within(comparison).queryByRole('columnheader',{name:'候选 B'})).toBeNull();
- expect(comparison.textContent).toContain('tanh');expect(network).not.toHaveBeenCalled();
+ const comparison=screen.getByRole('table',{name:'候选参数对比'});
+ for(const letter of ['A','B','C'])expect(within(comparison).getByRole('columnheader',{name:`候选 ${letter}`})).toBeTruthy();
+ expect(screen.queryByRole('radio')).toBeNull();
+ expect(screen.queryByRole('checkbox')).toBeNull();
+ expect(comparison.textContent).toContain('tanh');
  expect(document.body.textContent).not.toMatch(/SECRET-WINNER|SECRET-METRIC|WRONG-SOURCE/);
  rerender(<QuestionReader record={value} interactive questionKey="q@v2"/>);
- expect(screen.getAllByRole('radio').some(input=>(input as HTMLInputElement).checked)).toBe(false);
- vi.unstubAllGlobals();
+ expect(screen.getByRole('table',{name:'候选参数对比'})).toBeTruthy();
+});
+
+it('shows unknown nested public parameters, explicit empty values and missing values in the comparison',()=>{
+ const a:any=choice('A','gelu',8192),b:any=choice('B','gelu',8192),c:any=choice('C','gelu',8192);
+ for(const item of [a,b,c])Object.assign(item.files['candidate_spec.json'],{
+  execution:{precision:'float32',scheduler:{phases:[{warmup:5},{decay:0.1}]}},
+  future_config:{retained_zero:0,retained_false:false,empty_list:[],empty_object:{}},
+  private_metrics:{correctLetter:'SECRET-CAMEL',seed_results:[{value:'SECRET-NESTED'}]},
+ });
+ b.files['candidate_spec.json'].execution.scheduler.phases[1].decay=0.2;
+ delete c.files['candidate_spec.json'].future_config.retained_zero;
+ const {container}=render(<QuestionReader record={{detail:{choices:[a,b,c]}}}/>);
+ const table=screen.getByRole('table',{name:'候选参数对比'});
+ expect(table.textContent).toContain('retained-option');
+ const decay=within(table).getByText('scheduler.phases[1].decay').closest('tr')!;
+ expect(Array.from(decay.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['0.1','0.2','0.1']);
+ expect(decay.classList.contains('is-different')).toBe(true);
+ const missing=within(table).getByText('future_config.retained_zero').closest('tr')!;
+ expect(Array.from(missing.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['0','0','未记录']);
+ expect(table.textContent).toContain('空列表');
+ expect(table.textContent).toContain('{}');
+ expect(table.textContent).toContain('关闭');
+ expect(container.textContent).not.toMatch(/SECRET-CAMEL|SECRET-NESTED/);
+});
+
+it('retains extra public-view fields without requiring a known feature label',()=>{
+ render(<QuestionReader record={{public:{choices:[
+  {id:'a',letter:'A',view:{model_type:'mlp',width:8,future_public_axis:3,custom:{shape:'linear'}}},
+  {id:'b',letter:'B',view:{model_type:'mlp',width:16,future_public_axis:4,custom:{shape:'curved'}}},
+ ]}}}/>);
+ const table=screen.getByRole('table',{name:'候选参数对比'});
+ expect(table.textContent).toContain('future_public_axis');
+ expect(table.textContent).toContain('custom.shape');
+ expect(table.textContent).toContain('linear');
+ expect(table.textContent).toContain('curved');
+});
+
+it('places supplied knowledge evidence immediately after the candidate comparison',()=>{
+ render(<QuestionReader record={record} evidence={<section aria-label="本题知识依据">规则 C1 与真实反例</section>}/>);
+ const table=screen.getByRole('table',{name:'候选参数对比'}),evidence=screen.getByRole('region',{name:'本题知识依据'});
+ expect(table.compareDocumentPosition(evidence)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ const workspace=table.closest('.question-reader-comparison-workspace');
+ expect(workspace?.contains(evidence)).toBe(true);
+ expect(evidence.compareDocumentPosition(screen.getByRole('heading',{name:'数据与条件'}))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('does not lose explicit empty sections or literal dotted keys when flattening candidate parameters',()=>{
+ const a:any=choice('A','gelu',8192),b:any=choice('B','gelu',8192);
+ a.files['candidate_spec.json'].execution={};
+ for(const candidate of [a,b])candidate.files['candidate_spec.json'].future_config={'axis.width':7,axis:{width:9}};
+ render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
+ const table=screen.getByRole('table',{name:'候选参数对比'});
+ const literal=within(table).getByText('future_config.axis\\.width').closest('tr')!;
+ const nested=within(table).getByText('future_config.axis.width').closest('tr')!;
+ expect(Array.from(literal.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['7','7']);
+ expect(Array.from(nested.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['9','9']);
+ const empty=within(table).getByText('{}').closest('tr')!;
+ expect(Array.from(empty.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['{}','未记录']);
 });

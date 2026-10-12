@@ -346,7 +346,9 @@ class EvolutionTaskSources:
                 for row in detail.get('generation', {}).get('items', []))
             if not known:
                 evidence = next((row for detail in capture['claim_details'].values()
-                                 for row in detail.get('evidence', []) if row.get('question_id') == qid
+                                 for row in [*detail.get('evidence', []),
+                                             *detail.get('counterexamples', {}).get('items', [])]
+                                 if row.get('question_id') == qid
                                  and type(row.get('round')) is int and row['round'] > 0), None)
                 if evidence is None:
                     raise TaskConflict('该阅读记录中没有这道题的生成结果或证据，请重新打开后重试')

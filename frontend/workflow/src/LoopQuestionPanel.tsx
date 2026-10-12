@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowUpRight,Check,Clock3} from 'lucide-react';
 import {api} from './api';
 import {QuestionReader} from './QuestionReader';
+import {QuestionKnowledgeEvidence} from './QuestionKnowledgeEvidence';
 import {Empty,ErrorBox,Loading,useResource} from './ui';
 import {formatTimestamp} from './time';
 import type {Json} from './types';
@@ -25,14 +26,15 @@ export function EvolutionTaskEntry({selection,onTask,hint}:{selection?:Evolution
   return <div className="evolution-task-entry"><div><span>{selection?hint:'未取得完整快照，请重新打开详情'}</span><button className="evolution-task-link" disabled={!selection||busy} onClick={()=>void select()}>{busy?'正在带入…':'去 Task 解答'}<ArrowUpRight size={15}/></button></div><ErrorBox error={error}/></div>;
 }
 
-export function LoopQuestionPanel({id,backLabel,onBack,taskContext,onTask}:{id:string;backLabel:string;onBack:()=>void;taskContext?:EvolutionTaskContext;onTask?:(seed:TaskSeed)=>void}){
+export function LoopQuestionPanel({id,backLabel,onBack,taskContext,onTask,onQuestion}:{id:string;backLabel:string;onBack:()=>void;taskContext?:EvolutionTaskContext;onTask?:(seed:TaskSeed)=>void;onQuestion?:(id:string,context:EvolutionTaskContext)=>void}){
   const [retry,setRetry]=useState(0);
   const question=useResource<Json>(`/kb-loop/questions/${encodeURIComponent(id)}`,retry);
   return <div className="loop-question-panel">
-    <button className="loop-back" onClick={onBack}><ArrowLeft size={15}/>{backLabel}</button>
+    <div className="loop-question-toolbar"><button className="loop-back" onClick={onBack}><ArrowLeft size={15}/>{backLabel}</button>
+      {onTask&&question.data&&<EvolutionTaskEntry selection={taskContext&&question.data.observation?.content_hash?{...taskContext,question_id:id,expected_question_hash:question.data.observation.content_hash}:undefined} onTask={onTask} hint={taskContext?.claim_ref?'带入题目与当前知识':'带入题目与本次知识快照'}/>}
+    </div>
     {question.loading?<Loading/>:question.error?<><Empty title="完整题面暂时不可用">保留已有验证证据，等待来源题目恢复后再读取。</Empty><ErrorBox error={question.error}/><button className="secondary" onClick={()=>setRetry(value=>value+1)}>重新读取题目</button></>:question.data?<>
-      {onTask&&<EvolutionTaskEntry selection={taskContext&&question.data.observation?.content_hash?{...taskContext,question_id:id,expected_question_hash:question.data.observation.content_hash}:undefined} onTask={onTask} hint={taskContext?.claim_ref?'带入题目与当前知识':'带入题目与本次知识快照'}/>}
-      <QuestionReader record={question.data} questionKey={id} interactive/>
+      <QuestionReader record={question.data} questionKey={id} evidence={taskContext&&<QuestionKnowledgeEvidence id={id} record={question.data} context={taskContext} onQuestion={onQuestion}/>}/>
       <details className="evolution-source"><summary>题面保存记录</summary><p>读取来源已保存的公开题面与候选配置。</p><small>{formatTimestamp(question.data.observation?.captured_at)}</small><code className="evolution-hash">{question.data.observation?.content_hash}</code></details>
     </>:null}
   </div>;

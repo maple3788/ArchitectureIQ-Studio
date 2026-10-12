@@ -221,3 +221,20 @@ def test_evidence_question_outside_recent_generation_window_can_be_carried(bridg
     result = source.selection({'observation': token, 'question_id': 'q_generated',
                                'claim_ref': {'id': 'C1', 'version': 2}})
     assert source.get_question(result['question_key'])['public']['id'] == 'q_generated'
+
+
+def test_saved_counterexample_outside_recent_windows_can_be_carried_without_its_outcome(bridge):
+    source, observer, value, _ = bridge
+    value['round_details']['1']['generation']['items'] = []
+    value['claim_details']['C1']['counterexamples'] = {'items': [{
+        'question_id': 'q_generated', 'round': 1, 'outcome': 'refute',
+        'question': {'family': 'univariate_regression', 'type': 'architecture_only',
+                     'winner': 'SECRET_GT'},
+    }], 'total': 1, 'truncated': False}
+    observer.poll_once()
+    result = source.selection({'observation': observer.snapshot()['observation'],
+                               'question_id': 'q_generated', 'claim_ref': {'id': 'C1', 'version': 2}})
+    record = source.get_question(result['question_key'])
+    assert record['public']['id'] == 'q_generated'
+    assert 'SECRET_GT' not in json.dumps(result) and 'SECRET_GT' not in json.dumps(record)
+    assert 'outcome' not in json.dumps(record)

@@ -7,6 +7,7 @@ import time
 
 from fastapi import HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
+from architecture_iq.studio.loop_observer import ObservationConflict
 
 
 def _frame(event, value, sequence=None):
@@ -67,6 +68,20 @@ def register_loop_observer_routes(api, *, observer):
             raise HTTPException(404, '来源尚无这道题的完整题面') from exc
         except Exception as exc:
             raise HTTPException(503, '完整题面暂时无法读取，请稍后重试') from exc
+
+    @api.get(prefix + '/questions/{identifier}/evidence')
+    def question_evidence(identifier: str,
+                          source_identity: str = Query(..., pattern=r'^[0-9a-f]{64}$'),
+                          sequence: int = Query(..., ge=1, le=2**63-1),
+                          claim_id: str | None = Query(None, min_length=1, max_length=1000),
+                          claim_version: int | None = Query(None, ge=1, le=100000)):
+        try:
+            return observer.question_evidence(identifier, source_identity=source_identity, sequence=sequence,
+                                               claim_id=claim_id, claim_version=claim_version)
+        except ObservationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(422, '题目或知识的阅读记录无效，请重新打开后重试') from exc
 
     @api.get(prefix + '/stream')
     def stream(request: Request, after: int = Query(0, ge=0, le=2**63-1)):

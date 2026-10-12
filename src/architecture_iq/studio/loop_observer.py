@@ -33,6 +33,10 @@ _DETAIL_FIELDS = {'claim_details', 'round_details'}
 _MAX_CAPTURE_BYTES = 32 * 1024 * 1024
 
 
+class ObservationConflict(ValueError):
+    """The requested reading context cannot be resolved to its saved source."""
+
+
 def _json(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False,
                       separators=(',', ':'))
@@ -290,6 +294,82 @@ class LoopObserver:
         if not row:
             raise KeyError('轮次记录不可用')
         return {**_decode(row['payload'])['round_details'][str(number)], 'observation': self._observation_ref(row)}
+
+    def question_evidence(self, identifier: str, *, source_identity: str, sequence: int,
+                          claim_id: str | None = None, claim_version: int | None = None) -> dict:
+        """Read stored research outcomes for a human, never inference inputs.
+
+        This view performs no matching or experiments and reads no remote file.
+        Relations mean only that the source recorded a target or evidence link.
+        """
+        if not isinstance(identifier, str) or not re.fullmatch(r'q_[A-Za-z0-9_-]{1,80}', identifier):
+            raise ValueError('Invalid question identity')
+        if (not isinstance(source_identity, str) or not re.fullmatch(r'[0-9a-f]{64}', source_identity)
+                or type(sequence) is not int or not 1 <= sequence <= 2**63-1):
+            raise ValueError('Reading requires an exact observation reference')
+        if ((claim_id is None) != (claim_version is None) or claim_id is not None and
+                (not isinstance(claim_id, str) or not 1 <= len(claim_id) <= 1000
+                 or type(claim_version) is not int or not 1 <= claim_version <= 100000)):
+            raise ValueError('Knowledge reading requires its identity and revision')
+        try:
+            capture = self.capture(source_identity=source_identity, sequence=sequence)
+        except KeyError as exc:
+            raise ObservationConflict('知识演化来源或阅读记录已变化，请重新打开题目后重试') from exc
+        if capture is None:
+            raise ObservationConflict('阅读记录尚不可用，请重新打开题目后重试')
+        details = capture['claim_details']
+        if claim_id is not None and (claim_id not in details or
+                details[claim_id]['claim'].get('version') != claim_version):
+            raise ObservationConflict('正在阅读的知识修订与记录不符，请重新打开后重试')
+        targets, known = set(), False
+        for detail in capture['round_details'].values():
+            for row in detail.get('generation', {}).get('items', []):
+                if row.get('status') == 'ok' and row.get('question_id') == identifier:
+                    known = True
+                    targets.update(target for target in row.get('targets', []) if isinstance(target, str))
+        result = []
+        for cid, detail in details.items():
+            claim = detail['claim']
+            version = claim.get('version')
+            evidence = [row for row in detail.get('evidence', [])
+                        if row.get('claim_id') == cid and row.get('version') == version]
+            stored_counterexamples = detail.get('counterexamples')
+            refute_rows = (stored_counterexamples.get('items', []) if isinstance(stored_counterexamples, dict)
+                           else evidence)
+            refutes = [row for row in refute_rows if row.get('claim_id') == cid and row.get('version') == version
+                       and row.get('outcome') == 'refute']
+            # The independent counterexample window may retain a question that
+            # has already left the latest mixed evidence window. Keep its row
+            # without duplicating an identical persisted event.
+            current, seen = [], set()
+            for row in [*evidence, *refutes]:
+                if row.get('question_id') == identifier and _json(row) not in seen:
+                    current.append(row)
+                    seen.add(_json(row))
+            known = known or bool(current)
+            if claim_id is not None and cid != claim_id:
+                continue
+            if claim_id is None and not current and cid not in targets:
+                continue
+            reported = (stored_counterexamples.get('total') if isinstance(stored_counterexamples, dict)
+                        else (claim.get('evidence') or {}).get('refute'))
+            total = reported if type(reported) is int and reported >= len(refutes) else None
+            truncated = (bool(stored_counterexamples.get('truncated')) if isinstance(stored_counterexamples, dict)
+                         else bool(detail.get('evidence_truncated')))
+            if total is not None:
+                truncated = truncated or total > len(refutes)
+            result.append({'claim': claim, 'relation': 'selected' if claim_id is not None else
+                           'evidence' if current else 'target', 'current_evidence': current,
+                           'counterexamples': {'items': refutes, 'total': total, 'truncated': truncated},
+                           'evidence_total': detail.get('evidence_total', len(evidence)),
+                           'evidence_truncated': bool(detail.get('evidence_truncated'))})
+        if not known:
+            result = []
+        response = {'observation': {'source_identity': source_identity, 'sequence': sequence},
+                    'question_id': identifier, 'claims': result}
+        if not result:
+            response['notice'] = '这份记录尚未保存本题与知识的关联或验证证据。'
+        return response
 
     def question(self, identifier: str) -> dict:
         """Return a frozen public question, persisted independently of SSE."""

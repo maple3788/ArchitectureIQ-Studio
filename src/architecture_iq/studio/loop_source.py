@@ -236,13 +236,17 @@ def collect(root: Path, process_state='unknown') -> dict:
         claim['evidence'] = {'applicable': len(evidence), 'support': support,
                              'refute': sum(row['outcome'] == 'refute' for row in evidence),
                              'conflicts': sum(row.get('conflicts', 0) for row in evidence)}
-        rows = []
-        for row in reversed(evidence[-MAX_EVIDENCE:]):
+        def evidence_row(row):
             public = _pick(row, ('claim_id', 'version', 'question_id', 'round', 'outcome', 'pairs', 'conflicts'))
             public['question'] = questions.get(row['question_id'])
-            rows.append(public)
+            return public
+        rows = [evidence_row(row) for row in reversed(evidence[-MAX_EVIDENCE:])]
+        refutes = [row for row in evidence if row['outcome'] == 'refute']
+        counterexamples = {'items': [evidence_row(row) for row in reversed(refutes[-MAX_EVIDENCE:])],
+                           'total': len(refutes), 'truncated': len(refutes) > MAX_EVIDENCE}
         details[cid] = {'claim': claim, 'history': [_claim(v) for v in history_by_claim.get(cid, [])],
-                        'evidence': rows, 'evidence_total': len(evidence), 'evidence_truncated': len(evidence) > len(rows)}
+                        'evidence': rows, 'evidence_total': len(evidence), 'evidence_truncated': len(evidence) > len(rows),
+                        'counterexamples': counterexamples}
         claims.append(claim)
     counts = Counter(claim['status'] for claim in claims)
     names = [name for name in reader.names('rounds') if re.fullmatch(r'round_\d{4,}', name)]

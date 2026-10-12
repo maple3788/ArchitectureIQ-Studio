@@ -1,4 +1,5 @@
 import { useLayoutEffect, useId, useState } from "react";
+import type { ReactNode } from "react";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -28,7 +29,8 @@ const types: Record<string, string> = {
   architecture_only: "架构对比", optimizer_only: "优化器对比", loss_only: "损失函数对比", mixed: "混合对比",
 };
 const sections = [{key:"model", title:"模型结构"}, {key:"optimizer", title:"优化器"},
-  {key:"loss", title:"损失函数"}, {key:"budget", title:"训练预算"}];
+  {key:"loss", title:"损失函数"}, {key:"budget", title:"训练预算"}, {key:"execution", title:"执行设置"},
+  {key:"other", title:"其他公开参数"}];
 const dataKeys = ["task", "input_dim", "output_dim", "num_classes", "train_size", "test_size",
   "rule_family", "active_features", "n_active_features", "spiral_turns", "noise_std", "vocab_size",
   "context_length", "seq_len", "sequence_length", "instance_seed", "expression", "domain", "alpha"];
@@ -46,7 +48,7 @@ function present(value: unknown) { return value !== undefined && value !== null;
 function clean(value: any): any {
   if (Array.isArray(value)) return value.map(clean);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !/^(correct(_letter|_answer)?|answer|winner|rank(ing)?|ground_truth|gt|results?|summary|curves|significance|provenance|source_candidate_spec|seed_results|final_.+|(?:mean|std)_(?:test|train).+|(?:test|train)_(?:ce|mse|loss|accuracy|acc))$/i.test(key))
+    .filter(([key]) => !/^(correct(_letter|_answer)?|answer|winner|rank(ing)?|ground_truth|gt|results?|summary|curves|significance|provenance|source_candidate_spec|seed_results|final_.+|(?:mean|std)_(?:test|train).+|(?:test|train)_(?:ce|mse|loss|accuracy|acc))$/i.test(key.replace(/([a-z0-9])([A-Z])/g,"$1_$2")))
     .map(([key,v])=>[key,clean(v)]));
   return value;
 }
@@ -114,8 +116,9 @@ function DatasetNarrative({value}: {value:string}) {
 }
 function viewGroups(view: Json): Record<string, Json> {
   const model: Json = {...parsedObject(view.arch_key)};
-  for (const key of ["depth","width","input_dim","output_dim","activation","residual","layer_norm","layer_residual",
-    "num_layers","num_heads","d_model","d_ff","hidden_size","embedding_dim","vocab_size","context_length","dropout","leaky_relu_slope"])
+  const modelKeys=["depth","width","input_dim","output_dim","activation","residual","layer_norm","layer_residual",
+    "num_layers","num_heads","d_model","d_ff","hidden_size","embedding_dim","vocab_size","context_length","dropout","leaky_relu_slope"];
+  for (const key of modelKeys)
     if (!present(model[key]) && present(view[key])) model[key] = view[key];
   if (!present(model.type) && present(view.model_type)) model.type = view.model_type;
   const optimizer: Json = {...parsedObject(view.opt_key)};
@@ -123,15 +126,15 @@ function viewGroups(view: Json): Record<string, Json> {
   for (const key of ["lr","weight_decay","momentum"]) if (!present(optimizer[key]) && present(view[key])) optimizer[key] = view[key];
   const loss = parsedObject(view.loss_key);
   const budget = {total_samples_seen:view.budget, training_steps:view.steps, batch_size:view.batch_size};
-  return {model,optimizer,loss,budget};
+  const grouped=new Set([...modelKeys,"arch_key","opt_key","loss_key","model_type","opt","lr","weight_decay","momentum","budget","steps","batch_size"]);
+  const other=Object.fromEntries(Object.entries(view).filter(([key])=>!grouped.has(key)));
+  return {model,optimizer,loss,budget,other};
 }
 
-export function QuestionReader({record,interactive=false,questionKey}: {record:Json;interactive?:boolean;questionKey?:string}) {
-  const [selected,setSelected]=useState<string>();
-  const [compared,setCompared]=useState<string[]>([]);
+export function QuestionReader({record,questionKey,evidence}: {record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode}) {
   // Reset before the new question can be interacted with; a passive mount
   // effect could otherwise overwrite an immediate first tab selection.
-  useLayoutEffect(()=>{setSelected(undefined);setCompared([]);setTab("structured");},[questionKey]);
+  useLayoutEffect(()=>{setTab("structured");},[questionKey]);
   const [tab,setTab] = useState("structured");
   const readerId = useId();
   const detail = object(record.detail), pub = object(record.public), metadata = object(record.metadata);
@@ -140,12 +143,14 @@ export function QuestionReader({record,interactive=false,questionKey}: {record:J
   const choices = base.map((item,index)=> {
     const source = detailed.find(candidate=>(present(item.letter) && candidate.letter === item.letter) ||
       (item.id && candidate.candidateId === item.id)) || (publicChoices.length ? {} : item);
-    const files = object(source.files), spec = parsedObject(files["candidate_spec.json"]);
-    const fallback = viewGroups(object(item.view));
-    const groups = Object.fromEntries(sections.map(section=>[section.key,
-      Object.keys(spec).length ? object(spec[section.key]) : fallback[section.key as keyof typeof fallback]]));
+    const files = object(source.files), spec = clean(parsedObject(files["candidate_spec.json"]));
+    const fallback = viewGroups(clean(object(item.view)));
+    const groups = Object.keys(spec).length ? {
+      ...Object.fromEntries(sections.filter(section=>section.key!=="other").map(section=>[section.key,spec[section.key]])),
+      other:Object.fromEntries(Object.entries(spec).filter(([key])=>!sections.some(section=>section.key!=="other"&&section.key===key))),
+    }:fallback;
     return {identity:String(item.id ?? item.candidateId ?? source.candidateId ?? spec.candidate_id ?? ""),letter:String(item.letter ?? source.letter ?? index+1), files, spec, groups,
-      full:Object.keys(spec).length ? spec : object(item.view)};
+      full:Object.keys(spec).length ? spec : clean(object(item.view))};
   });
   const dataset = object(detail.dataset), datasetFiles = object(dataset.files);
   const datasetSpec = parsedObject(datasetFiles["dataset_spec.json"]);
@@ -158,13 +163,11 @@ export function QuestionReader({record,interactive=false,questionKey}: {record:J
   const narrative = datasetText(prompt);
   const profile = metadata.profile ?? choices.find(c=>c.spec.profile)?.spec.profile;
   const facts = dataKeys.filter(key=>present(params[key]));
-  const comparing=interactive&&compared.length===2?choices.filter(c=>compared.includes(c.identity)):choices;
-  const rows = comparisonRows(comparing);
-  const differences = rows.filter(row=>row.different), common = rows.filter(row=>!row.different);
+  const rows = comparisonRows(choices);
   const title = [family ? families[family] || text(family) : "训练方案对比", metadata.type ? types[metadata.type] || text(metadata.type) : undefined].filter(Boolean).join(" · ");
   const dataFacts = facts.length ? <dl className="question-reader-facts">{facts.map(key=><div key={key} className={key==="expression" ? "question-reader-expression" : ""}><dt>{labels[key] || key}</dt><dd>{text(params[key])}</dd></div>)}</dl>
     : <p className="question-reader-note">此记录未提供结构化数据条件，请查阅数据规则或原始 Prompt。</p>;
-  return <article className="question-reader">
+  return <article className={`question-reader${evidence?' has-evidence':''}`}>
     <div className="question-reader-tabs" role="tablist" aria-label="题目阅读方式">
       {[{id:"structured",label:"题目概览"},{id:"data",label:"数据与规则"},{id:"original",label:"原始 Prompt"}].map(item=>
         <button key={item.id} role="tab" aria-selected={tab===item.id} aria-controls={`${readerId}-${item.id}`}
@@ -188,19 +191,13 @@ export function QuestionReader({record,interactive=false,questionKey}: {record:J
           <span>{choices.length} 个候选</span>{profile && <span>Profile {text(profile)}</span>}
         </div>
       </header>
-      {interactive&&<fieldset className="question-reader-options"><legend>选择候选方案</legend><p>点击选项记录当前判断；选择两个候选可集中比较差异。</p><div className="question-reader-option-grid" role="radiogroup" aria-label="候选方案">
-        {choices.map((choice,index)=><div className={`question-reader-option ${selected===choice.identity&&choice.identity?'is-selected':''}`} key={choice.identity||index}>
-          <label><input id={`${readerId}-option-${index}`} type="radio" name={`${readerId}-answer`} aria-label={`候选 ${choice.letter}`} disabled={!choice.identity} checked={!!choice.identity&&selected===choice.identity} onChange={()=>setSelected(choice.identity)} onKeyDown={e=>{
-            if(['ArrowRight','ArrowDown','ArrowLeft','ArrowUp'].includes(e.key)){e.preventDefault();const step=['ArrowRight','ArrowDown'].includes(e.key)?1:-1;const next=(index+step+choices.length)%choices.length;if(choices[next].identity){setSelected(choices[next].identity);document.getElementById(`${readerId}-option-${next}`)?.focus();}}
-          }}/><strong>候选 {choice.letter}</strong><span>{text(choice.groups.model.type??choice.groups.optimizer.type??'已记录方案')}</span></label>
-          <label className="question-reader-compare-check"><input type="checkbox" aria-label={`对比候选 ${choice.letter}`} checked={compared.includes(choice.identity)} disabled={!choice.identity||(compared.length===2&&!compared.includes(choice.identity))} onChange={e=>setCompared(e.target.checked?[...compared,choice.identity]:compared.filter(id=>id!==choice.identity))}/>加入对比</label>
-        </div>)}
-      </div></fieldset>}
+      <div className={`question-reader-comparison-workspace${evidence?' with-evidence':''}`}>
       <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">高亮行表示候选间存在差异</span></div>
-        {differences.length ? <ComparisonTable choices={comparing} rows={differences} label="候选差异"/> : <p className="question-reader-note">{choices.length ? "已记录的主要设置没有差异；请展开完整配置并核对原始题面。" : "候选配置未记录，请查阅原始 Prompt。"}</p>}
-        {!!common.length && <details className="question-reader-disclosure question-reader-common"><summary>共同设置</summary><ComparisonTable choices={comparing} rows={common} label="共同设置"/></details>}
+        {rows.length ? <ComparisonTable choices={choices} rows={rows} label="候选参数对比"/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
         <p className="question-reader-note">预算按候选分别列出：总训练样本量 = 训练步数 × 每批样本数，单位为数据样本或窗口。未记录的字段不会补齐；逐层开关按模型中的层顺序排列。</p>
       </section>
+      {evidence&&<aside className="question-reader-evidence">{evidence}</aside>}
+      </div>
       <section className="question-reader-section"><h3>数据与条件</h3>
         {dataFacts}
         <div className="question-reader-rule-link"><p className="question-reader-note">此页用于快速比较；解题请阅读完整数据生成规则与训练协议。</p><button onClick={()=>setTab("data")}>查看完整数据规则</button></div>
@@ -220,20 +217,34 @@ export function QuestionReader({record,interactive=false,questionKey}: {record:J
   </article>;
 }
 type ComparisonRow = {id:string;label:string;title:string;values:any[];different:boolean};
+function flattened(value:unknown, prefix="",keepEmptyRoot=false): [string,unknown][] {
+  if(value===undefined)return [];
+  if(Array.isArray(value)){
+    if(value.some(item=>item!==null&&typeof item==='object'))return value.flatMap((item,index)=>flattened(item,`${prefix}[${index}]`));
+    return [[prefix,value]];
+  }
+  if(value&&typeof value==='object'){
+    const entries=Object.entries(value);
+    if(!entries.length)return prefix||keepEmptyRoot?[[prefix,value]]:[];
+    return entries.flatMap(([key,item])=>{
+      const segment=key.replace(/[\\.\[\]]/g,"\\$&");
+      return flattened(item,prefix?`${prefix}.${segment}`:segment);
+    });
+  }
+  return [[prefix,value]];
+}
 function comparisonRows(choices:Json[]): ComparisonRow[] {
   const rows = sections.flatMap(section=>{
-    const keys = Array.from(new Set(choices.flatMap(choice=>Object.keys(choice.groups[section.key]))))
-      .filter(key=>labels[key] && choices.some(choice=>present(choice.groups[section.key][key])));
+    const fields=choices.map(choice=>new Map(flattened(choice.groups[section.key],"",Object.prototype.hasOwnProperty.call(choice.spec,section.key))));
+    const keys=Array.from(new Set(fields.flatMap(value=>[...value.keys()])));
     return keys.map(key=>({id:`${section.key}.${key}`, title:section.title,
-      label:key==="type" && section.key==="optimizer" ? "优化器类型" : labels[key],
-      values:choices.map(choice=>choice.groups[section.key][key])}));
+      label:key==="type"&&section.key==="optimizer"?"优化器类型":labels[key]||key||section.title,
+      values:fields.map(value=>value.get(key))}));
   });
-  const counts = choices.map(choice=>choice.spec.trainable_parameter_count ?? choice.full.params);
-  if (counts.some(present)) rows.push({id:"parameter-count",title:"模型结构",label:"可训练参数量",values:counts});
-  return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value))).size>1}));
+  return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value??null))).size>1}));
 }
 function ComparisonTable({choices,rows,label}: {choices:Json[];rows:ComparisonRow[];label:string}) {
-  return <div className="question-reader-table-wrap"><table className="question-reader-table" aria-label={label}><thead><tr><th scope="col">比较项目</th>
+  return <div className="question-reader-table-wrap"><table className="question-reader-table" aria-label={label} style={choices.length>3?{minWidth:`${(choices.length+1)*115}px`}:undefined}><colgroup><col style={{width:'26%'}}/>{choices.map((choice,index)=><col key={`${choice.letter}-${index}`} style={{width:`${74/choices.length}%`}}/>)}</colgroup><thead><tr><th scope="col">比较项目</th>
     {choices.map((choice,index)=><th scope="col" key={`${choice.letter}-${index}`}>候选 {choice.letter}</th>)}</tr></thead>
     <tbody>{rows.map((row,index)=><tr key={row.id} className={row.different ? "is-different" : ""}>
       <th scope="row">{(index===0 || rows[index-1].title!==row.title) && <small className="question-reader-row-group">{row.title}</small>}{row.label}</th>
