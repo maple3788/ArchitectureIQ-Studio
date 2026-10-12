@@ -43,14 +43,16 @@ def build_rag_request(question: dict, knowledge: list[dict], model: dict) -> dic
 
 
 def prepare_rag(catalog, models, inventory: dict, *, question_key: str, model_id: str,
-                knowledge_limit: int = 8, allowed_roots: list[Path]) -> tuple[dict, dict]:
+                knowledge_limit: int = 8, allowed_roots: list[Path],
+                allow_evolution: bool = False) -> tuple[dict, dict]:
     from .jobs import source_fingerprint
     detail = catalog.get_question(question_key, include_private=False)
     if not detail['metadata'].get('rag_ready'):
         raise ValueError('题目公开输入不可用或来源已停用')
     question = validate_rag_question(detail['public'])
     model = freeze_rag_model(models, model_id, allowed_roots=allowed_roots)
-    retrieval = retrieve_knowledge(question, inventory, knowledge_limit=knowledge_limit)
+    retrieval = retrieve_knowledge(question, inventory, knowledge_limit=knowledge_limit,
+                                   **({'allow_evolution': True} if allow_evolution else {}))
     request = None
     if retrieval['knowledge']:
         retained, provenance = [], []

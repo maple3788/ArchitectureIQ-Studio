@@ -17,6 +17,7 @@ function setup(initial:any[]=[card],extra?:(path:string,init:RequestInit|undefin
   if(path.endsWith('/tasks')&&init?.method==='POST'){value={...card,...body,id:'created',revision:1};cards.push(value);}
   else if(path.endsWith('/tasks'))value={items:cards,total:cards.length};
   else if(path.includes('/tasks/kbs'))value={items:[kb],total:1};
+  else if(path.includes('/tasks/questions/'))value=question;
   else if(path.endsWith('/preview'))value={...rulePreview,mode:cards[0]?.mode||'rules',task_revision:cards[0]?.revision||1};
   else if(path.endsWith('/runs')&&init?.method==='POST')value={id:'receipt1',task_id:'task1',task_revision:cards[0].revision,mode:'rules',status:'completed',created_at:1,result:{prediction,selected_kbs:[kb],question:question.public}};
   else if(path.endsWith('/runs'))value={items:[],total:0};
@@ -95,4 +96,43 @@ it('requires a KB selection before saving manual mode',async()=>{
  await screen.findByRole('option',{name:'架构规则'});fireEvent.change(screen.getByLabelText('指定 KB'),{target:{value:'kb1@hash1'}});
  expect((screen.getByRole('button',{name:'保存任务'}) as HTMLButtonElement).disabled).toBe(false);
  expect(screen.queryByText('请先选择一个知识库，再保存任务。')).toBeNull();
+});
+it('connects generated questions and evolution KB snapshots to a saved task',async()=>{
+ const evolutionKB={...kb,id:'loop-kb',version:'snapshot2',name:'知识演化',source_kind:'knowledge_evolution',round_index:2,verification:'research_hypothesis'};
+ const c=setup([],async(path,init)=>{
+  if(path.includes('/tasks/kbs'))return new Response(JSON.stringify({items:[evolutionKB],total:1}));
+  if(path.includes('/tasks/evolution/questions?'))return new Response(JSON.stringify({items:[{id:'q_gen',family:'univariate_regression',question_type:'mixed',round_index:2}],total:1,source:{connected:true}}));
+  if(path.endsWith('/tasks/evolution/questions/q_gen')&&init?.method==='POST')return new Response(JSON.stringify({key:'evolution:frozen:key',record:question}));
+  if(path.includes('/tasks/questions/evolution%3Afrozen%3Akey'))return new Response(JSON.stringify({...question,metadata:{...question.metadata,source_kind:'knowledge_evolution',round_index:2},public:{...question.public,id:'q_gen'}}));
+ });
+ fireEvent.click(await screen.findByRole('button',{name:'新建任务'}));fireEvent.change(screen.getByLabelText('任务名称'),{target:{value:'演化知识解答'}});fireEvent.click(screen.getByLabelText('KB 直接解答'));fireEvent.click(screen.getByRole('button',{name:'选择题目'}));
+ fireEvent.click(screen.getByRole('tab',{name:'知识演化'}));fireEvent.click(await screen.findByLabelText('选择 q_gen'));fireEvent.click(screen.getByRole('button',{name:'应用所选题目'}));await screen.findByText('来自知识演化 · 第 2 轮');
+ fireEvent.change(screen.getByLabelText('知识来源'),{target:{value:'manual'}});await screen.findByRole('option',{name:'知识演化 · 第 2 轮 · 研究候选'});
+ fireEvent.change(screen.getByLabelText('指定 KB'),{target:{value:'loop-kb@snapshot2'}});fireEvent.click(screen.getByRole('button',{name:'保存任务'}));
+ await waitFor(()=>expect(c.calls.find(call=>call.method==='POST'&&call.path.endsWith('/tasks'))?.body).toMatchObject({question_key:'evolution:frozen:key',kb_selection:{mode:'manual',ref:{id:'loop-kb',version:'snapshot2'}}}));
+});
+it('renders rule explanations in preview and actual citations in persisted model history',async()=>{
+ setup([{...card,mode:'rules',model_id:null}],async path=>{
+  if(path.endsWith('/preview'))return new Response(JSON.stringify({...rulePreview,prediction:{...prediction,explanation:{status:'answered',summary:'规则 A 覆盖了其余候选',edges:[],paths:[],conflicts:[],uncovered_pairs:[]}}}));
+  if(path.endsWith('/task1/runs'))return new Response(JSON.stringify({items:[{id:'cited',task_id:'task1',task_revision:1,mode:'llm',status:'complete',created_at:1,result:{answer:{ranking:['A','B'],rationale:'引用规则得出 A',citations:['K1']},used_sources:[{citation_id:'K1',text:'这条规则确实被引用',source_claim_ids:['C001']}],provided_sources:[]}}],total:1}));
+ });
+ fireEvent.click(await screen.findByRole('button',{name:'打开任务 架构选择实验'}));await screen.findByLabelText('任务名称');fireEvent.click(screen.getByRole('button',{name:'匹配并预览'}));
+ expect(await screen.findByText('规则 A 覆盖了其余候选')).toBeTruthy();expect(screen.getByText('这条规则确实被引用')).toBeTruthy();
+});
+it('allows rematching an expired preview when the saved task revision has not changed',async()=>{
+ setup([{...card,mode:'rules',model_id:null}],async(path,init)=>path.endsWith('/runs')&&init?.method==='POST'?new Response(JSON.stringify({detail:'预览已失效，请重新预览'}),{status:409}):undefined);
+ fireEvent.click(await screen.findByRole('button',{name:'打开任务 架构选择实验'}));await screen.findByLabelText('任务名称');fireEvent.click(screen.getByRole('button',{name:'匹配并预览'}));
+ fireEvent.click(await screen.findByRole('button',{name:'执行并记录'}));await screen.findByText('预览已失效，请重新预览');
+ await waitFor(()=>expect((screen.getByRole('button',{name:'匹配并预览'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(screen.queryByRole('button',{name:'载入服务器版本'})).toBeNull();expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe(card.name);
+ fireEvent.click(screen.getByRole('button',{name:'匹配并预览'}));expect(await screen.findByRole('button',{name:'执行并记录'})).toBeTruthy();
+});
+it('preserves the current fields and asks for explicit reload on a true run revision conflict',async()=>{
+ let changed=false;
+ setup([{...card,mode:'rules',model_id:null}],async(path,init)=>{
+  if(path.endsWith('/runs')&&init?.method==='POST'){changed=true;return new Response(JSON.stringify({detail:'任务已在其他窗口更新，请重新加载并预览'}),{status:409});}
+  if(changed&&path.endsWith('/tasks/task1'))return new Response(JSON.stringify({...card,mode:'rules',model_id:null,revision:2,name:'另一个窗口的修改'}));
+ });
+ fireEvent.click(await screen.findByRole('button',{name:'打开任务 架构选择实验'}));await screen.findByLabelText('任务名称');fireEvent.click(screen.getByRole('button',{name:'匹配并预览'}));fireEvent.click(await screen.findByRole('button',{name:'执行并记录'}));
+ expect(await screen.findByRole('button',{name:'载入服务器版本'})).toBeTruthy();expect((screen.getByRole('button',{name:'匹配并预览'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe(card.name);
 });

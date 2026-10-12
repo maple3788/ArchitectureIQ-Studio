@@ -22,7 +22,7 @@ def _stable_sources(values):
     return sorted({canonical_hash(value): value for value in values}.values(), key=canonical_hash)
 
 
-def collect_candidates(question: dict, inventory: dict) -> dict:
+def collect_candidates(question: dict, inventory: dict, *, allow_evolution: bool = False) -> dict:
     grouped, excluded = {}, {}
     warnings = copy.deepcopy(inventory.get('warnings', []))
     items = sorted(inventory.get('items', []), key=lambda item: (item['id'], item['version']))
@@ -37,6 +37,9 @@ def collect_candidates(question: dict, inventory: dict) -> dict:
                                   'revision': record['revision'], 'payload': payload})
         citation = 'rag_' + content
         kb = {key: item[key] for key in ('id', 'version', 'kind', 'name')}
+        if item.get('source_kind') == 'knowledge_evolution':
+            kb.update(source_kind='knowledge_evolution', verification='research_hypothesis',
+                      round_index=item.get('round_index'))
         source = {**kb, 'record_id': record['id'], 'revision': record['revision'],
                   'sources': _source_refs(item)}
         if citation not in grouped:
@@ -47,9 +50,46 @@ def collect_candidates(question: dict, inventory: dict) -> dict:
         entry = grouped[citation]
         entry['source_refs'] = _stable_sources([*entry['source_refs'], source])
         entry['kbs'] = _stable_sources([*entry['kbs'], kb])
+        return entry
 
     for item in items:
         if item.get('kind') == 'research_rules':
+            if allow_evolution and item.get('source_kind') == 'knowledge_evolution':
+                from .rule_refinement.artifacts import validate_snapshot
+                try:
+                    validate_snapshot(item['snapshot'])
+                except (ValueError, KeyError, TypeError):
+                    omit('unusable_source')
+                    continue
+                for rule in item['snapshot']['rules']:
+                    if rule['state'] != 'active':
+                        omit('disabled_rule')
+                        continue
+                    pairs = []
+                    for a, b in itertools.combinations(question['choices'], 2):
+                        try:
+                            if match_rule(rule['rule'], a['view'], b['view']) is not None:
+                                pairs.append(a['letter'] + '/' + b['letter'])
+                        except (KeyError, ValueError, TypeError):
+                            continue
+                    if not pairs:
+                        omit('outside_rule_scope')
+                        continue
+                    refs = [{k: ref[k] for k in ('id', 'kind', 'source_claim_id', 'source_clause_index',
+                             'source_status', 'source_revision', 'round_index') if k in ref}
+                            for ref in rule.get('source_refs', [])]
+                    statuses = sorted({ref['source_status'] for ref in refs if ref.get('source_status')})
+                    payload = {'id': rule['rule_id'], 'revision': rule['revision'], 'text': rule['text'],
+                               'rule': copy.deepcopy(rule['rule']), 'status': 'unverified',
+                               'scientific_status': 'research_hypothesis'}
+                    entry = add(item, {**rule, 'id': rule['rule_id']}, payload,
+                                ['知识演化研究规则适用于候选组合：' + '、'.join(pairs),
+                                 '来源研究假设，未视为独立验证结论'],
+                                json.dumps(rule['rule'], ensure_ascii=False, sort_keys=True))
+                    entry.update(source_kind='knowledge_evolution', matched_pairs=pairs,
+                                 source_status='、'.join(statuses) or 'candidate',
+                                 source_claim_ids=sorted({ref['source_claim_id'] for ref in refs if ref.get('source_claim_id')}),
+                                 rule=copy.deepcopy(rule['rule']), rule_sources=refs)
             continue
         try:
             frozen = resolve_initial_knowledge({'id': item['id'], 'version': item['version']}, {'items': [item]})
@@ -115,10 +155,12 @@ _INDEX_LOCK = Lock()
 _INDEXES = OrderedDict()
 
 
-def retrieve_knowledge(question: dict, inventory: dict, *, knowledge_limit: int = 8) -> dict:
+def retrieve_knowledge(question: dict, inventory: dict, *, knowledge_limit: int = 8,
+                       allow_evolution: bool = False) -> dict:
     if type(knowledge_limit) is not int or not 1 <= knowledge_limit <= 12:
         raise ValueError('知识条数必须为 1–12 的整数')
-    admitted = collect_candidates(question, inventory)
+    admitted = collect_candidates(question, inventory,
+                                  **({'allow_evolution': True} if allow_evolution else {}))
     entries = admitted.pop('entries')
     cache_key = canonical_hash([STRATEGY, admitted['inventory_hash'], [e['payload'] for e in entries]])
     with _INDEX_LOCK:

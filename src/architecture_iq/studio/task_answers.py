@@ -9,10 +9,12 @@ from .rule_refinement.pool import _case
 from .rule_refinement.prediction import predict_question, _cycle
 from .knowledge import resolve_initial_knowledge
 from architecture_iq.kb.rules import match_validated_scope
+from .task_explanations import explain_task_prediction, public_validated_scope
 
 
 def kb_description(item):
     return {**{key: deepcopy(item[key]) for key in ('id', 'version', 'name', 'kind')},
+            **{key: deepcopy(item[key]) for key in ('source_kind', 'round_index', 'source_status_counts', 'skipped_claims') if key in item},
             'summary': item.get('summary', ''),
             'verification': 'research_hypothesis' if item['kind'] == 'research_rules' else
                             'experience_unverified' if item['kind'] == 'experience' else 'per_rule_scope'}
@@ -20,7 +22,8 @@ def kb_description(item):
 
 def eligible_kbs(inventory, mode):
     kinds = {'formal', 'research_rules'} if mode == 'rules' else {'formal', 'experience'}
-    return sorted((item for item in inventory.get('items', []) if item.get('kind') in kinds),
+    return sorted((item for item in inventory.get('items', []) if item.get('kind') in kinds or
+                   (mode == 'llm' and item.get('kind') == 'research_rules' and item.get('source_kind') == 'knowledge_evolution')),
                   key=lambda item: (item['id'], item['version']))
 
 
@@ -45,21 +48,24 @@ def _safe_retrieval(retrieval):
     return value
 
 
+def _formal_rule_claims(rule, claims):
+    bound = []
+    for ref in rule.get('source_refs', []):
+        matching = [claim for claim in claims
+            if claim.get('source_claim_id', claim['id']) == ref.get('source_claim_id')
+            and claim.get('rule') == rule.get('rule')
+            and ('source_clause_index' not in ref or
+                 claim.get('source_clause_index') == ref['source_clause_index'])]
+        if len(matching) != 1:
+            return []
+        bound.append(matching[0])
+    return bound
+
+
 def formal_rule_admission(question, item):
     """Imported formal rules retain their exact source validation boundary."""
-    claims = item['snapshot']['claims']
     def admit(rule, a, b):
-        refs = rule.get('source_refs', [])
-        bound = []
-        for ref in refs:
-            matching = [claim for claim in claims
-                if claim.get('source_claim_id', claim['id']) == ref.get('source_claim_id')
-                and claim.get('rule') == rule.get('rule')
-                and ('source_clause_index' not in ref or
-                     claim.get('source_clause_index') == ref['source_clause_index'])]
-            if len(matching) != 1:
-                return False
-            bound.append(matching[0])
+        bound = _formal_rule_claims(rule, item['snapshot']['claims'])
         return bool(bound) and all(claim.get('enabled') is True
             and claim.get('status') == 'replicated_in_scope'
             and match_validated_scope(question, claim, a, b) for claim in bound)
@@ -90,13 +96,21 @@ def _rules_preview(catalog, card, inventory):
                        'rule': deepcopy(rule['rule']),
                        'validity_status': rule.get('metadata', {}).get('validity_status', 'proposed'),
                        'validation_origin': rule.get('metadata', {}).get('validation_origin', 'research'),
-                       'source_refs': [{k: s[k] for k in ('id', 'kind', 'version', 'source_index', 'source_claim_id', 'source_clause_index') if k in s}
+                       'metadata': {k: deepcopy(v) for k, v in rule.get('metadata', {}).items()
+                                    if k in ('claim_id', 'clause_index', 'validated_scope')},
+                       'source_refs': [{k: s[k] for k in ('id', 'kind', 'version', 'source_index', 'source_claim_id', 'source_clause_index',
+                                                        'source_status', 'source_revision', 'round_index', 'source_kind') if k in s}
                                        for s in rule.get('source_refs', [])]}
                       for rule in kb['rules'] if rule['rule_id'] in matched_rules]
         if item['kind'] == 'formal':
             # Every matched formal edge passed original validation and scope.
             for rule in provenance:
                 rule.update(validity_status='replicated_in_scope', validation_origin='verified_source_scope')
+                original = _formal_rule_claims(rule, item['snapshot']['claims'])
+                # The formal adapter imports one original clause per rule. Use
+                # its exact binding, not another clause sharing the claim ID.
+                if len(original) == 1:
+                    rule['validated_scope'] = public_validated_scope(original[0].get('validated_scope'))
         matches.append({'kb': kb_description(item), 'prediction': predicted, 'rules': provenance})
         frozen.append({'ref': {k: item[k] for k in ('id', 'version')}, 'snapshot': kb,
                        'source_snapshot': item['snapshot'], 'source': source})
@@ -127,6 +141,7 @@ def _rules_preview(catalog, card, inventory):
     prediction = {'status': status, 'answer_id': answer,
                   'answer_letter': next((choice['letter'] for choice in case['question']['choices'] if choice['id'] == answer), None),
                   'matches': matches, 'issues': issues}
+    prediction['explanation'] = explain_task_prediction(case, prediction)
     # Include the selected catalog identity even when a source is unusable. A
     # source repair/removal must invalidate the old preview too.
     identity = canonical_hash(inventory['items'])
@@ -149,7 +164,7 @@ def prepare_task(card, *, catalog, models, inventory, allowed_roots):
             raise ValueError('请先选择作答模型并保存任务')
         config, result = prepare_rag(catalog, models, inventory, question_key=card['question_key'],
                                     model_id=card['model_id'], knowledge_limit=card['knowledge_limit'],
-                                    allowed_roots=allowed_roots)
+                                    allowed_roots=allowed_roots, allow_evolution=True)
         selected = result['retrieval']['selected_kb']
         model = config['models'][0]
         shown = {'question': result['question'], 'can_run': result['can_answer'], 'can_answer': result['can_answer'],
@@ -173,9 +188,13 @@ def public_task_run(receipt, jobs):
         value['job_id'] = receipt['job_id']
         job = jobs.get(receipt['job_id'])
         value['status'] = job['status']
+        provided = _safe_retrieval(receipt['config']['retrieval'])['provenance']
+        value['result'] = {'provided_sources': provided, 'used_sources': []}
         if job.get('result'):
-            value['result'] = {key: deepcopy(job['result'][key]) for key in ('answer', 'unknown_citations', 'response_model')
-                               if key in job['result']}
+            value['result'].update({key: deepcopy(job['result'][key]) for key in ('answer', 'unknown_citations', 'response_model')
+                                   if key in job['result']})
+            cited = set(job['result'].get('answer', {}).get('citations', []))
+            value['result']['used_sources'] = [hit for hit in provided if hit['citation_id'] in cited]
         if job.get('error'):
             value['error'] = '模型作答未完成，请查看运行记录中的状态'
     return value

@@ -3,12 +3,31 @@ from fastapi import Body, HTTPException, Query, Request
 from architecture_iq.kb.store import canonical_hash
 from architecture_iq.studio.tasks import TaskStore, TaskConflict
 from architecture_iq.studio.task_answers import eligible_kbs, kb_description, prepare_task, public_task_run
+from architecture_iq.studio.evolution_task_sources import EvolutionTaskSources
 
 
-def register_task_routes(api, *, catalog, models, jobs, inventory_provider, require_execution, allowed_roots):
+def register_task_routes(api, *, catalog, models, jobs, inventory_provider, require_execution, allowed_roots, observer):
     tasks = TaskStore(jobs.state_root)
+    evolution = EvolutionTaskSources(jobs.state_root, observer)
     api.state.tasks = tasks
+    api.state.task_sources = evolution
     prefix = '/api/studio/tasks'
+
+    class TaskCatalog:
+        root = catalog.root
+
+        def get_question(self, key, *, include_private=False):
+            if isinstance(key, str) and key.startswith('evolution_'):
+                return evolution.get_question(key, include_private=False)
+            return catalog.get_question(key, include_private=False)
+
+    task_catalog = TaskCatalog()
+
+    def inventory(reference=None):
+        current = inventory_provider()
+        observed = evolution.inventory(reference=reference)
+        return {'items': [*current.get('items', []), *observed['items']],
+                'warnings': [*current.get('warnings', []), *observed.get('warnings', [])]}
 
     def invoke(operation):
         try:
@@ -19,13 +38,16 @@ def register_task_routes(api, *, catalog, models, jobs, inventory_provider, requ
             raise HTTPException(404, '任务或引用的资料不存在') from exc
         except (ValueError, TypeError, OSError) as exc:
             raise HTTPException(422, '任务配置或资料不可用，请检查题目、模型和 KB 后重新保存预览') from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, '知识演化资料暂时无法读取，请稍后重试') from exc
 
     def fields(body, allowed):
         if set(body) != set(allowed):
             raise ValueError('请求字段不完整或包含未知字段')
 
     def prepare(card):
-        return prepare_task(card, catalog=catalog, models=models, inventory=inventory_provider(), allowed_roots=allowed_roots)
+        reference = card['kb_selection'].get('ref') if card['kb_selection']['mode'] == 'manual' else None
+        return prepare_task(card, catalog=task_catalog, models=models, inventory=inventory(reference), allowed_roots=allowed_roots)
 
     def dispatch(receipt):
         if receipt['mode'] != 'llm':
@@ -53,10 +75,31 @@ def register_task_routes(api, *, catalog, models, jobs, inventory_provider, requ
         return invoke(operation)
 
     # Register this fixed path before the identity route.
-    @api.get(prefix + '/kbs')
-    def kbs(mode: str = Query('llm', pattern='^(llm|rules)$')):
+    @api.get(prefix + '/evolution/questions')
+    def evolution_questions(search: str = Query('', max_length=200), offset: int = Query(0, ge=0),
+                            limit: int = Query(25, ge=1, le=100)):
+        return invoke(lambda: evolution.list_questions(search=search, offset=offset, limit=limit))
+
+    @api.post(prefix + '/evolution/questions/{question_id}')
+    def select_evolution_question(question_id: str):
         def operation():
-            items = [kb_description(item) for item in eligible_kbs(inventory_provider(), mode)]
+            record = evolution.freeze_question(question_id)
+            return {'key': record['metadata']['key'], 'record': record}
+        return invoke(operation)
+
+    @api.get(prefix + '/questions/{question_key}')
+    def task_question(question_key: str):
+        return invoke(lambda: task_catalog.get_question(question_key, include_private=False))
+
+    @api.get(prefix + '/kbs')
+    def kbs(mode: str = Query('llm', pattern='^(llm|rules)$'),
+            kb_id: str | None = Query(None, max_length=512),
+            kb_version: str | None = Query(None, max_length=128)):
+        def operation():
+            if (kb_id is None) != (kb_version is None):
+                raise ValueError('KB 引用需要身份和版本')
+            reference = {'id': kb_id, 'version': kb_version} if kb_id is not None else None
+            items = [kb_description(item) for item in eligible_kbs(inventory(reference), mode)]
             return {'items': items, 'total': len(items)}
         return invoke(operation)
 

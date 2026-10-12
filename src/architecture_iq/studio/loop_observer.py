@@ -246,6 +246,24 @@ class LoopObserver:
     def snapshot(self) -> dict:
         return self._public_capture(self._latest())
 
+    def capture(self) -> dict | None:
+        """Read one complete persisted observation for local artifact adapters.
+
+        Unlike snapshot/SSE, this internal read includes round manifests. It
+        never polls a remote source and does not mix fields from two captures.
+        """
+        row = self._latest()
+        if not row:
+            return None
+        value = _decode(row['payload'])
+        if hashlib.sha256(_json(value).encode()).hexdigest() != row['digest']:
+            raise ValueError('Observation capture integrity check failed')
+        return {**value, 'observation': {
+            'sequence': row['sequence'], 'content_hash': row['digest'],
+            'captured_at': row['captured_at'], 'source_id': self.config.source_id,
+            'source_identity': self.config.identity,
+        }}
+
     def claim(self, identifier: str) -> dict:
         row = self._latest()
         if not row:
