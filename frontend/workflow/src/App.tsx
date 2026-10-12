@@ -21,7 +21,7 @@ import { WorkflowWorkspace } from "./WorkflowWorkspace";
 import { Runs } from "./Runs";
 import { Generation } from "./Generation";
 import { KB } from "./KB";
-import { ErrorBox, useResource } from "./ui";
+import { ErrorBox, Loading, useResource } from "./ui";
 import type { Bootstrap } from "./types";
 const modules = [
   {id: "data", name: "Data", entry: "data", pages: ["data", "questions", "generation"], icon: Database},
@@ -233,7 +233,7 @@ export default function App() {
           ) : page === "rag" ? (
             <Rag version={version} act={act} models={data?.models || []} executionEnabled={executionEnabled} questionKey={ragQuestion} onQuestion={setRagQuestion} onRun={onRun}/>
           ) : page === "workflow" ? (
-            <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act}>
+            data ? <WorkflowWorkspace version={version} selectedRun={workflowRunId} act={act} loopEnabled={data.service.knowledge_loop_configured===true}>
               <Workflow
                 bootstrap={data}
                 rolePrompts={data?.role_prompts}
@@ -243,7 +243,7 @@ export default function App() {
                 onRun={onWorkflowRun}
                 onModels={()=>navigate("models")}
               />
-            </WorkflowWorkspace>
+            </WorkflowWorkspace> : <Loading/>
           ) : page === "models" ? (
             <Models version={version} act={act} />
           ) : page === "runs" ? (

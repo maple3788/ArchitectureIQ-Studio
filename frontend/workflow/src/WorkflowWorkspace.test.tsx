@@ -99,6 +99,26 @@ it('leaves the draft editor unmounted when opening a refinement history directly
  expect((screen.getByLabelText('编辑中的草稿') as HTMLInputElement).value).toBe('尚未打开的草稿');
 });
 
+it('opens the configured loop without mounting the editor and preserves a visited draft between panes',async()=>{
+ const requests:string[]=[];
+ vi.stubGlobal('EventSource',class{addEventListener(){}close(){}onerror:any;});
+ vi.stubGlobal('fetch',async(url:string,init?:RequestInit)=>{
+  requests.push(`${init?.method??'GET'} ${url}`);
+  return new Response(JSON.stringify(url.endsWith('/kb-loop')?{configured:false,sequence:0,sync:{status:'unconfigured'}}:{items:[],total:0}));
+ });
+ render(<WorkflowWorkspace loopEnabled version={0} act={async op=>op()}><input aria-label="编辑中的草稿" defaultValue="保留设置"/></WorkflowWorkspace>);
+ expect(screen.getByRole('tab',{name:'知识演化'}).getAttribute('aria-selected')).toBe('true');
+ expect(screen.queryByLabelText('编辑中的草稿')).toBeNull();
+ await screen.findByText('连接正在进行的研究');
+ fireEvent.click(screen.getByRole('tab',{name:'编辑工作流'}));
+ fireEvent.change(screen.getByLabelText('编辑中的草稿'),{target:{value:'未提交修改'}});
+ fireEvent.click(screen.getByRole('tab',{name:'知识演化'}));
+ expect(screen.queryByRole('textbox',{name:'编辑中的草稿'})).toBeNull();
+ fireEvent.click(screen.getByRole('tab',{name:'编辑工作流'}));
+ expect((screen.getByLabelText('编辑中的草稿') as HTMLInputElement).value).toBe('未提交修改');
+ expect(requests.every(request=>request.startsWith('GET'))).toBe(true);
+});
+
 it('cancels pending automatic question and model selection while the real editor is hidden for history',async()=>{
  const workflow={schema_version:1,name:'未完成的单题配置',nodes:[],edges:[],settings:{method_id:'basic_learning',method_version:'1',loop_mode:'manual',max_rounds:2}};
  let draft={workflow,advanced_backup:null,revision:1,updated_at:1};

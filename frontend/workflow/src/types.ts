@@ -93,7 +93,7 @@ export type Run = {
 };
 export type Bootstrap = {
   role_prompts?: Record<string, string>;
-  service: { execution_enabled: boolean; host: string; state_root: string };
+  service: { execution_enabled: boolean; host: string; state_root: string; knowledge_loop_configured?:boolean };
   stats: Json;
   capabilities: Json;
   workflow?: Workflow;

@@ -632,7 +632,7 @@ it('keeps other methods collapsed while preserving the saved primary draft and f
  const original={...structuredClone(ruleWorkflow),name:'保留的 KB 研究草稿'};
  const {draftWrites,getSharedDraft}=setup(path=>path==='/api/studio/methods'?Promise.resolve(response({items:entryMethods})):undefined,false,undefined,original);
  const methods=await screen.findByRole('navigation',{name:'Harness 方法'});
- expect(within(methods).getByRole('button',{name:'我的流程'}).getAttribute('aria-current')).toBe('page');
+ expect(within(methods).getByRole('button',{name:'规则闭环'}).getAttribute('aria-current')).toBe('page');
  const disclosure=within(methods).getByLabelText('切换学习方法').closest('details');
  expect(disclosure).toBeTruthy();
  expect(disclosure!.open).toBe(false);
@@ -656,7 +656,7 @@ it('enters the primary KB loop only on request and can restore the exact previou
  expect(within(methods).getByText('当前：配对科学研究')).toBeTruthy();
  expect(getSharedDraft().workflow).toEqual(original);
  expect(draftWrites).toHaveLength(0);
- fireEvent.click(within(methods).getByRole('button',{name:'我的流程'}));
+ fireEvent.click(within(methods).getByRole('button',{name:'规则闭环'}));
  await waitFor(()=>expect(getSharedDraft().workflow.settings.method_id).toBe('rule_refinement'));
  expect(getSharedDraft().advanced_backup).toEqual(original);
  fireEvent.click(within(methods).getByText('更多',{exact:true}));

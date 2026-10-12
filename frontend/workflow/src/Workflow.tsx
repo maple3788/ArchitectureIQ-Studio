@@ -817,7 +817,7 @@ export function Workflow({
   const isRule=!liveRun.run&&workflow.schema_version===2&&workflow.settings.method_id==='rule_refinement';
   const displayedName=liveRun.run?(liveRun.run.config.workflow?.name??liveRun.run.config.name??'冻结研究运行'):workflow.name;
   const methodChoices=methods.data?.items?.length?methods.data.items:[
-    {id:'rule_refinement',name:'我的流程',status:'available'},
+    {id:'rule_refinement',name:'规则闭环',status:'available'},
     {id:'basic_learning',name:'单题学习',status:'available'},
   ];
   const primaryMethod=methodChoices.find(method=>method.id==='rule_refinement');
@@ -828,12 +828,12 @@ export function Workflow({
     <div className="workflow-page stage-editor is-basic unified-research-editor">
       <header className={`harness-entry${syncNeedsAttention?' has-sync-issue':''}`}>
         {!liveRun.run&&<nav className="harness-method-nav module-subnav" aria-label="Harness 方法">
-          <button aria-current={workflow.settings.method_id==='rule_refinement'?'page':undefined} disabled={!!primaryMethod&&primaryMethod.status!=='available'} onClick={()=>void switchMethod('rule_refinement')}>我的流程</button>
+          <button aria-current={workflow.settings.method_id==='rule_refinement'?'page':undefined} disabled={!!primaryMethod&&primaryMethod.status!=='available'} onClick={()=>void switchMethod('rule_refinement')}>规则闭环</button>
           <details className="harness-other-methods"><summary>其他方法</summary><div className="harness-method-panel">
             <label htmlFor="harness-method-select">切换学习方法</label>
             <select id="harness-method-select" aria-label="切换学习方法" value={workflow.settings.method_id??''} onChange={e=>void switchMethod(e.target.value)}>
               {!currentMethod&&<option value={workflow.settings.method_id??''} disabled>{currentMethodName}</option>}
-              {methodChoices.map(method=><option key={method.id} value={method.id} disabled={method.status!=='available'}>{method.id==='rule_refinement'?'我的流程':method.name}</option>)}
+              {methodChoices.map(method=><option key={method.id} value={method.id} disabled={method.status!=='available'}>{method.id==='rule_refinement'?'规则闭环':method.name}</option>)}
             </select>
           </div></details>
           {workflow.settings.method_id!=='rule_refinement'&&<span className="harness-current-method">当前：{currentMethodName}</span>}

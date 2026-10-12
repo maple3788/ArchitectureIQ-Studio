@@ -94,6 +94,7 @@ export function ResearchPathCanvas(props: {
   toolbar?: ReactNode;
   footer?: ReactNode;
   ariaLabel?: string;
+  interactionHint?: string;
   onMove?: (id: string, position: {x: number; y: number}) => void;
   onConnect?: (connection: Connection) => void;
 }) {
@@ -103,7 +104,7 @@ export function ResearchPathCanvas(props: {
 }
 
 function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, inspectorPresentation='sidebar', toolbar, footer,
-  ariaLabel = '研究路径画布', onMove, onConnect}: Parameters<typeof ResearchPathCanvas>[0]) {
+  ariaLabel = '研究路径画布', interactionHint='拖动画布 · 点击节点配置', onMove, onConnect}: Parameters<typeof ResearchPathCanvas>[0]) {
   const [arrangement, setArrangement] = useState<PositionMap>({});
   const [measurements, setMeasurements] = useState<Record<string, {width: number; height: number}>>({});
   const positions = useMemo(() => researchPathPositions(nodes), [nodes]);
@@ -163,7 +164,7 @@ function ResearchPathSurface({nodes, edges, selectedId, onSelect, inspector, ins
           <Background color="#dce5df" gap={20} size={1}/>
           <Controls showInteractive={false} fitViewOptions={{padding: 0.16, maxZoom: 0.95, minZoom: 0.2}}/>
         </ReactFlow>
-        <span className="research-path-board-hint">拖动画布 · 点击节点配置</span>
+        <span className="research-path-board-hint">{interactionHint}</span>
       </div>
       {inspector&&<aside className="research-path-inspector" aria-label="节点详情">{inspector}</aside>}
     </div>

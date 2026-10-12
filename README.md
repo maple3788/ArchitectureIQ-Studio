@@ -7,13 +7,13 @@ ArchitectureIQ Studio 是一个围绕 **Data → Harness → KB → Task** 的�
 ## 主要功能
 
 - **Data**：管理题目目录、导入来源和不可变题集。
-- **Harness**：选择 Dataset、模型和处理步骤；通过规则闭环执行 KB、收集反例、修订并验证新版本。
+- **Harness**：在「知识演化」画布实时观察持续研究；也可选择 Dataset、模型和处理步骤，配置规则闭环实验。
 - **KB**：阅读正式知识、学习经验和研究规则，查看固定版本、验证证据与适用题目。
 - **Task**：在独立题集上检查冻结知识；研究规则评测直接执行程序规则，无需作答模型。
 
 [规则发现与迭代](docs/rule-refinement.md) 由程序负责预测和评分，模型只负责初始化与修订规则。新题首测和累计研究成绩分别保存。
 
-默认的「单题学习」流程先提交答案，再读取已存储的反馈并提炼经验。后续轮次可以继续使用同一道题和此前的经验；重复练习不代表在独立题目上的评测提升。高级配置保留科学研究和成对实验方法。
+「单题学习」流程先提交答案，再读取已存储的反馈并提炼经验。后续轮次可以继续使用同一道题和此前的经验；重复练习不代表在独立题目上的评测提升。高级配置保留科学研究和成对实验方法。
 
 运行状态和输出来自后端持久化事件。题目答案与反馈在作答提交之前保持隔离，学习经验会明确标注其验证状态。
 
@@ -44,6 +44,7 @@ bash tools/studio_server.sh
 | `STUDIO_STATE_ROOT` | 工作台运行状态与结果目录 |
 | `STUDIO_SOURCE_ROOTS` | 允许导入的外部数据目录 |
 | `STUDIO_ARCHIVES` | 只读历史运行目录 |
+| `STUDIO_KB_LOOP_CONFIG` | 知识演化观察器的私有 JSON 配置文件 |
 | `STUDIO_HOST` | API 监听地址，默认 `127.0.0.1` |
 | `STUDIO_PORT` | API 监听端口，默认 `8094` |
 
@@ -58,6 +59,16 @@ PYTHONPATH=src .venv/bin/python tools/studio_import_sources.py --help
 部署时通过私有配置提供执行环境和数据路径。为新版本使用独立源码目录，并保留历史运行所依赖的冻结源码与数据。源码迁移的文件校验记录位于 `migration/source-manifest.json`。
 
 真实执行还要求 `ARCHITECTURE_IQ_KB_AUTHORIZED_HOST` 与 `ARCHITECTURE_IQ_KB_EXECUTION_HOST` 均非空且完全匹配，并且系统为 Linux。仅在授权执行服务器的私有环境中设置这两个变量；默认不启用真实执行。部署记录和内部计划保留在本地，不加入 Git。
+
+## 知识演化实时观察
+
+配置现有 KB 循环后，Harness 默认打开「知识演化」：规划 → 出题 → 规则验证 → 证据判定 → 提出与修订（含程序检查）→ 预注册 → 轮次归档。页面显示真实出题数量、来源命题状态、登记后支持与反例、修订历史和轮次报告。原工作流编辑和运行追踪仍可使用。
+
+将观察器 JSON 放在 `.private/` 中，并通过 `.env` 的 `STUDIO_KB_LOOP_CONFIG` 指向它。配置字段为 `source_id`、`host`、`user`、`port`、`root`、`python`、`poll_seconds`、`timeout_seconds`。`root` 是现有循环记录目录，`python` 是远程安装了 PyYAML 的解释器。SSH 使用本机已经配置的认证和主机校验；`host` 必须与私有 `ARCHITECTURE_IQ_KB_AUTHORIZED_HOST` 一致。默认每 5 秒读取一次；不要为了观察设置本机的执行权限。
+
+观察器只读取已保存产物和对应循环的进程存活信息，不启动、暂停或修改实验，也不依赖迁移备份的源码。采集结果先保存到 Studio 状态目录，再通过 SSE 推送；连接中断时显示上次记录和同步状态。阶段完成来自来源标记，统计下界缺失时显示待判定，来源的「已验证」不代表人工审核或独立榜单评测。
+
+来源必须提供 `claims.json`、`claim_versions.jsonl`、`ledger.jsonl`、`records.jsonl` 以及 `rounds/round_NNNN/` 的阶段产物；`config.yaml` 只读取判定阈值。API 不提供原始配置、日志或任意文件下载。页面保留最近 30 轮及当前未完成轮，以及每条当前命题最近 100 条登记后证据；累计计数与完整来源记录仍保留。
 
 ## 模型接入
 

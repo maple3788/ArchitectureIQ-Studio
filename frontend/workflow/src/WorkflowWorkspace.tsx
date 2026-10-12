@@ -1,4 +1,5 @@
 import {RuleRefinementRun} from './RuleRefinementRun';
+import {KnowledgeEvolution} from './KnowledgeEvolution';
 import { useEffect, useState, type ReactNode } from "react";
 import { items } from "./api";
 import { ErrorBox, Loading, Empty, Tabs, useResource } from "./ui";
@@ -9,11 +10,11 @@ import type { Action } from "./Questions";
 import type { List, Run } from "./types";
 import "./workflow-workspace.css";
 
-export function WorkflowWorkspace({ children, version, selectedRun, act }: {
-  children: ReactNode; version: number; selectedRun?: string; act: Action;
+export function WorkflowWorkspace({ children, version, selectedRun, act, loopEnabled=false }: {
+  children: ReactNode; version: number; selectedRun?: string; act: Action; loopEnabled?:boolean;
 }) {
-  const [mode, setMode] = useState(selectedRun ? "运行追踪" : "编辑工作流");
-  const [editorVisited, setEditorVisited] = useState(!selectedRun);
+  const [mode, setMode] = useState(selectedRun ? "运行追踪" : loopEnabled ? "知识演化" : "编辑工作流");
+  const [editorVisited, setEditorVisited] = useState(!selectedRun&&!loopEnabled);
   const [runId, setRunId] = useState(selectedRun || "");
   const runs = useResource<List<Run>>("/runs", version, 5000);
   const workflowRuns = items(runs.data).filter(run => ["workflow","rule_refinement"].includes(run.kind));
@@ -29,9 +30,11 @@ export function WorkflowWorkspace({ children, version, selectedRun, act }: {
   }, [selectedRun]);
   return <div className="workflow-workspace">
     <div className="workflow-workspace-switch">
-      <Tabs tabs={["编辑工作流", "运行追踪"]} value={mode} onChange={value=>{if(value==='编辑工作流')setEditorVisited(true);setMode(value);}} />
-      <span>{mode === "运行追踪" ? "查看实际执行与节点输入输出" : "配置下一次研究"}</span>
+      <Tabs tabs={["知识演化", "编辑工作流", "运行追踪"]} value={mode} onChange={value=>{if(value==='编辑工作流')setEditorVisited(true);setMode(value);}} />
+      <span>{mode === "知识演化" ? "观察正在进行的研究" : mode === "运行追踪" ? "查看实际执行与节点输入输出" : "配置下一次研究"}</span>
     </div>
+
+    {mode === "知识演化" && <KnowledgeEvolution/>}
 
     {mode === "运行追踪" && <section className="workflow-monitor" aria-label="工作流运行追踪">
       <div className="workflow-monitor-toolbar">
@@ -53,7 +56,7 @@ export function WorkflowWorkspace({ children, version, selectedRun, act }: {
       </> : runs.loading ? <Loading /> : <Empty title="还没有工作流运行">提交研究后，可在这里跟踪每个节点；查看历史记录不会启动新的调用。</Empty>}
     </section>}
     <LiveRunContext.Provider value={{run:mode === "运行追踪" && !refinementVisible ? monitor.data : undefined, editing:mode === "编辑工作流", syncState:{error:monitor.error,lastSyncedAt:monitor.lastSyncedAt},act}}>
-      <div hidden={refinementVisible}>{editorMounted&&children}</div>
+      <div hidden={refinementVisible||mode==='知识演化'}>{editorMounted&&children}</div>
       {refinementVisible && monitor.data && <RuleRefinementRun run={monitor.data} act={act}/>}
     </LiveRunContext.Provider>
   </div>;

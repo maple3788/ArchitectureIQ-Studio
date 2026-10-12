@@ -7,6 +7,7 @@ import json
 import os
 import random
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -21,6 +22,7 @@ from architecture_iq.studio.execution import preview_evaluation, public_job
 from architecture_iq.studio.jobs import JobStore, source_fingerprint
 from architecture_iq.studio.observations import node_observations
 from architecture_iq.studio.models import ModelRegistry, api_identity, model_config, resolve_path
+from architecture_iq.studio.loop_observer import LoopObserver, ObserverConfig
 from architecture_iq.studio.workflow import (
     compile_workflow,
     default_workflow,
@@ -43,6 +45,7 @@ def create_app(
     allowed_roots: list[Path] | None = None,
     execution_enabled: bool | None = None,
     dist_dir: Path | None = None,
+    loop_observer: LoopObserver | None = None,
 ) -> FastAPI:
     state = (
         state_root
@@ -63,9 +66,23 @@ def create_app(
     )
     catalog, models, jobs = Catalog(state), ModelRegistry(state), JobStore(state)
     drafts = DraftStore(state)
-    api = FastAPI(title="ArchitectureIQ · KB Workflow Studio", version="0.1.0")
+    observer = loop_observer or LoopObserver(state, config=ObserverConfig.from_environment())
+
+    @asynccontextmanager
+    async def lifespan(_api):
+        observer.start()
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(observer.stop)
+
+    api = FastAPI(title="ArchitectureIQ · KB Workflow Studio", version="0.1.0", lifespan=lifespan)
     api.state.catalog, api.state.models, api.state.jobs = catalog, models, jobs
+    api.state.loop_observer = observer
     prefix = "/api/studio"
+
+    from .loop_observer_routes import register_loop_observer_routes
+    register_loop_observer_routes(api, observer=observer)
 
     from architecture_iq.studio.datasets import DatasetStore
     from architecture_iq.studio.question_bank import QuestionBank
@@ -163,6 +180,7 @@ def create_app(
         return {
             "service": {
                 "execution_enabled": enabled,
+                "knowledge_loop_configured": observer.configured,
                 "host": "authorized execution host" if enabled else "local editor",
                 "state_root": str(state),
                 "source_roots": [str(p) for p in sources],
