@@ -49,15 +49,68 @@ it('does not attach configuration when the saved id matches but the option lette
  expect(screen.getByLabelText('候选 A 的冻结配置').textContent).toContain('冻结题面中未找到一致的候选标识');
  expect(document.body.textContent).not.toContain('WRONG_LETTER_MODEL');
 });
-it('shows actual scope checks directly and preserves OR truth without treating every leaf as passed',()=>{
+it('keeps actual scope checks available on expansion and preserves OR truth without treating every leaf as passed',()=>{
  render(<RuleReasoning value={{edges:[{winner:A,loser:B,rules:[rule]}]}}/>);
  const expression=screen.getByText('family = regression 或 model_type = mlp');
- expect(expression.closest('details')).toBeNull();
+ expect(expression.closest('details')?.open).toBe(false);
  expect(screen.getByText('整体条件成立')).toBeTruthy();
  expect(screen.getAllByText('子条件不满足')).toHaveLength(2);
  expect(screen.getAllByText('子条件满足')).toHaveLength(2);
  expect(screen.queryByText(/所有条件.*满足/)).toBeNull();
  expect(screen.getByText('原规则与来源记录').closest('details')?.open).toBe(false);
+});
+it('defaults to compact relations, merging equal execution semantics while retaining every frozen source',()=>{
+ const edges=[{kb:{id:'kb-a',version:'v1',name:'学习率知识'},winner:A,loser:B,rules:[rule]},
+  {kb:{id:'kb-b',version:'v2',name:'同一知识的另一来源'},winner:A,loser:B,rules:[{...rule,rule_id:'other-id',revision:'second-revision',claim_ids:['C009']}]}];
+ const path={kb_id:'kb-a',candidates:[A,B],rule_refs:[{rule_id:rule.rule_id,revision:rule.revision}]};
+ const {container}=render(<RuleReasoning embedded value={{status:'answered',edges,paths:[path,path]}}/>);
+ const comparisons=container.querySelectorAll<HTMLDetailsElement>('.task-deduction-edge');
+ expect(comparisons).toHaveLength(1);expect(comparisons[0].open).toBe(false);
+ expect(comparisons[0].querySelector('summary')?.textContent).toContain('候选 A > 候选 B');
+ expect(comparisons[0].querySelector('summary')?.textContent).toContain('因为 KB C001：学习率越低越优');
+ expect(screen.getByText('kb-a@v1').closest('details')?.open).toBe(false);
+ expect(screen.getByText('kb-b@v2').closest('details')?.open).toBe(false);
+ expect(container.textContent).toContain('second-revision');
+ expect(screen.getByText('A → B').closest('details')?.open).toBe(false);
+ expect(screen.queryByRole('heading',{name:'答案如何得出'})).toBeNull();
+});
+it.each(['conditions','prediction','text','relation'])('does not merge reused identities when %s differs',changed=>{
+ const altered={...rule,revision:'another-revision',...(changed==='text'?{text:'较高学习率更好'}:changed==='conditions'?{conditions:[{kind:'scope',passed:false}]}:changed==='prediction'?{prediction:{...rule.prediction,fields:[{field:'lr',winner_value:0.2,loser_value:0.3}]}}:{})};
+ const {container}=render(<RuleReasoning value={{edges:[{kb:{id:'same-kb',version:'v1'},winner:A,loser:B,rules:[rule]},
+  {kb:{id:'same-kb',version:'v2'},winner:changed==='relation'?B:A,loser:changed==='relation'?A:B,rules:[altered]}]}}/>);
+ expect(container.querySelectorAll('.task-deduction-edge')).toHaveLength(2);
+});
+it('groups equivalent object key orders without changing the frozen execution records',()=>{
+ const reversed=Object.fromEntries(Object.entries(rule.prediction).reverse());
+ const value={edges:[{kb:{id:'k1',version:'v1'},winner:A,loser:B,rules:[rule]},
+  {kb:{id:'k2',version:'v2'},winner:A,loser:B,rules:[{...rule,revision:'r2',prediction:reversed}]}]};
+ const before=JSON.stringify(value),{container}=render(<RuleReasoning value={value}/>);
+ expect(container.querySelectorAll('.task-deduction-edge')).toHaveLength(1);
+ expect(JSON.stringify(value)).toBe(before);
+});
+it('does not claim equivalence when historical execution conditions are missing',()=>{
+ const legacy={rule_id:'same-id',revision:'r1',text:'旧规则正文'};
+ const {container}=render(<RuleReasoning value={{edges:[{winner:A,loser:B,rules:[legacy]},
+  {winner:A,loser:B,rules:[{...legacy,revision:'r2'}]}]}}/>);
+ expect(container.querySelectorAll('.task-deduction-edge')).toHaveLength(2);
+});
+it('merges equivalent model knowledge without turning unreferenced citations into referenced ones',()=>{
+ const first={citation_id:'K1',record_id:'r1',revision:'v1',text:'同一条学习率知识',rule:{scope:[['model_type','eq','mlp']],predict:{lower_better:'lr'}},source_refs:[{id:'kb1',version:'v1'}]};
+ const second={...first,citation_id:'K2',record_id:'r2',revision:'v2',source_refs:[{id:'kb2',version:'v2'}]};
+ const {container}=render(<ModelSources result={{used_sources:[first],provided_sources:[first,second]}}/>);
+ expect(container.querySelectorAll('.task-model-source')).toHaveLength(1);
+ expect(screen.getByText('同一条学习率知识').closest('summary')).toBeTruthy();
+ expect(screen.getByText('引用 K1')).toBeTruthy();
+ expect(screen.queryByText('引用 K2')).toBeNull();
+ expect(container.textContent).toContain('K2');expect(container.textContent).toContain('仅提供');
+ expect(container.textContent).toContain('kb1');expect(container.textContent).toContain('kb2');
+ expect((container.querySelector('.task-model-source') as HTMLDetailsElement).open).toBe(false);
+});
+it('keeps differing model rule predicates and unknown legacy revisions separate despite identical prose',()=>{
+ const source={citation_id:'K1',record_id:'r',revision:'v1',text:'相同正文',rule:{scope:{any:[['width','eq',32],['width','eq',64]]},predict:{lower_better:'lr'}}};
+ const {container}=render(<ModelSources result={{used_sources:[source,{...source,citation_id:'K2',revision:'v2',rule:{...source.rule,scope:{all:source.rule.scope.any}}},
+  {citation_id:'K3',record_id:'legacy',revision:'v1',text:'旧正文'},{citation_id:'K4',record_id:'legacy',revision:'v2',text:'旧正文'}]}}/>);
+ expect(container.querySelectorAll('.task-model-source')).toHaveLength(4);
 });
 it('keeps rule identity scoped to the saved KB along each deduction path',()=>{
  const edges=[{kb:{id:'kb-one',version:'v1',name:'第一份知识'},winner:A,loser:B,rules:[rule]},

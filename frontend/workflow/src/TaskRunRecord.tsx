@@ -46,22 +46,22 @@ function RunReading({record,onRun,renderAnswer}:Omit<Props,'initialOpen'>){
  const question=questionRecord?.public;
  const review=loaded?verifiedReview(loaded,question):undefined;
  const mismatch=loaded?.review?.feedback_released===true&&!review;
+ const application=<section className="task-run-application" aria-label="本次 KB 应用过程"><h3>{record.mode==='rules'?'KB 如何得出答案':'模型如何使用 KB'}</h3>{renderAnswer(saved.result,question)}{!saved.result&&<p className="task-muted">尚无保存的作答结果。</p>}</section>;
  return <div className="task-run-body task-run-reading">
   <section className="task-run-question" aria-label="本次保存的题目"><div className="task-run-step"><span>1</span><h3>本次题目</h3><small>使用本次作答时保存的配置</small></div>
-   {questionRecord?<QuestionReader record={questionRecord} showApplicableKnowledge={false} compactDetails answerMarkers={review?{committedId:review.selected_answer?.id,correctId:review.correct_answer?.id}:undefined}/>:detail.loading?<Loading/>:<p className="task-muted">这份历史记录没有可读取的题面快照。</p>}
+   {questionRecord?<QuestionReader record={questionRecord} showApplicableKnowledge={false} inspectResults={false} compactDetails answerMarkers={review?{committedId:review.selected_answer?.id,correctId:review.correct_answer?.id}:undefined}
+    optionEvidence={application}
+   />:detail.loading?<Loading/>:<p className="task-muted">这份历史记录没有可读取的题面快照。</p>}
    {loaded?.question_notice&&<p className="task-muted">{loaded.question_notice}</p>}
   </section>
-  <section className="task-run-application" aria-label="本次 KB 应用过程"><div className="task-run-step"><span>2</span><h3>{record.mode==='rules'?'KB 如何得出答案':'模型如何使用 KB'}</h3></div>
-   {renderAnswer(saved.result,question)}
-   {!saved.result&&<p className="task-muted">尚无保存的作答结果。</p>}
-  </section>
+  {!questionRecord&&application}
   <section className="task-run-verification" aria-label="正确答案对照"><div className="task-run-step"><span>3</span><h3>正确答案对照</h3></div>
    <ErrorBox error={detail.error}/>
    {review?<><div className={`task-answer-comparison ${review.correct_answer?(review.selected_answer?.id===review.correct_answer.id?'is-correct':'is-different'):'is-unknown'}`}>
     <div><span>本次作答</span><strong>{review.selected_answer?.letter}</strong></div><div><span>正确答案</span><strong>{review.correct_answer?.letter??'未确认'}</strong></div>
     <p>{review.correct_answer?(review.selected_answer?.id===review.correct_answer.id?'与已保存结果一致':'与已保存结果不同'):'来源未提供可确认的正确答案'}</p>
    </div><p className="task-muted">{review.notice??'依据已有训练结果核对，仅作为研究检查。'}</p>
-    {review.feedback&&<StoredTrainingResults feedback={review.feedback} question={question} compact/>}
+    {review.feedback&&<details className="task-disclosure task-training-review"><summary>训练曲线与最终指标</summary><StoredTrainingResults feedback={review.feedback} question={question} compact/></details>}
    </>:detail.loading?<Loading/>:<p className="task-muted">{mismatch?'反馈与本次题目或已提交选项不一致，暂不显示正确答案。':loaded?.review?.notice??'这份记录尚无可核对的正确答案。'}</p>}
   </section>
   {record.job_id&&<button className="task-text-action" onClick={()=>onRun(record.job_id!)}>查看完整运行记录<ArrowUpRight size={14}/></button>}

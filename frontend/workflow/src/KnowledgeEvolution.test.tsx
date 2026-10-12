@@ -158,6 +158,7 @@ it('opens the saved complete question from claim evidence and returns to that cl
  vi.stubGlobal('fetch',async(url:string)=>{
   requests.push(url);
   if(url.endsWith('/questions/applicable-knowledge'))return new Response(JSON.stringify({scope:'public_applicability',items:[],total:0,feedback_released:false}));
+  if(url.endsWith('/questions/inspect'))return new Response(JSON.stringify({scope:'human_inspection',correct_answer:{id:'y',letter:'A'},feedback:{correct_letter:'A',reveal:{curves:[]}}}));
   const data=url.endsWith('/claims/C0001')?{claim:snapshot.claims![0],history:[],evidence:[{question_id:'q-saved',round:1,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
    :url.endsWith('/questions/q-saved')?{metadata:{id:'q-saved',family:'xor_classification'},public:{id:'q-saved',choices:[{id:'x',letter:'B',view:{width:32}},{id:'y',letter:'A',view:{width:16}}],prompt:'## Dataset\nSaved complete data rule.\n## Candidates\nSaved candidate code.'},observation:{content_hash:'abc',captured_at:1791756000}}:snapshot;
   return new Response(JSON.stringify(data));
@@ -288,14 +289,16 @@ it('opens round knowledge at its saved version and returns through question, kno
  const snapshot=fixture();install(snapshot);
  const observation={source_identity:'a'.repeat(64),sequence:8};
  const requests:string[]=[];
+ const writes:{url:string;method:string;body:any}[]=[];
  const detail={...snapshot.rounds![0],observation,judge_events:[{claim_id:'C0001',version:1,from:'candidate',to:'verified',support:15,applicable:18,lower_bound:.6}],registered:[{id:'C0002',version:1,text:'本轮新登记的规则'}]};
- vi.stubGlobal('fetch',async(url:string)=>{
+ vi.stubGlobal('fetch',async(url:string,init?:RequestInit)=>{
   requests.push(url);
+  if(init?.method&&init.method!=='GET')writes.push({url,method:init.method,body:init.body?JSON.parse(String(init.body)):undefined});
   if(url.endsWith('/questions/applicable-knowledge'))return new Response(JSON.stringify({scope:'public_applicability',items:[],total:0,feedback_released:false}));
   const data=url.includes('/rounds/2/claims/')?{observation,reading_round:2,claim:{...snapshot.claims![0],version:1,text:'本轮封存的知识内容'},history:[],evidence:[{question_id:'q_round',round:2,outcome:'support',pairs:[]}],evidence_total:1,evidence_truncated:false}
    :url.endsWith('/rounds/2')?detail
    :url.endsWith('/questions/q_round')?{metadata:{id:'q_round'},public:{id:'q_round',prompt:'本轮完整题面',choices:[{id:'candidate-a',letter:'A'},{id:'candidate-b',letter:'B'}]},observation:{content_hash:'hash'}}
-   :url.endsWith('/questions/review')?{selected_answer:{id:'candidate-a',letter:'A'},correct_answer:{id:'candidate-b',letter:'B'},correct:false,feedback:{correct_letter:'B',reveal:{curves:[]}}}:snapshot;
+   :url.endsWith('/questions/inspect')?{scope:'human_inspection',correct_answer:{id:'candidate-b',letter:'B'},feedback:{correct_letter:'B',reveal:{curves:[]}}}:snapshot;
   return new Response(JSON.stringify(data));
  });
  render(<KnowledgeEvolution onTask={vi.fn()}/>);
@@ -311,9 +314,11 @@ it('opens round knowledge at its saved version and returns through question, kno
  fireEvent.click(screen.getByText('q_round').closest('summary')!);
  fireEvent.click(screen.getByRole('button',{name:'阅读完整题目 q_round'}));
  expect(await screen.findByRole('dialog',{name:'完整题目'})).toBeTruthy();
- fireEvent.click(await screen.findByRole('radio',{name:'选择 A'}));
- fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
- expect(await screen.findByText('正确答案 B')).toBeTruthy();
+ await screen.findByText('正确答案');
+ expect(within(screen.getByRole('article',{name:'候选 B'})).getByText('正确答案')).toBeTruthy();
+ expect(screen.queryByRole('radio')).toBeNull();
+ expect(writes.filter(call=>call.url.endsWith('/questions/inspect'))).toEqual([{url:'/api/studio/questions/inspect',method:'POST',body:{source:{kind:'knowledge_evolution',question_id:'q_round',observation,expected_question_hash:'hash'}}}]);
+ expect(writes.filter(call=>!['/api/studio/questions/applicable-knowledge','/api/studio/questions/inspect'].includes(call.url))).toEqual([]);
  expect(screen.queryByRole('button',{name:'去 Task 解答'})).toBeNull();
  expect(requests.some(url=>url.includes('/evidence'))).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'返回知识与证据'}));

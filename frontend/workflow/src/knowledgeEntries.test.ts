@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {knowledgeEntries,entryState,entryText,knowledgeEntryHistory} from './knowledgeEntries';
+import {knowledgeEntries,entryState,entryText,knowledgeEntryHistory,knowledgeContentGroups,knowledgeEquivalentSources} from './knowledgeEntries';
 const rule=(id:string,clause:number)=>({rule_id:`${id}:${clause}`,text:'同一知识',metadata:{claim_id:id,clause_index:clause,validity_status:'proposed'}});
 it('groups compiled branches into one logical claim while preserving explicit versions and independent experiments',()=>{
  const shared={kind:'research_rules',name:'同名研究'};
@@ -34,4 +34,33 @@ it('uses active branches for current state and never calls locally modified or e
  expect(entryState({record:{kind:'research_rules'},parts:[{...verified,metadata:{...verified.metadata,validation_origin:'modified_in_studio'}}]})).toBe('pending');
  expect(entryState({record:{kind:'experience'},parts:[{status:'replicated_in_scope'}]})).toBe('pending');
  expect(entryState({record:{kind:'formal'},parts:[{status:'retired'}]})).toBe('retired');
+});
+
+it('folds identical content and rules only in presentation while retaining exact source histories',()=>{
+ const clause={scope:[['opt','eq','Adam']],predict:{higher_better:'lr'}};
+ const record=(id:string,claimId:string,version:string,order:number,text='相同正文')=>({id,version,kind:'research_rules',library:{id,name:id,version_order:order},snapshot:{rules:[{...rule(claimId,0),text,rule:clause,state:'active',metadata:{claim_id:claimId,validity_status:'proposed',inject:true}}]}});
+ const old=record('imported','O1','old',1,'最初原文'),current=record('imported','O1','new',2),evolution=record('evolution','C1','ev',1);
+ evolution.snapshot.rules[0].rule={predict:{higher_better:'lr'},scope:[['opt','eq','Adam']]};
+ const records=[old,current,evolution],before=JSON.stringify(records),entries=knowledgeEntries(records);
+ const groups=knowledgeContentGroups(entries,'');
+ expect(groups).toHaveLength(1);
+ expect(groups[0].sources.map(source=>[source.entry.claimId,source.revision.record.version])).toEqual([['O1','new'],['C1','ev']]);
+ expect(knowledgeEntryHistory(entries[0]).map(node=>entryText(node.revision))).toEqual(['最初原文','相同正文']);
+ expect(knowledgeEquivalentSources(entries,entries[0].revisions[1])).toHaveLength(1);
+ expect(knowledgeContentGroups(entries,'O1')[0].sources.map(source=>source.entry.claimId)).toEqual(['O1']);
+ expect(JSON.stringify(records)).toBe(before);
+});
+
+it('does not fold missing rules or changed executable, applicability, or validation boundaries',()=>{
+ const base={kind:'research_rules',snapshot:{rules:[{...rule('R1',0),state:'active',rule:{scope:[['opt','eq','Adam']],predict:{higher_better:'lr'}},metadata:{claim_id:'R1',validity_status:'proposed',inject:true,inject_same:[]}}]}};
+ for(const change of [
+  {rule:undefined},{rule:{scope:[['opt','eq','SGD']],predict:{higher_better:'lr'}}},
+  {conditions:['仅适用于新范围']},{exceptions:['新增例外']},{state:'retired'},
+  {metadata:{...base.snapshot.rules[0].metadata,validity_status:'replicated_in_scope'}},
+  {metadata:{...base.snapshot.rules[0].metadata,inject:false}},
+  {metadata:{...base.snapshot.rules[0].metadata,inject_same:['depth']}},
+ ]){
+  const changed={...base,id:'other',version:'other',snapshot:{rules:[{...base.snapshot.rules[0],...change}]}};
+  expect(knowledgeContentGroups(knowledgeEntries([{...base,id:'base',version:'base'},changed]),'')).toHaveLength(2);
+ }
 });

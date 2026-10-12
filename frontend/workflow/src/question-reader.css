@@ -102,3 +102,40 @@ label.question-reader-choice-label { cursor: pointer; }
   .question-reader-original { padding: 14px; }
 }
 .data-reading-page{max-width:1080px;margin:auto}.data-reading-page>.question-reader{background:white;border:1px solid var(--border);border-radius:14px;padding:26px}.data-reading-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px;flex-wrap:wrap}.data-reading-actions>span{font-size:12px;color:#7c909a}@media(max-width:640px){.data-reading-page>.question-reader{padding:14px}}
+
+.question-reader-option-card.is-committed { outline: 2px solid var(--option-accent); outline-offset: 1px; }
+.question-reader-option-card.is-correct-answer { border-color: #4e8963; box-shadow: inset 0 3px #4e8963; }
+.question-reader-answer-markers { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; font-size: 10px; }
+.question-reader-answer-markers span, .question-reader-answer-markers strong { padding: 2px 7px; border-radius: 4px; background: #ffffffb5; color: #5d6c64; font-weight: 500; }
+.question-reader-answer-markers strong { background: #d5eadb; color: #2b623f; font-weight: 650; }
+/* Keep the research question, options and rule conclusions together. */
+.question-reader-dataset > summary { cursor: pointer; font-size: 12px; color: #547466; font-weight: 550; }
+.question-reader-dataset[open] > summary { margin-bottom: 16px; }
+.is-compact-reading .question-reader-tabs { padding-bottom: 8px; gap: 6px; }
+.is-compact-reading .question-reader-tabs button { padding: 5px 10px; font-size: 11px; }
+.is-compact-reading .question-reader-intro { position: sticky; top: 0; z-index: 4; background: #fff; padding: 12px 0 8px; border-bottom: 1px solid #edf1ed; }
+.is-compact-reading .question-reader-intro h2 { font-size: 18px; margin: 3px 0; }
+.is-compact-reading .question-reader-kicker, .is-compact-reading .question-reader-tags { display: none; }
+.is-compact-reading .question-reader-task-description { font-size: 14px; line-height: 1.6; margin: 4px 0; }
+.is-compact-reading .question-reader-context { font-size: 12px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0; }
+.is-compact-reading .question-reader-dataset { padding: 9px 12px; margin: 8px 0; }
+.is-compact-reading .question-reader-section { padding: 8px 0; border-top: 0; }
+.is-compact-reading .question-reader-section-title h3 { margin: 0 0 8px; font-size: 14px; }
+.is-compact-reading .question-reader-legend { margin-bottom: 8px; font-size: 10px; }
+.is-compact-reading .question-reader-options-scroll { max-height: clamp(220px, 32vh, 300px); overflow: auto; overscroll-behavior: contain; }
+.is-compact-reading .question-reader-option-card { overflow: visible; }
+.is-compact-reading .question-reader-option-header { position: sticky; top: -3px; z-index: 2; background: var(--option-bg); padding: 9px 0; border-radius: 10px 10px 0 0; }
+.is-compact-reading .question-reader-choice-label { height: auto; }
+.is-compact-reading .question-reader-choice-label > span { display: flex; align-items: baseline; gap: 8px; }
+.is-compact-reading .question-reader-choice-label strong { font-size: 23px; }
+.is-compact-reading .question-reader-answer-markers { margin-top: 5px; }
+.is-compact-reading .question-reader-option-row { padding-top: 4px; padding-bottom: 4px; font-size: 11px; }
+.is-compact-reading .question-reader-option-row.starts-group { padding-top: 8px; }
+.is-compact-reading .question-reader-parameter-help { margin-top: 5px; font-size: 11px; }
+.is-compact-reading .question-reader-evidence { padding: 10px 0; max-height: 230px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.is-compact-reading .question-applicable-knowledge { margin: 0; padding: 12px; }
+.is-compact-reading .question-applicable-knowledge h3 { font-size: 14px; }
+@container question-reader (min-width: 850px) {
+ .is-compact-reading .question-reader-comparison-workspace.with-evidence { display: grid; grid-template-columns: minmax(540px, 1.8fr) minmax(270px, 1fr); gap: 18px; align-items: start; }
+ .is-compact-reading .question-reader-evidence { border-top: 0; max-height: 390px; }
+}

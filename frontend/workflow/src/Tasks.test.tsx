@@ -148,7 +148,7 @@ it('prefills both frozen evolution inputs without saving or running, and retains
  await screen.findByRole('option',{name:'知识演化 · C0004 · 研究候选'});
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
  expect(screen.getAllByText('evolution_question4').length).toBeGreaterThan(0);
- expect(c.calls.filter(call=>call.method==='POST'&&!call.path.endsWith('/questions/applicable-knowledge'))).toHaveLength(0);
+ expect(c.calls.filter(call=>call.method==='POST'&&!['/questions/applicable-knowledge','/questions/inspect'].some(path=>call.path.endsWith(path)))).toHaveLength(0);
  fireEvent.click(screen.getByLabelText('LLM + KB'));
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('evolution_kb_source_C4@frozen4');
  fireEvent.change(screen.getByLabelText('作答模型'),{target:{value:'glm'}});
@@ -162,7 +162,7 @@ it('opens a KB-only seed without selecting an arbitrary question and clears it w
  await screen.findByRole('heading',{name:'新建解答任务'});await screen.findByRole('option',{name:'架构规则'});
  expect(screen.getByRole('button',{name:'选择题目'})).toBeTruthy();
  expect((screen.getByLabelText('指定 KB') as HTMLSelectElement).value).toBe('kb1@hash1');
- expect(c.calls.filter(call=>call.method==='POST'&&!call.path.endsWith('/questions/applicable-knowledge'))).toHaveLength(0);
+ expect(c.calls.filter(call=>call.method==='POST'&&!['/questions/applicable-knowledge','/questions/inspect'].some(path=>call.path.endsWith(path)))).toHaveLength(0);
  fireEvent.click(screen.getByRole('button',{name:'返回任务列表'}));fireEvent.click(await screen.findByRole('button',{name:'新建任务'}));
  expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('');
  expect((screen.getByLabelText('知识来源') as HTMLSelectElement).value).toBe('auto');

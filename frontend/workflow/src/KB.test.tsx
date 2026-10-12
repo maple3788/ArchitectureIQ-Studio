@@ -18,6 +18,31 @@ function inventory(items:Json[]){
   path.endsWith('/kb')?{items}:{}));});
  return paths;
 }
+it('folds duplicate sources without adding evidence and preserves source-specific history and exact question references',async()=>{
+ const imported=libraryVersion('v10',10,[rule('O1','相同规则正文')]);
+ const earlier=libraryVersion('v9',9,[rule('O1','导入第一版原文')]);
+ const evolved={...libraryVersion('evolution',1,[rule('C0001','相同规则正文')]),id:'evolution',source_kind:'knowledge_evolution',library:{id:'evolution',name:'知识演化',version_label:'第 3 轮',version_order:1}};
+ const counts=(record:Json,id:string,support:number,refute:number)=>{record.evidence_summary={scope:'saved_question_results',unit:'distinct_questions',kb_ref:{id:record.id,version:record.version},claims:{[id]:{support_questions:support,refute_questions:refute,unknown_questions:0,complete:true,notice:'保存的逐题结果'}}};};
+ counts(imported,'O1',12,1);counts(evolved,'C0001',22,4);
+ const paths=inventory([imported,earlier,evolved]);render(<KB version={0}/>);
+ await screen.findByText('1 条知识');
+ expect(screen.getAllByRole('button',{name:/^阅读 /})).toHaveLength(1);
+ expect(screen.getByText('2 个来源')).toBeTruthy();
+ expect(screen.queryByText(/支持 34 题/)).toBeNull();
+ fireEvent.change(screen.getByLabelText('支持情况'),{target:{value:'high'}});
+ fireEvent.click(screen.getByRole('button',{name:'阅读 C0001 相同规则正文'}));
+ let dialog=screen.getByRole('dialog');
+ expect(within(dialog).getByText('支持 22 题 · 反例 4 题')).toBeTruthy();
+ fireEvent.click(within(dialog).getByText('同内容来源 · 2 个来源'));
+ fireEvent.click(within(dialog).getByRole('button',{name:'阅读来源 架构与优化器规则 · O1 · v10'}));
+ dialog=screen.getByRole('dialog');
+ expect(within(dialog).getByText('支持 12 题 · 反例 1 题')).toBeTruthy();
+ expect(within(dialog).queryByText('支持 22 题 · 反例 4 题')).toBeNull();
+ fireEvent.click(within(dialog).getByRole('tab',{name:'适用题目'}));
+ await waitFor(()=>expect(paths.some(path=>path.includes('/kb/questions?')&&path.includes('kb_id=builtin%3Akb-v10')&&path.includes('kb_version=hash-v10')&&path.includes('claim_id=O1'))).toBe(true));
+ const history=within(dialog).getByText('查看修订记录').closest('details')!;history.open=true;fireEvent(history,new Event('toggle'));
+ expect(within(dialog).getByText('导入第一版原文')).toBeTruthy();
+});
 it('lists one logical knowledge statement per row and opens only its executable branches',async()=>{
  inventory([libraryVersion('v10',10,[rule('R6','深度宽度的条件权衡',0),rule('R6','深度宽度的条件权衡',1),rule('R7','另外一条知识')])]);
  render(<KB version={0}/>);

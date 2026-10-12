@@ -111,12 +111,13 @@ it("opens complete authoritative dataset rules from the overview with safe forma
   const prompt = '## Dataset\nA classification problem.\n\n### Data-generating and classification rule\n- Score: `s(x) = 0.8*x_0 - 0.4*x_1`.\n- Threshold: **0.25**; balance: 50%.\n- <img src=x onerror=alert(1)>\n\n### Synthesis (PyTorch)\n```python\nprint("exact code")\n```\n\n## Choices\nSECRET-AFTER-DATASET';
   const {container} = render(<QuestionReader record={{...record,detail:{...record.detail,prompt}}}/>);
   fireEvent.click(screen.getByRole("button",{name:"查看完整数据规则"}));
-  expect(screen.getByText('s(x) = 0.8*x_0 - 0.4*x_1')).toBeTruthy();
-  expect(screen.getByText('0.25')).toBeTruthy();
+  const dataPanel=screen.getByRole('tabpanel',{name:'数据与规则'});
+  expect(within(dataPanel).getByText('s(x) = 0.8*x_0 - 0.4*x_1')).toBeTruthy();
+  expect(within(dataPanel).getByText('0.25')).toBeTruthy();
   expect(container.textContent).toContain('balance: 50%');
   expect(container.textContent).not.toContain('SECRET-AFTER-DATASET');
   expect(container.querySelector('img')).toBeNull();
-  expect(screen.getByText('数据说明中的代码').closest('details')!.open).toBe(false);
+  expect(within(dataPanel).getByText('数据说明中的代码').closest('details')!.open).toBe(false);
 });
 
 it("keeps shared parameters alongside differences without a collapsed common-settings section",()=>{
@@ -225,7 +226,7 @@ it('places supplied knowledge evidence immediately after the candidate compariso
  expect(comparison.compareDocumentPosition(evidence)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  const workspace=comparison.closest('.question-reader-comparison-workspace');
  expect(workspace?.contains(evidence)).toBe(true);
- expect(screen.getByRole('heading',{name:'数据与条件'}).compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByText('数据与条件',{selector:'summary'}).compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('does not lose explicit empty sections or literal dotted keys when flattening candidate parameters',()=>{
@@ -239,42 +240,41 @@ it('does not lose explicit empty sections or literal dotted keys when flattening
 });
 
 
-it('keeps human feedback and evidence unread until a choice has been committed, including after a question change',async()=>{
+it('automatically marks the saved correct option for human inspection and resets it when the question changes',async()=>{
  const calls:string[]=[];
- const feedback={selected_answer:{id:'candidate-A',letter:'A'},correct_answer:{id:'candidate-B',letter:'B'},correct:false,feedback:{correct_letter:'B',reveal:{curves:[]}}};
- vi.stubGlobal('fetch',async(path:string)=>{calls.push(path);return new Response(JSON.stringify(path.endsWith('/review')?feedback:{}));});
- function Evidence(){useEffect(()=>{void fetch('/research-evidence');},[]);return <section aria-label="已提交后的知识证据">已有规则研究结果</section>;}
+ const feedback={scope:'human_inspection',correct_answer:{id:'candidate-B',letter:'B'},feedback:{correct_letter:'B',reveal:{curves:[]}}};
+ vi.stubGlobal('fetch',async(path:string)=>{calls.push(path);return new Response(JSON.stringify(path.endsWith('/inspect')?feedback:{}));});
+ function Evidence(){useEffect(()=>{void fetch('/research-evidence');},[]);return <section aria-label="本题知识证据">已有规则研究结果</section>;}
  const source={kind:'catalog' as const,key:'q@first'};
  const value={...record,public:{id:'q',choices:[{id:'candidate-A',letter:'A'},{id:'candidate-B',letter:'B'}]}};
  const view=render(<QuestionReader record={value} questionKey="q@first" reviewSource={source} evidence={<Evidence/>}/>);
- expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual([]);expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
- const practice=screen.getByRole('region',{name:'人工检查题目'}),data=screen.getByRole('heading',{name:'数据与条件'});
- expect(data.compareDocumentPosition(practice)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(screen.getByRole('radio',{name:'选择 A'}).closest('label')?.textContent).toContain('mlp');
- fireEvent.click(screen.getByRole('radio',{name:'选择 A'}));expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual([]);
- fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
- await screen.findByText('正确答案 B');
- await waitFor(()=>expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual(['/api/studio/questions/review','/research-evidence']));
- expect(screen.getByLabelText('已提交后的知识证据')).toBeTruthy();
+ expect(screen.queryByLabelText('本题知识证据')).toBeNull();
+ expect(screen.queryByRole('radio')).toBeNull();
+ expect(screen.queryByRole('button',{name:'提交并查看结果'})).toBeNull();
+ await within(candidateCard('B')).findByText('正确答案');
+ await waitFor(()=>expect(calls.filter(path=>!path.endsWith('/applicable-knowledge'))).toEqual(['/api/studio/questions/inspect','/research-evidence']));
+ expect(screen.getByLabelText('本题知识证据')).toBeTruthy();
  fireEvent.click(screen.getByRole('tab',{name:'数据与规则'}));fireEvent.click(screen.getByRole('tab',{name:'题目概览'}));
- expect(screen.getByText('正确答案 B')).toBeTruthy();
+ expect(within(candidateCard('B')).getByText('正确答案')).toBeTruthy();
+ expect(calls.filter(path=>path.endsWith('/inspect'))).toHaveLength(1);
+ expect(screen.getByText('训练曲线与结果').closest('details')?.open).toBe(false);
  view.rerender(<QuestionReader record={value} questionKey="q@second" reviewSource={{kind:'catalog',key:'q@second'}} evidence={<Evidence/>}/>);
- expect(screen.queryByText('正确答案 B')).toBeNull();expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
- expect(screen.getByRole('button',{name:'提交并查看结果'})).toBeTruthy();
+ expect(screen.queryByText('正确答案')).toBeNull();expect(screen.queryByLabelText('本题知识证据')).toBeNull();
+ await within(candidateCard('B')).findByText('正确答案');
+ expect(calls.some(path=>path.endsWith('/review'))).toBe(false);
 });
 
-it('presents the concrete problem and dataset conditions before selectable candidate configurations',()=>{
+it('presents the concrete problem before parallel configurations and keeps secondary conditions folded',()=>{
  const prompt='## Task\nPredict a scalar from five input features.\n\n## Choices\nCandidate configurations.';
  const value={...record,detail:{...record.detail,prompt},public:{id:'q',choices:[{id:'candidate-A',letter:'A'},{id:'candidate-B',letter:'B'}]}};
- render(<QuestionReader record={value} reviewSource={{kind:'catalog',key:'q@first'}}/>);
+ render(<QuestionReader record={value} inspectResults={false}/>);
  const problem=screen.getByText(/^Predict a scalar from five input features\./);
- const data=screen.getByRole('heading',{name:'数据与条件'});
+ const data=screen.getByText('数据与条件',{selector:'summary'});
  const comparison=screen.getByRole('group',{name:'候选参数对比'});
  expect(problem.compareDocumentPosition(data)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  expect(data.compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(within(candidateCard('A')).getByRole('radio',{name:'选择 A'})).toBeTruthy();
- expect(screen.getAllByRole('radio')).toHaveLength(2);
- fireEvent.click(within(candidateCard('B')).getByRole('radio',{name:'选择 B'}));
- expect((screen.getByRole('button',{name:'提交并查看结果'}) as HTMLButtonElement).disabled).toBe(false);
- expect(document.querySelector('.human-practice-reveal')).toBeNull();
+ expect(data.closest('details')?.open).toBe(false);
+ expect(within(comparison).getAllByRole('article')).toHaveLength(2);
+ expect(screen.queryByRole('radio')).toBeNull();
+ expect(screen.queryByRole('button',{name:'提交并查看结果'})).toBeNull();
 });

@@ -80,6 +80,16 @@ it('keeps missing, malformed and mismatched evidence unknown instead of using co
  }
 });
 
+it('never qualifies duplicate sources by summing their sub-threshold support',async()=>{
+ const first=item('来源甲',12,1),second=item('来源乙',12,2);
+ first.snapshot.rules[0].text=second.snapshot.rules[0].text='相同知识正文';
+ inventory([first,second]);render(<KB version={0}/>);
+ await screen.findByText('1 条知识');
+ expect(screen.queryByText(/支持 24 题/)).toBeNull();
+ fireEvent.change(screen.getByLabelText('支持情况'),{target:{value:'high'}});
+ expect(screen.getByText('没有找到匹配的知识')).toBeTruthy();
+});
+
 it.each([['flagged','来源已标记'],['retired','已停用']])('retains %s evolution knowledge and counterexamples in the human library',async(status,label)=>{
  const value=item('演化知识',21,2);
  value.source_kind='knowledge_evolution';

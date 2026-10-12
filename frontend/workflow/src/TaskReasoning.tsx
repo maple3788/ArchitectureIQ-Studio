@@ -66,17 +66,45 @@ function ConditionResult({value,leaf=false}:{value:unknown;leaf?:boolean}){
 const operators:Record<string,string>={eq:'=',ne:'≠',lt:'<',le:'≤',gt:'>',ge:'≥',in:'属于',nin:'不属于'};
 function expectedCheck(fact:Json){return fact.operator&&fact.expected!==undefined?`${operators[fact.operator]||fact.operator} ${printable(fact.expected)}`:'';}
 
-export function RuleReasoning({value,question}:{value:Json;question?:Json}){
- const edges=rows(value.edges),paths=rows(value.paths),conflicts=rows(value.conflicts),uncovered=rows(value.uncovered_pairs);
- return <section className="task-reasoning" aria-label="规则推导依据"><h4>答案如何得出</h4><p className="task-reasoning-summary">{value.summary}</p>
-  {paths.length>0&&<div className="task-deduction-paths"><span>推导路径</span>{paths.map((path,index)=>{const source=pathSource(path,edges);return <div key={index}><strong>{rows(path.candidates).map(item=>item.letter||item.id).join(' → ')}</strong><small><span>{source.names}</span><span>{source.label}</span></small></div>;})}</div>}
+function stableValue(value:unknown):unknown{
+ if(Array.isArray(value))return value.map(stableValue);
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,stableValue(item)]));
+ return value;
+}
+const semanticKey=(value:unknown)=>JSON.stringify(stableValue(value));
+function ruleBrief(rule:Json){
+ const fields=rows(rule.prediction?.fields);
+ if(fields.length===1&&['higher_better','lower_better'].includes(rule.prediction?.kind))return `${ruleField(fields[0].field)}${rule.prediction.kind==='higher_better'?'越高':'越低'}越优`;
+ return brief(rule.text,'执行依据未记录');
+}
+const brief=(value:unknown,fallback='规则正文未记录')=>{const text=typeof value==='string'?value.trim().replace(/\s+/g,' '):'';return text?text.length>100?text.slice(0,99)+'…':text:fallback;};
+function groupedComparisons(edges:Json[]):Json[]{
+ const grouped=new Map<string,Json>();
+ edges.forEach((edge,edgeIndex)=>{
+  const rules=rows(edge.rules);
+  (rules.length?rules:[undefined]).forEach((rule,ruleIndex)=>{
+   const complete=typeof rule?.text==='string'&&rule.text.trim()&&Array.isArray(rule.conditions)&&Object.keys(object(rule.prediction)).length;
+   const key=complete?semanticKey({winner:edge.winner,loser:edge.loser,text:rule.text.trim(),conditions:rule.conditions,prediction:rule.prediction,validated_scope:rule.validated_scope}):`unrecorded:${edgeIndex}:${ruleIndex}`;
+   const reference={kb:edge.kb,rule};
+   const existing=grouped.get(key);
+   if(existing){if(!existing.references.some((item:Json)=>semanticKey(item)===semanticKey(reference)))existing.references.push(reference);}
+   else grouped.set(key,{...edge,rules:rule?[rule]:[],references:[reference]});
+  });
+ });
+ return [...grouped.values()];
+}
+
+export function RuleReasoning({value,question,embedded=false}:{value:Json;question?:Json;embedded?:boolean}){
+ const originalEdges=rows(value.edges),edges=groupedComparisons(originalEdges),paths=[...new Map(rows(value.paths).map(path=>[semanticKey(path),path])).values()],conflicts=rows(value.conflicts),uncovered=rows(value.uncovered_pairs);
+ return <section className={`task-reasoning${embedded?' is-embedded':''}`} aria-label="规则推导依据">{!embedded&&<h4>答案如何得出</h4>}{(!edges.length||value.status!=='answered')&&value.summary&&<p className="task-reasoning-summary">{value.summary}</p>}
   {conflicts.length>0&&<div className="task-reasoning-gap"><b>存在冲突</b>{conflicts.map((conflict,index)=><p key={index}>{rows(conflict.candidates).map(candidate).join(' ↔ ')}</p>)}</div>}
   {uncovered.length>0&&<div className="task-reasoning-gap"><b>尚未覆盖的比较</b>{uncovered.map((pair,index)=><p key={index}>{rows(pair).map(candidate).join(' / ')}</p>)}</div>}
-  <div className="task-reasoning-edges">{edges.map((edge,index)=><section className="task-deduction-edge" key={index}>
+  <div className="task-reasoning-edges">{edges.map((edge,index)=><details className="task-deduction-edge" key={index}>
+   <summary><strong>{candidate(edge.winner)} &gt; {candidate(edge.loser)}</strong><span>因为 KB {ruleName(edge.rules[0]??{})||kbLabel(edge.kb)}：{ruleBrief(edge.rules[0]??{})}</span>{edge.references.length>1&&<small>{edge.references.length} 条来源</small>}</summary><div className="task-deduction-detail">
    <header><div><span className="task-comparison-number">比较 {index+1}</span><h5>{candidate(edge.winner)} 优于{candidate(edge.loser)}</h5></div><div className="task-comparison-kb"><span>{kbLabel(edge.kb)}</span></div></header>
    {question&&<div className="task-comparison-candidates"><FrozenCandidate reference={edge.winner} question={question}/><FrozenCandidate reference={edge.loser} question={question}/></div>}
    {rows(edge.rules).map((rule,ruleIndex)=><article className="task-deduction-rule" key={`${rule.rule_id}:${ruleIndex}`}>
-    <section className="task-rule-step"><h6>1 · 采用这条知识</h6><div className="task-rule-identity"><b>{ruleName(rule)}</b><small>{qualification(rule)}</small></div><p className="task-deduction-text">{rule.text}</p></section>
+    <section className="task-rule-step"><h6>1 · 采用这条知识</h6><div className="task-rule-identity"><b>{ruleName(rule)}</b></div><p className="task-deduction-text">{rule.text}</p></section>
     <section className="task-rule-step"><h6>2 · 检查适用条件</h6>{rows(rule.conditions).length>0?<div className="task-condition-list">{rows(rule.conditions).map((condition,conditionIndex)=><section key={conditionIndex}>
      <div className="task-condition-heading"><b>{condition.label}</b><ConditionResult value={condition.passed}/></div>{condition.expression&&<p>{condition.expression}</p>}
      {condition.field&&<p>{ruleField(condition.field)}{condition.expected!==undefined?` · 要求 ${expectedCheck(condition)||printable(condition.expected)}`:''}</p>}
@@ -89,23 +117,49 @@ export function RuleReasoning({value,question}:{value:Json;question?:Json}){
       <div className="task-condition-heading"><b>{candidate(who as Json)} 的判定条件</b><ConditionResult value={condition.passed}/></div><p>{condition.expression}</p><dl>{rows(condition.facts).map((fact,i)=><div key={i}><dt>{ruleField(fact.field)}<small>{expectedCheck(fact)}</small></dt><dd><span>{printable(fact.value)}</span><ConditionResult value={fact.passed} leaf/></dd></div>)}</dl>
      </section>:null;})}</div>}
     </section>
-    <details className="task-disclosure task-rule-record"><summary>原规则与来源记录</summary><p>知识库记录：<code>{kbIdentity(edge.kb)}</code></p><p>执行条款：{rule.rule_id}{rule.clause_index!=null?` · 第 ${rule.clause_index} 条`:''}</p><p>规则记录：{rule.revision}</p><pre>{JSON.stringify({source_refs:rule.source_refs,source_revision:rule.source_revision,validated_scope:rule.validated_scope,conditions:rule.conditions,prediction:rule.prediction},null,2)}</pre></details>
+    <details className="task-disclosure task-rule-record"><summary>原规则与来源记录{edge.references.length>1?` · ${edge.references.length} 条`:''}</summary>{edge.references.map((reference:Json,sourceIndex:number)=><section className="task-merged-source" key={sourceIndex}><p>{kbLabel(reference.kb)} · <code>{kbIdentity(reference.kb)}</code></p><p>执行条款：{reference.rule?.rule_id}{reference.rule?.clause_index!=null?` · 第 ${reference.rule.clause_index} 条`:''} · 规则记录：{reference.rule?.revision}</p><small>{qualification(reference.rule??{})}</small><pre>{JSON.stringify(reference,null,2)}</pre></section>)}</details>
    </article>)}
-  </section>)}</div>
+  </div></details>)}</div>
+  {paths.length>0&&<details className="task-disclosure task-path-record"><summary>推导路径 · {paths.length} 条</summary><div className="task-deduction-paths">{paths.map((path,index)=>{const source=pathSource(path,originalEdges);return <div key={index}><strong>{rows(path.candidates).map(item=>item.letter||item.id).join(' → ')}</strong><small><span>{source.names}</span><span>{source.label}</span></small></div>;})}</div></details>}
  </section>;
 }
 function PairValues({facts,winner,loser,prediction=false,leafChecks=false}:{facts:Json[];winner:Json;loser:Json;prediction?:boolean;leafChecks?:boolean}){
  return <div className="task-evidence-table"><table><thead><tr><th>公开条件</th><th>{candidate(winner)}</th><th>{candidate(loser)}</th></tr></thead><tbody>{facts.map((fact,index)=><tr key={index}><th>{ruleField(fact.field||'参数量')}<small>{prediction?(fact.direction==='higher'?'数值更高':fact.direction==='lower'?'数值更低':''):expectedCheck(fact)}</small></th><td><span>{printable(fact.winner_value)}</span>{leafChecks&&<ConditionResult value={fact.winner_passed} leaf/>}</td><td><span>{printable(fact.loser_value)}</span>{leafChecks&&<ConditionResult value={fact.loser_passed} leaf/>}</td></tr>)}</tbody></table>{prediction&&facts.filter(fact=>fact.min_ratio>1).map((fact,index)=><p className="task-ratio" key={index}>{ruleField(fact.field)}：要求比值至少 {fact.min_ratio} 倍{fact.ratio!=null?`，实际 ${printable(fact.ratio)} 倍`:''}。</p>)}</div>;
 }
 
+type ModelSourceEntry={value:Json;used:boolean};
+type ModelSourceGroup={value:Json;sources:ModelSourceEntry[]};
+function groupedModelSources(result:Json):ModelSourceGroup[]{
+ const groups=new Map<string,ModelSourceGroup>();
+ const entries=[...rows(result.used_sources).map(value=>({value,used:true})),...rows(result.provided_sources).map(value=>({value,used:false}))];
+ entries.forEach((entry,index)=>{
+  const source=entry.value;
+  const semantic=Object.keys(object(source.rule)).length||Array.isArray(source.conditions)||Array.isArray(source.exceptions);
+  // Some legacy hits contain no public predicate. Only the same frozen
+  // citation identity can establish equivalence for those records.
+  const identity=source.citation_id||source.record_id&&source.revision?{citation_id:source.citation_id,record_id:source.record_id,revision:source.revision}:{unrecorded:index};
+  const key=semanticKey({text:source.text,kind:source.kind,rule:source.rule,conditions:source.conditions,exceptions:source.exceptions,validated_scope:source.validated_scope,matched_pairs:source.matched_pairs,...(semantic?{}:{identity})});
+  const group=groups.get(key);
+  if(!group){groups.set(key,{value:source,sources:[entry]});return;}
+  const duplicate=group.sources.find(item=>semanticKey(item.value)===semanticKey(source));
+  if(duplicate)duplicate.used=duplicate.used||entry.used;else group.sources.push(entry);
+ });
+ return [...groups.values()];
+}
 export function ModelSources({result}:{result:Json}){
  if(!Array.isArray(result.provided_sources)&&!Array.isArray(result.used_sources))return null;
- const used=rows(result.used_sources),ids=new Set(used.map(item=>item.citation_id)),provided=rows(result.provided_sources).filter(item=>!ids.has(item.citation_id));
- return <div className="task-model-sources"><section aria-label="模型明确引用的知识"><h4>模型明确引用的知识</h4>{used.length?<><p className="task-muted">以下引用来自已保存的模型回答；引用本身不等同于程序验证。</p>{used.map((source,index)=><ModelSource key={source.citation_id||index} value={source}/>)}</>:<p className="task-muted">当前记录尚无可对应到已提供知识的模型引用。</p>}</section>{provided.length>0&&<details className="task-disclosure"><summary>提供给模型、未被引用的知识 · {provided.length} 条</summary>{provided.map((source,index)=><ModelSource key={source.citation_id||index} value={source}/>)}</details>}</div>;
+ const groups=groupedModelSources(result),used=groups.filter(group=>group.sources.some(source=>source.used)),provided=groups.filter(group=>!group.sources.some(source=>source.used));
+ return <div className="task-model-sources"><section aria-label="模型明确引用的知识"><h4>模型明确引用的知识</h4>{used.length?<>{used.map((group,index)=><ModelSource key={index} group={group}/>)}</>:<p className="task-muted">当前记录尚无可对应到已提供知识的模型引用。</p>}</section>{provided.length>0&&<details className="task-disclosure"><summary>提供给模型、未被引用的知识 · {provided.length} 条</summary>{provided.map((group,index)=><ModelSource key={index} group={group}/>)}</details>}</div>;
 }
-function ModelSource({value}:{value:Json}){
+function ModelSource({group}:{group:ModelSourceGroup}){
+ const value=group.value,usedIds=[...new Set(group.sources.filter(source=>source.used).map(source=>source.value.citation_id).filter(Boolean))];
+ const excerpt=brief(value.text,'知识正文未记录');
  let conditions:[string,string][]=[];try{conditions=ruleConditions(value.rule);}catch{/* The immutable source record stays available below. */}
- return <article className="task-model-source"><header><b>{value.citation_id}</b>{Array.isArray(value.source_claim_ids)&&value.source_claim_ids.length>0&&<strong>{value.source_claim_ids.join('、')}</strong>}{value.source_status&&<small>{qualification(value)}</small>}</header><p>{value.text}</p>{conditions.length>0&&<dl>{conditions.map(([name,text],index)=><div key={index}><dt>{name}</dt><dd>{text}</dd></div>)}</dl>}{Array.isArray(value.matched_pairs)&&value.matched_pairs.length>0&&<small>适用比较：{value.matched_pairs.join('、')}</small>}<details className="task-disclosure"><summary>知识来源</summary>{rows(value.source_refs).map((source,index)=><p key={index}>{source.name} · {source.record_id} · 记录 {source.version}</p>)}<pre>{JSON.stringify({rule_sources:value.rule_sources,source_refs:value.source_refs},null,2)}</pre></details></article>;
+ return <details className="task-model-source"><summary><span>{excerpt}</span>{usedIds.length>0&&<small>{usedIds.every(id=>typeof id==='string'&&id.length<=16)?`引用 ${usedIds.join('、')}`:'已引用'}</small>}{group.sources.length>1&&<small>{group.sources.length} 条来源</small>}</summary><div className="task-model-source-detail">
+  {value.text!==excerpt&&<p>{value.text}</p>}{conditions.length>0&&<dl>{conditions.map(([name,text],index)=><div key={index}><dt>{name}</dt><dd>{text}</dd></div>)}</dl>}{Array.isArray(value.matched_pairs)&&value.matched_pairs.length>0&&<small>适用比较：{value.matched_pairs.join('、')}</small>}
+  <p className="task-condition-note">引用来自已保存的模型回答，不等同于程序验证。</p>
+  <details className="task-disclosure"><summary>知识来源 · {group.sources.length} 条</summary>{group.sources.map((source,index)=><section className="task-merged-source" key={index}><p>{source.value.citation_id} · {source.used?'已引用':'仅提供'}</p>{Array.isArray(source.value.source_claim_ids)&&source.value.source_claim_ids.length>0&&<strong>{source.value.source_claim_ids.join('、')}</strong>}{source.value.source_status&&<small>{qualification(source.value)}</small>}{rows(source.value.source_refs).map((ref,i)=><p key={i}>{ref.name} · {ref.record_id} · 记录 {ref.version}</p>)}<pre>{JSON.stringify(source.value,null,2)}</pre></section>)}</details>
+ </div></details>;
 }
 export function SkippedRules({value}:{value:Json}){
  const skipped=rows(value.skipped_claims);if(!skipped.length)return null;

@@ -19,6 +19,8 @@ it('shows the frozen question before KB application and stored answer comparison
  await screen.findByText('与已保存结果不同');
  const questionRegion=screen.getByRole('region',{name:'本次保存的题目'}),application=screen.getByRole('region',{name:'本次 KB 应用过程'}),review=screen.getByRole('region',{name:'正确答案对照'});
  expect(questionRegion.compareDocumentPosition(application)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(questionRegion.querySelector('.question-reader-comparison-workspace')?.contains(application)).toBe(true);
+ expect(screen.getByText('训练曲线与最终指标').closest('details')?.open).toBe(false);
  expect(application.compareDocumentPosition(review)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  expect(within(questionRegion).getByText('Which saved configuration learns this function best?')).toBeTruthy();
  expect(within(screen.getByRole('article',{name:'候选 A'})).getByText('正确答案')).toBeTruthy();

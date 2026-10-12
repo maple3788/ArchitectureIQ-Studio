@@ -502,7 +502,7 @@ class LoopObserver:
             return {**value, 'observation': {'content_hash': digest, 'captured_at': captured}}
 
     def question_results(self, identifier: str, *, expected_question_hash: str) -> dict:
-        """Separate human result cache. Called only after option commitment."""
+        """Saved results for explicit human inspection or committed-answer review."""
         from .human_practice import PracticeConflict, project_feedback
         from .loop_question import public_question
 

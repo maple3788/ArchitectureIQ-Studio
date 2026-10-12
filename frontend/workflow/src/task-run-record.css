@@ -15,9 +15,34 @@
 .task-answer-comparison strong { font-size: 27px; }
 .task-answer-comparison p { font-size: 12px; margin: 0 0 0 auto; }
 .task-run-verification .ns-block { margin: 22px 0; }
-.question-reader-option-card.is-committed { outline: 2px solid var(--option-accent); outline-offset: 1px; }
-.question-reader-option-card.is-correct-answer { border-color: #4e8963; box-shadow: inset 0 3px #4e8963; }
-.question-reader-answer-markers { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; font-size: 10px; }
-.question-reader-answer-markers span, .question-reader-answer-markers strong { padding: 2px 7px; border-radius: 4px; background: #ffffffb5; color: #5d6c64; font-weight: 500; }
-.question-reader-answer-markers strong { background: #d5eadb; color: #2b623f; font-weight: 650; }
 @media(max-width:600px) { .task-run-step small { margin-left: 34px; width: 100%; } .task-answer-comparison { gap: 12px 22px; padding: 18px; } .task-answer-comparison p { width: 100%; margin: 0; } }
+
+.task-run-reading .task-run-step { margin: 8px 0; }
+.task-run-reading .task-run-step > span { display: none; }
+.task-run-reading .question-reader { margin-top: 8px; }
+.task-run-application { border-top: 0; margin: 0; padding: 0; }
+.task-run-application > h3 { font-size: 14px; margin: 0 0 8px; }
+.task-run-application .task-prediction { border: 0; margin: 0; padding: 0; background: none; }
+.task-run-application .task-prediction > .eyebrow { display: none; }
+.task-run-application .task-prediction > h3 { display: inline-block; font-size: 13px; margin: 0 0 7px; padding: 4px 9px; background: #edf5ef; border-radius: 6px; }
+.task-run-verification { padding-top: 8px; margin-top: 12px; }
+.task-run-verification > .task-run-step { display: none; }
+.task-answer-comparison { padding: 10px 14px; gap: 12px; }
+.task-answer-comparison strong { font-size: 18px; }
+.task-training-review { margin-top: 10px; }
+.task-setup { margin-top: 18px; }
+.task-setup > summary { cursor: pointer; border: 1px solid #dce5df; background: #fff; border-radius: 10px; padding: 13px 16px; color: #647f6f; font-size: 13px; }
+.task-setup[open] > summary { margin-bottom: 12px; }
+.task-workspace .task-history { margin-top: 18px; padding: 18px; }
+
+.task-workspace .tasks-heading { margin: 10px 0 12px; align-items: center; }
+.task-workspace .tasks-heading h1 { font-size: 22px; margin: 4px 0; }
+.task-workspace .tasks-heading p, .task-workspace .tasks-heading .eyebrow { display: none; }
+.task-workspace .task-setup { margin-top: 8px; padding: 0; border: 0; }
+.task-workspace .task-history > header { margin-bottom: 8px; }
+.task-workspace .task-run { padding-top: 10px; }
+.task-workspace .task-run-body { padding-top: 10px; }
+.task-run-application .task-reasoning { margin-top: 0; }
+.task-run-application .task-deduction-edge > summary { padding: 8px 10px; }
+.task-run-application .task-prediction > h3 { margin-bottom: 0; }
+.task-workspace .task-run-question > .task-muted { font-size: 10px; margin: 5px 0; }

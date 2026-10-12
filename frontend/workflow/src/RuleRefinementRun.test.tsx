@@ -35,7 +35,7 @@ it('offers backend verification for an uncertain run without a final result',asy
 });
 
 it('opens retained first-test evidence and current feedback from the run canvas without starting work',async()=>{
- const fetched: string[]=[];vi.stubGlobal('fetch',async(url:string)=>{fetched.push(url);return new Response(JSON.stringify(url.endsWith('/questions/applicable-knowledge')?{scope:'public_applicability',items:[],total:0,feedback_released:false}:{}));});
+ const fetched:{url:string;method:string;body:any}[]=[];vi.stubGlobal('fetch',async(url:string,init?:RequestInit)=>{fetched.push({url,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):undefined});return new Response(JSON.stringify(url.endsWith('/questions/applicable-knowledge')?{scope:'public_applicability',items:[],total:0,feedback_released:false}:url.endsWith('/questions/inspect')?{scope:'human_inspection',correct_answer:{id:'b',letter:'B'},feedback:{correct_letter:'B',reveal:{curves:[]}}}:{}));});
  const row={scorable:true,correct:false,prediction:{status:'conflict',edges:[],paths:{}},case:{ref:{key:'q1',hash:'h1'},question:{id:'conflicting-case',prompt:'A retained research question',choices:[{id:'a',letter:'A'},{id:'b',letter:'B'}]},dataset_spec:{},candidate_specs:[]}};
  const current={...score,correct:2,conflicts:1,all_pass:false,per_question:{q1:row},problems:[{type:'conflict',question_ref:{key:'q1'}}]};
  render(<RuleRefinementRun run={{...run,result:{...run.result,score:current,fresh_batches:[{batch_id:'b1',index:1,actual:3,requested:3,batch_passed:false,first_score:current}]}}} act={async f=>f()}/>);
@@ -49,7 +49,12 @@ it('opens retained first-test evidence and current feedback from the run canvas 
  fireEvent.change(screen.getByLabelText('问题分类'),{target:{value:'conflict'}});
  expect(screen.getByLabelText('查看题目').textContent).toContain('conflicting-case');
  expect(screen.getByRole('heading',{name:'规则如何得出结论'})).toBeTruthy();
- expect(fetched.filter(url=>!url.endsWith('/questions/applicable-knowledge'))).toEqual([]);
+ await screen.findByText('正确答案');
+ const inspections=fetched.filter(call=>call.url==='/api/studio/questions/inspect');
+ expect(inspections.length).toBeGreaterThan(0);
+ for(const call of inspections)expect(call).toEqual({url:'/api/studio/questions/inspect',method:'POST',body:{source:{kind:'catalog',key:'q1'}}});
+ expect(fetched.filter(call=>!['/api/studio/questions/applicable-knowledge','/api/studio/questions/inspect'].includes(call.url))).toEqual([]);
+ expect(screen.queryByRole('radio')).toBeNull();
 });
 
 it('opens revision calls and rejected acceptance evidence from their stages',async()=>{

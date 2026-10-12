@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {QuestionReadingPage} from './QuestionReadingPage';
 import {bankFixtures,page} from './dataTestFixtures';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
@@ -15,16 +15,18 @@ it('reads the exact version and navigates within the frozen Dataset filter',asyn
  fireEvent.click(screen.getByRole('button',{name:'加入 Dataset'}));expect(onAdd).toHaveBeenCalledWith('q1@v1');
 });
 
-it('reveals saved results for the exact catalog version only after the human submits an answer',async()=>{
+it('automatically inspects saved results for the exact catalog version without submitting an answer',async()=>{
  const posts:any[]=[];
  vi.stubGlobal('fetch',async(path:string,init?:RequestInit)=>{
   if(path.endsWith('/applicable-knowledge'))return new Response(JSON.stringify({items:[],total:0,feedback_released:false}));
-  if(init?.method==='POST'){posts.push({path,body:JSON.parse(init.body as string)});return new Response(JSON.stringify({selected_answer:{id:'first',letter:'B'},correct_answer:{id:'other',letter:'A'},correct:false,feedback:{reveal:{curves:[]}}}));}
+  if(init?.method==='POST'){posts.push({path,body:JSON.parse(init.body as string)});return new Response(JSON.stringify({scope:'human_inspection',correct_answer:{id:'other',letter:'A'},feedback:{correct_letter:'A',reveal:{curves:[]}}}));}
   return new Response(JSON.stringify(path.includes('/question-bank?')?page([]):{metadata:{key:'q1@v1'},public:{id:'q1',choices:[{id:'first',letter:'B'},{id:'other',letter:'A'}]}}));
  });
  render(<QuestionReadingPage questionKey="q1@v1" context={{view:'bank',filters:{search:''},offset:0}} onBack={()=>{}} onQuestion={()=>{}} onAddToDataset={()=>{}} onRag={()=>{}}/>);
- fireEvent.click(await screen.findByRole('radio',{name:'选择 B'}));expect(posts).toEqual([]);
- fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
- await screen.findByText('正确答案 A');
- expect(posts).toEqual([{path:'/api/studio/questions/review',body:{source:{kind:'catalog',key:'q1@v1'},answer_id:'first'}}]);
+ await screen.findByText('正确答案');
+ expect(within(screen.getByRole('article',{name:'候选 A'})).getByText('正确答案')).toBeTruthy();
+ expect(within(screen.getByRole('article',{name:'候选 B'})).queryByText('正确答案')).toBeNull();
+ expect(screen.queryByRole('radio')).toBeNull();expect(screen.queryByRole('button',{name:'提交并查看结果'})).toBeNull();
+ expect(screen.getByText('训练曲线与结果').closest('details')?.open).toBe(false);
+ expect(posts).toEqual([{path:'/api/studio/questions/inspect',body:{source:{kind:'catalog',key:'q1@v1'}}}]);
 });

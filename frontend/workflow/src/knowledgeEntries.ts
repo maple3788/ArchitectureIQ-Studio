@@ -59,6 +59,35 @@ export function displayedEntryRevision(entry:KnowledgeEntry,search:string){
  return entry.revisions.find(revision=>revisionMatches(entry,revision,search));
 }
 
+export type KnowledgeContentSource={entry:KnowledgeEntry;revision:KnowledgeRevision};
+/** Content folding never changes source identity, revision ancestry or evidence. */
+function contentKey(revision:KnowledgeRevision){
+ if(revision.record.kind!=='research_rules'||!revision.parts.length||revision.parts.some(part=>typeof part.text!=='string'||!part.text.trim()||!part.rule||typeof part.rule!=='object'||Array.isArray(part.rule)||!Object.keys(part.rule).length))return undefined;
+ const stable=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
+ return stable(revision.parts.map(part=>stable({text:part.text.trim(),rule:part.rule,conditions:part.conditions??[],exceptions:part.exceptions??[],state:part.state,status:part.status,
+  validity_status:part.metadata?.validity_status,validation_origin:part.metadata?.validation_origin,
+  validated_scope:part.metadata?.validated_scope,inject:part.metadata?.inject,inject_same:part.metadata?.inject_same??[],
+ })).sort());
+}
+export function knowledgeContentGroups(entries:KnowledgeEntry[],search:string){
+ const groups=new Map<string,{key:string;sources:KnowledgeContentSource[]}>();
+ for(const entry of entries){
+  const revision=displayedEntryRevision(entry,search);if(!revision)continue;
+  const key=contentKey(revision),identity=key===undefined?`entry:${entry.key}`:`content:${entry.library.section}:${key}`;
+  if(!groups.has(identity))groups.set(identity,{key:entry.key,sources:[]});
+  groups.get(identity)!.sources.push({entry,revision});
+ }
+ return [...groups.values()];
+}
+/** Offer one matching saved revision per source; its complete history stays separate. */
+export function knowledgeEquivalentSources(entries:KnowledgeEntry[],selected:KnowledgeRevision):KnowledgeContentSource[]{
+ const key=contentKey(selected);
+ return entries.flatMap(entry=>{
+  const revision=entry.revisions.includes(selected)?selected:key===undefined?undefined:entry.revisions.find(revision=>contentKey(revision)===key);
+  return revision?[{entry,revision}]:[];
+ });
+}
+
 export type KnowledgeHistoryEntry={key:string;entryKey:string;claimId:string;revision:KnowledgeRevision;parentKeys:string[];missingParents:boolean};
 /** Read ancestry only within an explicitly grouped library and exact snapshot/rule references. */
 export function knowledgeEntryHistory(entry:KnowledgeEntry):KnowledgeHistoryEntry[]{
