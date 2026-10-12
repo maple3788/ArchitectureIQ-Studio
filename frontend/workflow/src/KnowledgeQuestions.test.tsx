@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {KnowledgeQuestions} from './KnowledgeQuestions';
 const ref={id:'rules:source',version:'sealed-v1'};
 const row={key:'source::q_one',id:'q_one',family:'xor_classification',type:'architecture_only',relation:'applicable',reason:{code:'rule_match',message:'深度相同，宽度满足规则条件。'},prediction_status:'answered' as string|null,matched_rules:1,matched_pairs:1};
@@ -9,9 +9,10 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it('binds one claim and exact KB version, showing canonical reason and all public parameters',async()=>{
  const paths:string[]=[];vi.stubGlobal('fetch',async(path:string)=>{paths.push(path);return new Response(JSON.stringify(path.includes('/kb/questions?')?list():question()));});
  render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="applicable"/>);
- expect(await screen.findByText('custom_gate.alpha')).toBeTruthy();
- expect(screen.getByRole('columnheader',{name:'候选 C'})).toBeTruthy();
- expect(screen.getByRole('columnheader',{name:'候选 A'})).toBeTruthy();
+ const first=await screen.findByRole('article',{name:'候选 C'});
+ const second=screen.getByRole('article',{name:'候选 A'});
+ expect(within(first).getByText('custom_gate.alpha')).toBeTruthy();
+ expect(within(second).getByText('custom_gate.alpha')).toBeTruthy();
  expect(screen.getAllByText(row.reason.message).length).toBeGreaterThan(0);
  const query=new URL(paths[0],'http://localhost').searchParams;
  expect(Object.fromEntries(query)).toMatchObject({kb_id:'rules:source',kb_version:'sealed-v1',claim_id:'C1',relation:'applicable'});
@@ -23,10 +24,10 @@ it('keeps unknown separate from inapplicable and clears the old question while c
  let resolveUnknown:(value:Response)=>void=()=>{};const paths:string[]=[];
  vi.stubGlobal('fetch',async(path:string)=>{paths.push(path);if(path.includes('relation=unknown'))return new Promise<Response>(resolve=>{resolveUnknown=resolve;});return new Response(JSON.stringify(path.includes('/kb/questions?')?list([{...row,relation:'inapplicable',reason:{code:'scope_mismatch',message:'模型类型不满足规则范围。'}}]):question()));});
  render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="inapplicable"/>);
- await screen.findByText('custom_gate.alpha');
+ await screen.findAllByText('custom_gate.alpha');
  fireEvent.change(screen.getByLabelText('题目状态'),{target:{value:'unknown'}});
  await waitFor(()=>expect(paths.some(path=>path.includes('relation=unknown'))).toBe(true));
- expect(screen.queryByText('custom_gate.alpha')).toBeNull();
+ expect(screen.queryAllByText('custom_gate.alpha')).toHaveLength(0);
  resolveUnknown(new Response(JSON.stringify(list([unknown]))));
  await screen.findAllByText(unknown.reason.message);
  expect(screen.getByText(/待判断题目单独保留/)).toBeTruthy();

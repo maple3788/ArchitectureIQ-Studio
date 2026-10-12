@@ -17,7 +17,7 @@ it("opens catalog details in the shared reader with a short title and exact prom
   fireEvent.click(await screen.findByRole("button",{name:"打开 q_short"}));
   await screen.findByRole("tab",{name:"题目概览"});
   expect(screen.getByRole("dialog").getAttribute("aria-label")).toBe("二元序列建模 · 混合对比");
-  expect(screen.getByRole("heading",{name:"候选对比"})).toBeTruthy();
+  expect(screen.getByRole("heading",{name:"选项"})).toBeTruthy();
   const provenance=screen.getByText("来源与记录标识").closest("details")!;
   expect(provenance.open).toBe(false);
   fireEvent.click(screen.getByText("来源与记录标识"));

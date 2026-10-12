@@ -1,6 +1,7 @@
 import {Card,JsonView} from './ui';
 import {LiveOutput,RunStreamProvider,useLiveOutput} from './LiveOutput';
 import {RagKnowledge} from './Rag';
+import {QuestionReader} from './QuestionReader';
 import type {Run} from './types';
 import type {RagHit} from './ragTypes';
 export function RagRunView({run}:{run:Run}){
@@ -12,7 +13,7 @@ function Content({run}:{run:Run}){
  const hits:RagHit[]=config.retrieval?.provenance||[];
  const used:RagHit[]=result?.used_sources||[];
  return <div className="rag-page">
-  <Card title="RAG 作答记录"><p>{config.question?.prompt}</p><p>自动匹配：{config.retrieval?.selected_kb?.name||'未记录'} · 版本 {config.retrieval?.selected_kb?.version}</p><p>模型：{model?.name||model?.id} · {model?.service_identity?.weights_verified===true?'权重身份已核验':'模型配置身份；未验证权重'}</p>{result?.response_model&&<small>服务返回模型：{result.response_model}</small>}</Card>
+  <Card title="RAG 作答记录">{config.question&&<QuestionReader record={{public:config.question}} showApplicableKnowledge={false}/>}<p>自动匹配：{config.retrieval?.selected_kb?.name||'未记录'} · 版本 {config.retrieval?.selected_kb?.version}</p><p>模型：{model?.name||model?.id} · {model?.service_identity?.weights_verified===true?'权重身份已核验':'模型配置身份；未验证权重'}</p>{result?.response_model&&<small>服务返回模型：{result.response_model}</small>}</Card>
   <Card title={answer?'已提交回答':'模型作答'}><LiveOutput live={live} nodeId="solver" round={0} operationKey={`rag:${config.question_key}:${model?.id}`} terminal={terminal}/>
    {answer?<><p className="rag-answer">{answer.ranking.join(' → ')}</p><p className="rag-answer">{typeof answer.rationale==='string'?answer.rationale:JSON.stringify(answer.rationale)}</p></>:<p>{terminal?'没有通过校验并提交的回答。':'等待模型返回并校验完整回答。'}</p>}
   </Card>

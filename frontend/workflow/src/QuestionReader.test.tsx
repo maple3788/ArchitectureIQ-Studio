@@ -4,6 +4,13 @@ import { QuestionReader } from "./QuestionReader";
 import { useLayoutEffect, useEffect } from "react";
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+const candidateCard=(letter:string)=>within(screen.getByRole('group',{name:'候选参数对比'})).getByRole('article',{name:`候选 ${letter}`});
+function parameterRow(letter:string,id:string){
+  const row=Array.from(candidateCard(letter).querySelectorAll<HTMLDivElement>('.question-reader-option-row')).find(row=>row.dataset.parameter===id);
+  expect(row,`候选 ${letter} 应展示参数 ${id}`).toBeTruthy();
+  return row!;
+}
+const parameterValue=(letter:string,id:string)=>parameterRow(letter,id).querySelector('.parameter-value')?.textContent;
 const choice = (letter: string, activation: string, budget: number) => ({
   letter,
   candidateId: `candidate-${letter}`,
@@ -43,17 +50,17 @@ it('retains an immediate first tab selection instead of overwriting it in a dela
 
 it("compares effective candidate specs and highlights differences without assuming equal budgets", () => {
   render(<QuestionReader record={record}/>);
-  expect(screen.getByRole("heading", {name:"候选对比"})).toBeTruthy();
-  const activation = screen.getByText("激活函数").closest("tr")!;
-  expect(activation.classList.contains("is-different")).toBe(true);
-  expect(activation.textContent).toContain("gelu");
-  expect(activation.textContent).toContain("relu");
-  const width = screen.getByText("隐藏宽度").closest("tr")!;
-  expect(width.classList.contains("is-different")).toBe(false);
-  const budget = screen.getByText("累计处理量").closest("tr")!;
-  expect(budget.classList.contains("is-different")).toBe(true);
-  expect(budget.textContent).toContain("8192");
-  expect(budget.textContent).toContain("4096");
+  expect(screen.getByRole("heading", {name:"选项"})).toBeTruthy();
+  for(const letter of ['A','B']){
+    const activation=parameterRow(letter,'model.activation');
+    expect(activation.querySelector('.parameter-label')?.textContent).toBe('激活函数');
+    expect(activation.classList.contains('is-different')).toBe(true);
+    expect(parameterRow(letter,'model.width').classList.contains('is-different')).toBe(false);
+    expect(parameterValue(letter,'model.width')).toBe('64');
+    expect(parameterRow(letter,'budget.total_samples_seen').classList.contains('is-different')).toBe(true);
+  }
+  expect(['A','B'].map(letter=>parameterValue(letter,'model.activation'))).toEqual(['gelu','relu']);
+  expect(['A','B'].map(letter=>parameterValue(letter,'budget.total_samples_seen'))).toEqual(['8192','4096']);
   expect(screen.queryByText(/WRONG-SOURCE/)).toBeNull();
 });
 
@@ -81,8 +88,8 @@ it("uses public views when files are unavailable, supports arbitrary choices, an
     {letter:"Z",view:{model_type:"custom-model",width:96}},
   ]}}}/>);
   expect(screen.getByRole("heading",{name:"future_family"})).toBeTruthy();
-  expect(within(screen.getByRole("table",{name:"候选参数对比"})).getByRole("columnheader",{name:"候选 Z"})).toBeTruthy();
-  expect(screen.getByText("累计处理量").closest("tr")!.textContent).toContain("未记录");
+  expect(['W','X','Y','Z'].map(letter=>candidateCard(letter).getAttribute('aria-label'))).toEqual(['候选 W','候选 X','候选 Y','候选 Z']);
+  expect(['W','X','Y','Z'].map(letter=>parameterValue(letter,'budget.total_samples_seen'))).toEqual(['100','200','未记录','未记录']);
   expect(screen.queryByText("训练集样本数")).toBeNull();
   fireEvent.click(screen.getByRole("tab",{name:"原始 Prompt"}));
   expect(screen.getByText("此记录未提供原始 Prompt。")).toBeTruthy();
@@ -97,8 +104,7 @@ it('explains recorded language-model training windows without inventing steps or
  expect(note.textContent).toContain('累计处理量 = 训练步数 × 每批数量');
  expect(note.textContent).toContain('不是训练集的去重大小');
  expect(screen.queryByText('训练集样本数')).toBeNull();
- const steps=screen.queryByText('训练步数')?.closest('tr');
- if(steps)expect(steps.textContent).toContain('未记录');
+ expect(screen.getByRole('group',{name:'候选参数对比'}).querySelector('[data-parameter="budget.training_steps"]')).toBeNull();
 });
 
 it("opens complete authoritative dataset rules from the overview with safe formatting", () => {
@@ -119,10 +125,12 @@ it("keeps shared parameters alongside differences without a collapsed common-set
   b.files["candidate_spec.json"].optimizer.lr=0.01;
   render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
   expect(screen.getByRole("tab",{name:"题目概览"}).getAttribute("aria-selected")).toBe("true");
-  const table=screen.getByRole("table",{name:"候选参数对比"});
-  expect(table.textContent).toContain("学习率");
-  expect(table.textContent).toContain("隐藏宽度");
-  expect(table.closest('details')).toBeNull();
+  for(const letter of ['A','B']){
+    expect(parameterRow(letter,'optimizer.lr').querySelector('.parameter-label')?.textContent).toBe('学习率');
+    expect(parameterRow(letter,'model.width').querySelector('.parameter-label')?.textContent).toBe('隐藏宽度');
+    expect(parameterRow(letter,'model.width').closest('details')).toBeNull();
+    expect(parameterRow(letter,'optimizer.lr').classList.contains('is-different')).toBe(true);
+  }
   expect(screen.queryByText("共同设置")).toBeNull();
 });
 
@@ -130,8 +138,7 @@ it("aligns public choices by candidate id when letters are absent and source ord
   const first=choice("A","gelu",8192), second=choice("B","relu",4096);
   const {letter: _firstLetter,...a}=first, {letter: _secondLetter,...b}=second;
   render(<QuestionReader record={{detail:{choices:[b,a]},public:{choices:[{id:first.candidateId},{id:second.candidateId}]}}}/>);
-  const row=screen.getByText("激活函数").closest("tr")!;
-  expect(Array.from(row.querySelectorAll("td")).map(cell=>cell.textContent)).toEqual(["gelu","relu"]);
+  expect(['1','2'].map(letter=>parameterValue(letter,'model.activation'))).toEqual(['gelu','relu']);
 });
 
 it("preserves layer patterns, language model axes and explicit zero values in mixed comparisons", ()=>{
@@ -140,48 +147,66 @@ it("preserves layer patterns, language model axes and explicit zero values in mi
   Object.assign(b.files["candidate_spec.json"].model,{type:"transformer_lm",num_heads:4,d_ff:64});
   Object.assign(a.files["candidate_spec.json"].optimizer,{weight_decay:0,momentum:0});
   render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
-  expect(screen.getByText("逐层归一化").closest("tr")!.textContent).toContain("开启 / 关闭 / 开启");
-  expect(screen.getByText("Leaky ReLU 负半轴斜率").closest("tr")!.textContent).toContain("0.01");
-  expect(screen.getByText("逐层残差").closest("tr")!.textContent).toContain("关闭");
-  expect(screen.getByText("注意力头数").closest("tr")!.textContent).toContain("4");
-  expect(screen.getByText("权重衰减").closest("tr")!.querySelector("td")!.textContent).toBe("0");
-  expect(screen.getByText("动量").closest("tr")!.querySelector("td")!.textContent).toBe("0");
+  expect(parameterValue('A','model.layer_norm')).toBe('(yes, no, yes)');
+  expect(parameterValue('A','model.leaky_relu_slope')).toBe('0.01');
+  expect(parameterValue('A','model.layer_residual')).toBe('no');
+  expect(parameterValue('B','model.num_heads')).toBe('4');
+  expect(parameterValue('A','optimizer.weight_decay')).toBe('0');
+  expect(parameterValue('A','optimizer.momentum')).toBe('0');
+});
+
+it('keeps two-layer switch tuples together and visible without expanding a configuration',()=>{
+ const a=choice('A','gelu',8192),b=choice('B','gelu',8192);
+ Object.assign(a.files['candidate_spec.json'].model,{depth:2,layer_norm:[true,false],layer_residual:[false,true]});
+ Object.assign(b.files['candidate_spec.json'].model,{depth:2,layer_norm:[false,true],layer_residual:[false,true]});
+ render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
+ expect(parameterValue('A','model.layer_norm')).toBe('(yes, no)');
+ expect(parameterValue('B','model.layer_norm')).toBe('(no, yes)');
+ for(const letter of ['A','B']){
+  expect(parameterValue(letter,'model.layer_residual')).toBe('(no, yes)');
+  expect(parameterRow(letter,'model.layer_norm').classList.contains('is-different')).toBe(true);
+  expect(parameterRow(letter,'model.layer_residual').classList.contains('is-different')).toBe(false);
+  expect(parameterRow(letter,'model.layer_norm').closest('details')).toBeNull();
+  expect(candidateCard(letter).querySelector('[data-parameter^="model.layer_norm["]')).toBeNull();
+ }
 });
 
 it('compares every candidate immediately without answer selection or comparison checkboxes',()=>{
  const third=choice('C','tanh',2048);
  const value={...record,detail:{...record.detail,choices:[...record.detail.choices,third]}};
  const {rerender}=render(<QuestionReader record={value} interactive questionKey="q@v1"/>);
- const comparison=screen.getByRole('table',{name:'候选参数对比'});
- for(const letter of ['A','B','C'])expect(within(comparison).getByRole('columnheader',{name:`候选 ${letter}`})).toBeTruthy();
+ const comparison=screen.getByRole('group',{name:'候选参数对比'});
+ for(const letter of ['A','B','C'])expect(within(comparison).getByRole('article',{name:`候选 ${letter}`})).toBeTruthy();
  expect(screen.queryByRole('radio')).toBeNull();
  expect(screen.queryByRole('checkbox')).toBeNull();
  expect(comparison.textContent).toContain('tanh');
  expect(document.body.textContent).not.toMatch(/SECRET-WINNER|SECRET-METRIC|WRONG-SOURCE/);
  rerender(<QuestionReader record={value} interactive questionKey="q@v2"/>);
- expect(screen.getByRole('table',{name:'候选参数对比'})).toBeTruthy();
+ expect(screen.getByRole('group',{name:'候选参数对比'})).toBeTruthy();
 });
 
 it('shows unknown nested public parameters, explicit empty values and missing values in the comparison',()=>{
  const a:any=choice('A','gelu',8192),b:any=choice('B','gelu',8192),c:any=choice('C','gelu',8192);
  for(const item of [a,b,c])Object.assign(item.files['candidate_spec.json'],{
   execution:{precision:'float32',scheduler:{phases:[{warmup:5},{decay:0.1}]}},
-  future_config:{retained_zero:0,retained_false:false,empty_list:[],empty_object:{}},
+  future_config:{retained_zero:0,retained_false:false,empty_list:[],empty_object:{},retained_null:null},
   private_metrics:{correctLetter:'SECRET-CAMEL',seed_results:[{value:'SECRET-NESTED'}]},
  });
  b.files['candidate_spec.json'].execution.scheduler.phases[1].decay=0.2;
  delete c.files['candidate_spec.json'].future_config.retained_zero;
+ delete c.files['candidate_spec.json'].future_config.retained_null;
  const {container}=render(<QuestionReader record={{detail:{choices:[a,b,c]}}}/>);
- const table=screen.getByRole('table',{name:'候选参数对比'});
- expect(table.textContent).toContain('retained-option');
- const decay=within(table).getByText('scheduler.phases[1].decay').closest('tr')!;
- expect(Array.from(decay.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['0.1','0.2','0.1']);
- expect(decay.classList.contains('is-different')).toBe(true);
- const missing=within(table).getByText('future_config.retained_zero').closest('tr')!;
- expect(Array.from(missing.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['0','0','未记录']);
- expect(table.textContent).toContain('空列表');
- expect(table.textContent).toContain('{}');
- expect(table.textContent).toContain('关闭');
+ expect(['A','B','C'].map(letter=>parameterValue(letter,'execution.scheduler.phases[1].decay'))).toEqual(['0.1','0.2','0.1']);
+ expect(['A','B','C'].map(letter=>parameterValue(letter,'other.future_config.retained_zero'))).toEqual(['0','0','未记录']);
+ expect(['A','B','C'].map(letter=>parameterValue(letter,'other.future_config.retained_null'))).toEqual(['null','null','未记录']);
+ for(const letter of ['A','B','C']){
+  expect(parameterValue(letter,'model.future_option')).toBe('retained-option');
+  expect(parameterRow(letter,'execution.scheduler.phases[1].decay').classList.contains('is-different')).toBe(true);
+  expect(parameterRow(letter,'other.future_config.retained_null').classList.contains('is-different')).toBe(true);
+  expect(parameterValue(letter,'other.future_config.empty_list')).toBe('()');
+  expect(parameterValue(letter,'other.future_config.empty_object')).toBe('{}');
+  expect(parameterValue(letter,'other.future_config.retained_false')).toBe('no');
+ }
  expect(container.textContent).not.toMatch(/SECRET-CAMEL|SECRET-NESTED/);
 });
 
@@ -190,20 +215,17 @@ it('retains extra public-view fields without requiring a known feature label',()
   {id:'a',letter:'A',view:{model_type:'mlp',width:8,future_public_axis:3,custom:{shape:'linear'}}},
   {id:'b',letter:'B',view:{model_type:'mlp',width:16,future_public_axis:4,custom:{shape:'curved'}}},
  ]}}}/>);
- const table=screen.getByRole('table',{name:'候选参数对比'});
- expect(table.textContent).toContain('future_public_axis');
- expect(table.textContent).toContain('custom.shape');
- expect(table.textContent).toContain('linear');
- expect(table.textContent).toContain('curved');
+ expect(['A','B'].map(letter=>parameterValue(letter,'other.future_public_axis'))).toEqual(['3','4']);
+ expect(['A','B'].map(letter=>parameterValue(letter,'other.custom.shape'))).toEqual(['linear','curved']);
 });
 
 it('places supplied knowledge evidence immediately after the candidate comparison',()=>{
  render(<QuestionReader record={record} evidence={<section aria-label="本题知识依据">规则 C1 与真实反例</section>}/>);
- const table=screen.getByRole('table',{name:'候选参数对比'}),evidence=screen.getByRole('region',{name:'本题知识依据'});
- expect(table.compareDocumentPosition(evidence)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- const workspace=table.closest('.question-reader-comparison-workspace');
+ const comparison=screen.getByRole('group',{name:'候选参数对比'}),evidence=screen.getByRole('region',{name:'本题知识依据'});
+ expect(comparison.compareDocumentPosition(evidence)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ const workspace=comparison.closest('.question-reader-comparison-workspace');
  expect(workspace?.contains(evidence)).toBe(true);
- expect(screen.getByRole('heading',{name:'数据与条件'}).compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'数据与条件'}).compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('does not lose explicit empty sections or literal dotted keys when flattening candidate parameters',()=>{
@@ -211,13 +233,9 @@ it('does not lose explicit empty sections or literal dotted keys when flattening
  a.files['candidate_spec.json'].execution={};
  for(const candidate of [a,b])candidate.files['candidate_spec.json'].future_config={'axis.width':7,axis:{width:9}};
  render(<QuestionReader record={{detail:{choices:[a,b]}}}/>);
- const table=screen.getByRole('table',{name:'候选参数对比'});
- const literal=within(table).getByText('future_config.axis\\.width').closest('tr')!;
- const nested=within(table).getByText('future_config.axis.width').closest('tr')!;
- expect(Array.from(literal.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['7','7']);
- expect(Array.from(nested.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['9','9']);
- const empty=within(table).getByText('{}').closest('tr')!;
- expect(Array.from(empty.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['{}','未记录']);
+ expect(['A','B'].map(letter=>parameterValue(letter,'other.future_config.axis\\.width'))).toEqual(['7','7']);
+ expect(['A','B'].map(letter=>parameterValue(letter,'other.future_config.axis.width'))).toEqual(['9','9']);
+ expect(['A','B'].map(letter=>parameterValue(letter,'execution.'))).toEqual(['{}','未记录']);
 });
 
 
@@ -251,12 +269,12 @@ it('presents the concrete problem and dataset conditions before selectable candi
  render(<QuestionReader record={value} reviewSource={{kind:'catalog',key:'q@first'}}/>);
  const problem=screen.getByText(/^Predict a scalar from five input features\./);
  const data=screen.getByRole('heading',{name:'数据与条件'});
- const table=screen.getByRole('table',{name:'候选参数对比'});
+ const comparison=screen.getByRole('group',{name:'候选参数对比'});
  expect(problem.compareDocumentPosition(data)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(data.compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(within(table).getByRole('radio',{name:'选择 A'})).toBeTruthy();
+ expect(data.compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(within(candidateCard('A')).getByRole('radio',{name:'选择 A'})).toBeTruthy();
  expect(screen.getAllByRole('radio')).toHaveLength(2);
- fireEvent.click(within(table).getByRole('radio',{name:'选择 B'}));
+ fireEvent.click(within(candidateCard('B')).getByRole('radio',{name:'选择 B'}));
  expect((screen.getByRole('button',{name:'提交并查看结果'}) as HTMLButtonElement).disabled).toBe(false);
  expect(document.querySelector('.human-practice-reveal')).toBeNull();
 });

@@ -4,6 +4,7 @@ import { HumanQuestionPractice, type HumanReviewSource, type PracticeChoiceContr
 import { candidateListSummary, questionPromptSummary } from "./displayNames";
 import { questionPresentation } from "./questionPresentation";
 import {QuestionApplicableKnowledge} from "./QuestionApplicableKnowledge";
+import {candidateParameterValue} from "./candidateParameterValue";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -168,10 +169,11 @@ function QuestionReaderContent({record,questionKey,evidence:providedEvidence,rev
   const dataFacts = facts.length ? <dl className="question-reader-facts">{facts.map(key=><div key={key} className={key==="expression" ? "question-reader-expression" : ""}><dt>{labels[key] || key}</dt><dd>{text(params[key])}</dd></div>)}</dl>
     : <p className="question-reader-note">此记录未提供结构化数据条件，请查阅数据规则或原始 Prompt。</p>;
   const comparison=(controls?:PracticeChoiceControls)=><div className={`question-reader-comparison-workspace${evidence||showApplicableKnowledge&&applicableSource?' with-evidence':''}`}>
-    <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">全部参数并排 · 差异高亮</span></div>
-      {controls&&<p className="question-reader-note">点击候选名称选择答案，提交后查看正确答案与已保存的训练曲线。</p>}
-      {choices.length ? <ComparisonTable choices={choices} rows={rows} label="候选参数对比" controls={controls}/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
-      <details className="question-reader-parameter-help"><summary>如何阅读参数</summary><p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。</p></details>
+    <section className="question-reader-section"><div className="question-reader-section-title"><h3>选项</h3><span className="question-reader-legend"><i aria-hidden="true"/>高亮参数表示选项间存在差异</span></div>
+      {controls&&<p className="question-reader-note">选择一个选项，提交后查看正确答案与已保存的训练曲线。</p>}
+      {choices.length ? <CandidateOptions choices={choices} rows={rows} controls={controls}/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
+      {rows.some(row=>row.id==='model.layer_norm'||row.id==='model.layer_residual')&&<p className="question-reader-layer-help">逐层设置按层顺序排列：<code>(yes, no)</code> 表示第 1 层开启、第 2 层关闭。</p>}
+      <details className="question-reader-parameter-help"><summary>如何阅读参数</summary><p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。单个 yes 或 no 保留原始配置含义，不按层数扩写。</p></details>
     </section>
     {(evidence||showApplicableKnowledge&&applicableSource)&&<aside className="question-reader-evidence">{showApplicableKnowledge&&applicableSource&&<QuestionApplicableKnowledge source={applicableSource} knowledgeRef={knowledgeRef}/>} {evidence}</aside>}
   </div>;
@@ -248,13 +250,26 @@ function comparisonRows(choices:Json[]): ComparisonRow[] {
       label:key==="type"&&section.key==="optimizer"?"优化器类型":labels[key]||key||section.title,
       values:fields.map(value=>value.get(key))}));
   });
-  return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value??null))).size>1}));
+  return rows.map(row=>({...row,different:new Set(row.values.map(value=>JSON.stringify(value))).size>1}));
 }
-function ComparisonTable({choices,rows,label,controls}: {choices:Json[];rows:ComparisonRow[];label:string;controls?:PracticeChoiceControls}) {
-  return <div className="question-reader-table-wrap"><table className="question-reader-table" aria-label={label} style={choices.length>3?{minWidth:`${(choices.length+1)*115}px`}:undefined}><colgroup><col style={{width:'26%'}}/>{choices.map((choice,index)=><col key={`${choice.letter}-${index}`} style={{width:`${74/choices.length}%`}}/>)}</colgroup><thead><tr><th scope="col">比较项目</th>
-    {choices.map((choice,index)=><th scope="col" aria-label={`候选 ${choice.letter}`} className={controls?.selected===choice.identity?"is-selected":""} key={`${choice.letter}-${index}`}>{controls?<label className="question-reader-choice-label"><input type="radio" name={controls.name} aria-label={`选择 ${choice.letter}`} checked={controls.selected===choice.identity} disabled={controls.disabled} onChange={()=>controls.select(choice.identity)}/><span>候选 {choice.letter}<small>{text(choice.groups.model?.type??"训练方案")}</small></span></label>:<>候选 {choice.letter}</>}</th>)}</tr></thead>
-    <tbody>{rows.map((row,index)=><tr key={row.id} className={row.different ? "is-different" : ""}>
-      <th scope="row">{(index===0 || rows[index-1].title!==row.title) && <small className="question-reader-row-group">{row.title}</small>}{row.label}</th>
-      {row.values.map((value,index)=><td key={index}>{text(value)}</td>)}</tr>)}</tbody>
-  </table></div>;
+function CandidateOptions({choices,rows,controls}: {choices:Json[];rows:ComparisonRow[];controls?:PracticeChoiceControls}) {
+  // Shared row tracks keep matching parameters aligned even when a value wraps.
+  const rowCount=rows.length+1;
+  return <div className="question-reader-options-scroll" role="group" aria-label="候选参数对比" tabIndex={0}>
+    <div className="question-reader-option-cards" style={{gridTemplateColumns:`repeat(${choices.length}, minmax(180px, 1fr))`,gridTemplateRows:`repeat(${rowCount}, auto)`}}>
+      {choices.map((choice,index)=><article key={`${choice.letter}-${index}`} aria-label={`候选 ${choice.letter}`}
+        className={`question-reader-option-card${controls?.selected===choice.identity?' is-selected':''}`}
+        style={{gridColumn:index+1,gridRow:`1 / span ${rowCount}`}}>
+        <header className="question-reader-option-header">{controls?<label className="question-reader-choice-label">
+          <span><strong>{choice.letter}</strong><small>{text(choice.groups.model?.type??"训练方案")}</small></span>
+          <input type="radio" name={controls.name} aria-label={`选择 ${choice.letter}`} checked={controls.selected===choice.identity} disabled={controls.disabled} onChange={()=>controls.select(choice.identity)}/>
+        </label>:<span className="question-reader-choice-label"><span><strong>{choice.letter}</strong><small>{text(choice.groups.model?.type??"训练方案")}</small></span></span>}</header>
+        {rows.map((row,rowIndex)=><div key={row.id} data-parameter={row.id}
+          className={`question-reader-option-row${row.different?' is-different':''}${rowIndex===0||rows[rowIndex-1].title!==row.title?' starts-group':''}`}>
+          {(rowIndex===0||rows[rowIndex-1].title!==row.title)&&<small className="question-reader-row-group">{row.title}</small>}
+          <span className="parameter-label">{row.label}</span><span className="parameter-value">{candidateParameterValue(row.values[index])}</span>
+        </div>)}
+      </article>)}
+    </div>
+  </div>;
 }
