@@ -148,6 +148,40 @@ def _public_question(value: dict) -> dict:
     return result
 
 
+def candidate_configs(record: dict) -> list[dict]:
+    """Compact public configurations for lists, without changing frozen records.
+
+    Effective recorded specs take precedence over derived views. Older view-only
+    questions retain only the already public structural features that are present.
+    """
+    details = _object(record.get('detail')).get('choices', [])
+    details = details if isinstance(details, list) else []
+    result = []
+    for choice in _public_question(_object(record.get('public')))['choices']:
+        detail = next((item for item in details if isinstance(item, dict)
+                       and item.get('candidateId') == choice.get('id')), {})
+        raw_spec = _object(_object(detail.get('files')).get('candidate_spec.json'))
+        spec = _spec(raw_spec, _CANDIDATE_KEYS)
+        groups = {name: _object(spec.get(name)) for name in ('model', 'optimizer', 'loss', 'budget')}
+        if not spec:
+            view = choice['view']
+            for name, key in (('model', 'arch_key'), ('optimizer', 'opt_key'), ('loss', 'loss_key')):
+                if key in view:
+                    groups[name] = _object(json.loads(view[key]))
+            aliases = {'model': {'type': 'model_type', 'depth': 'depth', 'width': 'width',
+                                 'activation': 'activation', 'residual': 'residual'},
+                       'optimizer': {'type': 'opt', 'lr': 'lr', 'weight_decay': 'weight_decay',
+                                     'momentum': 'momentum'},
+                       'budget': {'total_samples_seen': 'budget', 'training_steps': 'steps',
+                                  'batch_size': 'batch_size'}}
+            for name, fields in aliases.items():
+                for field, key in fields.items():
+                    if field not in groups[name] and view.get(key) is not None:
+                        groups[name][field] = view[key]
+        result.append({'letter': choice.get('letter'), **groups})
+    return result
+
+
 def _read(path: Path, boundary: Path) -> Any:
     path = _bound(path, boundary)
     def invalid(value):
@@ -675,6 +709,7 @@ class Catalog:
                 summary = {**json.loads(row["summary"]), "source_count": row["source_count"]}
                 stored = _read(self.root / 'records' / (row['hash'] + '.json'), self.root)
                 summary['rag_ready'] = rag_ready(_public_question(stored['public']))
+                summary['candidate_configs'] = candidate_configs(stored)
                 query = "SELECT issues, blocked FROM aliases WHERE key=?"
                 alias_params = [summary["key"]]
                 if source_id:
@@ -717,6 +752,7 @@ class Catalog:
         # so older snapshots cannot bypass tightened import projections.
         record["public"] = _public_question(record["public"])
         record['metadata']['rag_ready'] = rag_ready(record['public'])
+        record['metadata']['candidate_configs'] = candidate_configs(record)
         if "pair_provenance" in record["detail"]:
             record["detail"]["pair_provenance"] = pair_provenance(record["detail"]["pair_provenance"])
         for choice in record["detail"].get("choices", []):

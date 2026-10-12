@@ -125,9 +125,11 @@ it('reads conditions and stored comparisons without treating evidence aliases as
  fireEvent.click(screen.getByText('q-evidence-1').closest('summary')!);
  const rows=within(screen.getByRole('table')).getAllByRole('row');
  expect(rows).toHaveLength(3);
- expect(rows[1].textContent).toBe('候选 2 优于 候选 1候选 1 优于 候选 2反例');
- expect(rows[2].textContent).toBe('候选 3 优于 候选 2候选 3 优于 候选 2支持');
- expect(screen.getByText('候选编号按这份证据中的来源顺序排列，不代表原题选项字母。')).toBeTruthy();
+ expect(rows[1].textContent).toBe('模型未记录 · 宽度 16 优于 模型未记录 · 宽度 32模型未记录 · 宽度 32 优于 模型未记录 · 宽度 16反例');
+ expect(rows[2].textContent).toBe('模型未记录 · 宽度 64 优于 模型未记录 · 宽度 16模型未记录 · 宽度 64 优于 模型未记录 · 宽度 16支持');
+ expect(screen.getByText('按保存的候选配置比较；完整题目中可选择答案并检查训练结果。')).toBeTruthy();
+ expect(screen.getByText('continuous · 比较 3 个训练方案')).toBeTruthy();
+ expect(screen.getByText('模型未记录 · 宽度 16', {selector:'.evolution-candidate-briefs strong'})).toBeTruthy();
  expect(screen.getByText('另有 1 个内部冲突的比较被来源跳过，不参与这道题的支持或推翻判定。')).toBeTruthy();
  expect(screen.getByText('候选配置与完整证据').closest('details')?.hasAttribute('open')).toBe(false);
 });

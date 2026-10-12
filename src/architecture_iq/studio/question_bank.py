@@ -2,7 +2,7 @@
 from contextlib import closing
 import json
 
-from .catalog import Catalog, _hash, _public_question, rag_ready
+from .catalog import Catalog, _hash, _public_question, rag_ready, candidate_configs
 from .question_equivalence import STRATEGY, equivalence_id
 
 
@@ -52,7 +52,8 @@ def _indexed_question(catalog: Catalog, key: str, row=None) -> dict:
             raise ValueError('Question record is unavailable')
         record = catalog._load_frozen_record(key)
         public = _public_question(record['public'])
-        summary = {**record['metadata'], 'prompt': public['prompt'], 'rag_ready': rag_ready(public)}
+        summary = {**record['metadata'], 'prompt': public['prompt'], 'rag_ready': rag_ready(public),
+                   'candidate_configs': candidate_configs(record)}
         entry = {'summary': summary, 'identity': equivalence_id(record, question_key=key), 'status': 'verified'}
         after = path.stat()
         if fingerprint != (row['hash'], after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):

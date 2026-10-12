@@ -304,7 +304,43 @@ def process_state(root: Path) -> str:
     return 'unknown' if unknown else 'stopped'
 
 
-def collect_question(root: Path, artifact_root: Path, identifier: str) -> dict:
+def _stored_curve(data, *, candidate_id, letter, metric):
+    """Summarize saved seed curves at their saved axis; never run the engine."""
+    if data is None:
+        return None
+    import io
+    import zipfile
+    try:
+        import numpy as np
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if sum(info.file_size for info in archive.infolist()) > MAX_FILE_BYTES:
+                return None
+        with np.load(io.BytesIO(data), allow_pickle=False) as archive:
+            if 'curves' not in archive or 'samples' not in archive:
+                return None
+            curves, samples = archive['curves'], archive['samples']
+            if (curves.dtype.kind not in 'fiu' or samples.dtype.kind not in 'fiu'
+                    or curves.ndim != 2 or samples.ndim != 1 or not 1 <= len(samples) <= 100000
+                    or curves.shape[1] != len(samples) or not 1 <= curves.shape[0] <= 1000
+                    or curves.size > 1000000 or not np.all(np.isfinite(samples))
+                    or not np.all(np.diff(samples) > 0)):
+                return None
+            # Failed seeds are saved as NaNs. Retain real sample positions and
+            # omit a curve when any position has no saved finite observation.
+            valid = np.isfinite(curves)
+            if not np.all(valid.sum(axis=0) > 0):
+                return None
+            saved = np.where(valid, curves, np.nan)
+            means, deviations = np.nanmean(saved, axis=0), np.nanstd(saved, axis=0)
+            if not np.all(np.isfinite(means)) or not np.all(np.isfinite(deviations)):
+                return None
+            return {'candidateId': candidate_id, 'letter': letter, 'metric': metric,
+                    'samples': samples.tolist(), 'mean': means.tolist(), 'std': deviations.tolist()}
+    except (ImportError, ValueError, TypeError, KeyError, OSError, zipfile.BadZipFile):
+        return None
+
+
+def collect_question(root: Path, artifact_root: Path, identifier: str, *, include_results=False) -> dict:
     """Read one completed question, without importing or running the engine.
 
     Source build receipts authorize the lookup. The browser's identifier never
@@ -362,6 +398,8 @@ def collect_question(root: Path, artifact_root: Path, identifier: str) -> dict:
     if not isinstance(raw_choices, list) or not 1 <= len(raw_choices) <= 26:
         raise SourceUnavailable('Question choices unavailable')
     choices, details, ids, letters = [], [], set(), set()
+    metric = question.get('evaluation', {}).get('selection_metric') or dataset.get('selection_metric')
+    feedback = {'candidate_metrics': {}, 'reveal': {'curves': []}}
     for item in raw_choices:
         cid, letter, reference = item.get('candidate_id'), item.get('letter'), item.get('candidate_path')
         if (not isinstance(cid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', cid)
@@ -382,20 +420,46 @@ def collect_question(root: Path, artifact_root: Path, identifier: str) -> dict:
                 files[filename] = code.decode('utf-8')
         choices.append({'id': cid, 'letter': letter, 'view': {}})
         details.append({'candidateId': cid, 'letter': letter, 'files': files})
+        if include_results:
+            # Read only the canonical saved result files, never their generated
+            # train.py, callable modules, configurations, or private environment.
+            raw = artifacts.read(str(candidate / 'results' / 'summary.json'))
+            summary = json.loads(raw, parse_constant=lambda _: None) if raw is not None else None
+            if summary is not None:
+                if not isinstance(summary, dict) or summary.get('candidate_id') != cid:
+                    raise SourceUnavailable('Result candidate identity mismatch')
+                if summary.get('selection_metric', summary.get('metric', metric)) != metric:
+                    raise SourceUnavailable('Result metric differs from question')
+                shown = _pick(summary, ('selection_metric', 'metric', 'n_seeds', 'failed_seeds', 'excluded'))
+                shown.update({key: value for key, value in summary.items()
+                              if re.fullmatch(r'(mean|std)_(test|train)_[a-z0-9_]{1,48}', key)
+                              and type(value) in (int, float) and math.isfinite(value)})
+                feedback['candidate_metrics'][cid] = shown
+            curve = _stored_curve(artifacts.read(str(candidate / 'results' / 'curves.npz')),
+                                  candidate_id=cid, letter=letter, metric=metric)
+            if curve:
+                feedback['reveal']['curves'].append(curve)
         ids.add(cid)
         letters.add(letter)
     source.finish()
     artifacts.finish()
-    return {'metadata': {'id': identifier, **_pick(question, ('family', 'dataset_id', 'type', 'profile')),
+    result = {'metadata': {'id': identifier, **_pick(question, ('family', 'dataset_id', 'type', 'profile')),
                          'metric': question.get('evaluation', {}).get('selection_metric') or dataset.get('selection_metric')},
             'public': {'id': identifier, 'family': family, 'dataset_id': dataset_id, 'prompt': prompt, 'choices': choices},
             'detail': {'prompt': prompt, 'dataset': {'files': ds_files}, 'choices': details}}
+    if include_results:
+        if question.get('correct_letter') in letters:
+            feedback['correct_letter'] = question['correct_letter']
+        result['feedback'] = feedback
+    return result
 
 
 if __name__ == '__main__':
     try:
         source_root = Path(sys.argv[1])
-        result = collect_question(source_root, Path(sys.argv[3]), sys.argv[4]) if len(sys.argv) == 5 and sys.argv[2] == '--question' else collect(source_root, process_state(source_root))
+        result = (collect_question(source_root, Path(sys.argv[3]), sys.argv[4], include_results=sys.argv[2] == '--practice')
+                  if len(sys.argv) == 5 and sys.argv[2] in {'--question', '--practice'}
+                  else collect(source_root, process_state(source_root)))
         print(json.dumps(result, ensure_ascii=False, allow_nan=False))
     except KeyError:
         print(json.dumps({'error': 'question_missing'}))

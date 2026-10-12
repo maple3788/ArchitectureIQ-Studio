@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {ArrowUpRight,ChevronRight} from 'lucide-react';
 import {api} from './api';
+import {evidenceQuestionSummary} from './evidenceQuestionSummary';
 import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs} from './ui';
 import {ResearchPathCanvas} from './ResearchPathCanvas';
 import {ruleConditions} from './ruleKnowledgePresentation';
@@ -52,15 +53,13 @@ function RuleBranches({rules}:{rules:Json[]}){
 }
 
 function EvidenceComparisons({row}:{row:Json}){
-  // These aliases describe this saved evidence only, never a question's answer letters.
-  const ids=Object.keys(row.question?.candidates??{});
-  const aliases=new Map(ids.map((id,index)=>[id,`候选 ${index+1}`]));
-  const alias=(id:unknown)=>aliases.get(String(id))??'未记录的候选';
+  const brief=evidenceQuestionSummary(row.question),alias=brief.alias;
   const pairs=(Array.isArray(row.pairs)?row.pairs:[]).filter((pair:unknown)=>Array.isArray(pair)&&pair.length>=2) as unknown[][];
   const relation=(better:unknown,worse:unknown)=>`${alias(better)} 优于 ${alias(worse)}`;
   return <>
+    <div className="evolution-question-brief"><h4>{brief.title}</h4><p>{brief.description}</p><div className="evolution-candidate-briefs">{brief.candidates.map(candidate=><div key={candidate.id}><strong>{candidate.label}</strong><small>{candidate.id}</small></div>)}</div></div>
     {pairs.length?<div className="evolution-comparison-scroll"><table className="evolution-comparisons"><thead><tr><th>存储结果</th><th>规则预测</th><th>检验</th></tr></thead><tbody>{pairs.map((pair,index)=><tr key={index}><td>{relation(pair[0],pair[1])}</td><td>{pair[2]===true?relation(pair[0],pair[1]):pair[2]===false?relation(pair[1],pair[0]):'未记录'}</td><td>{pair[2]===true?'支持':pair[2]===false?'反例':'待判定'}</td></tr>)}</tbody></table></div>:<p className="evolution-note">这条记录没有保存可阅读的比较关系。</p>}
-    <p className="evolution-note">候选编号按这份证据中的来源顺序排列，不代表原题选项字母。</p>
+    <p className="evolution-note">按保存的候选配置比较；完整题目中可选择答案并检查训练结果。</p>
     {typeof row.conflicts==='number'&&row.conflicts>0&&<p className="evolution-warning">另有 {row.conflicts} 个内部冲突的比较被来源跳过，不参与这道题的支持或推翻判定。</p>}
     <details className="evolution-raw-record"><summary>候选配置与完整证据</summary><JsonView value={{comparisons:row.pairs,conflicts:row.conflicts,question:row.question}}/></details>
   </>;
@@ -82,7 +81,6 @@ function ClaimReader({data,onQuestion,onTask}:{data:EvolutionClaimDetail;onQuest
       <p className="evolution-note">{data.evidence_truncated?`展示最近 ${data.evidence.length} 条，共 ${data.evidence_total} 条证据。`:`共 ${data.evidence_total} 条证据。`}</p>
       {data.evidence.length?data.evidence.map((row,index)=><details className="evolution-evidence-row" key={`${row.question_id}-${row.round}-${index}`}>
         <summary><span>{row.question_id}</span><span>第 {row.round} 轮 · {({support:'支持',refute:'推翻'} as Record<string,string>)[row.outcome]??row.outcome}</span></summary>
-        {row.question&&<p className="evolution-note">{row.question.family} · {row.question.type} · {row.question.purpose==='target'?'定向题':'探索题'}</p>}
         <button className="loop-open-question" aria-label={`阅读完整题目 ${row.question_id}`} onClick={()=>onQuestion(row.question_id)}>阅读完整题目 <ArrowUpRight size={14}/></button>
         <EvidenceComparisons row={row}/>
       </details>):<p>登记后的适用题证据尚未积累。</p>}

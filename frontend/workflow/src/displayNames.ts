@@ -22,29 +22,52 @@ export function questionLabel(question?: Json, ordinal?: number): string {
   const name = [familyLabel(q.family), q.type ? typeLabel(q.type) : undefined].filter(Boolean).join(' · ');
   return ordinal === undefined ? name : `${name} · 第 ${ordinal} 题`;
 }
+const modelNames:Record<string,string>={mlp:'MLP',linear:'线性模型',gru_lm:'GRU',transformer_lm:'Transformer',gru:'GRU',transformer:'Transformer',lstm:'LSTM',lstm_lm:'LSTM',cnn:'CNN',convnet:'ConvNet',resnet:'ResNet'};
+const compact=(value:string,max=32)=>value.length>max?value.slice(0,max-1)+'…':value;
+const displayValue=(value:unknown):string=>value==null?'未记录':typeof value==='boolean'?value?'开启':'关闭':
+  Array.isArray(value)?compact(value.map(displayValue).join('/')):typeof value==='number'&&Number.isFinite(value)?String(value):
+  typeof value==='string'?compact(value):'未记录';
+const modelName=(value:unknown)=>typeof value==='string'&&value?modelNames[value.toLowerCase()]||compact(value):'模型未记录';
+type CandidateBrief={letter:string;label:string};
+const comparisonFields=[
+  ['model','depth','深度'],['model','num_layers','层数'],['model','width','宽度'],['model','d_model','表示维度'],
+  ['optimizer','type','优化器'],['optimizer','lr','学习率'],['model','activation','激活'],['model','num_heads','注意力头数'],
+  ['model','residual','残差'],['model','layer_norm','归一化'],['optimizer','weight_decay','权重衰减'],
+  ['optimizer','momentum','动量'],['optimizer','betas','动量系数'],['loss','loss_id','损失'],['loss','type','损失'],['loss','lambda','损失系数'],
+] as const;
+/** Names only recorded public differences; no answer, prompt, or result is consulted. */
+export function candidateListSummary(input:unknown,type?:string):{title:string;candidates:CandidateBrief[]}{
+  const configs:Json[]=Array.isArray(input)?input.filter(value=>value&&typeof value==='object'&&!Array.isArray(value)):[];
+  if(!configs.length)return {title:'',candidates:[]};
+  const models=[...new Set(configs.map(config=>modelName(config.model?.type)))];
+  const ordered=[...comparisonFields].sort((a,b)=>{
+    const group=type?.startsWith('optimizer')?'optimizer':type?.startsWith('loss')?'loss':'model';
+    return Number(b[0]===group)-Number(a[0]===group);
+  });
+  const changed=ordered.filter(([group,key])=>new Set(configs.map(config=>JSON.stringify(config[group]?.[key]??null))).size>1).slice(0,2);
+  const series=(values:string[],separator=' / ')=>{const unique=[...new Set(values)];return unique.slice(0,4).join(separator)+(unique.length>4?` 等 ${unique.length} 种`:'');};
+  const differences=changed.map(([group,key,label])=>`${label} ${series(configs.map(config=>displayValue(config[group]?.[key])))}`);
+  const title=compact([series(models,' vs '),...differences].join(' · '),128);
+  const candidates=configs.map(config=>({letter:typeof config.letter==='string'?config.letter:'?',
+    label:[modelName(config.model?.type),...changed.map(([group,key,label])=>`${label} ${displayValue(config[group]?.[key])}`)].join(' · ')}));
+  return {title,candidates};
+}
 /** Compact list copy uses public metadata, never prompt excerpts or stored answers. */
-export function questionListSummary(question?: Json):{title:string;description:string;models:string[];facts:string[]}{
+export function questionListSummary(question?:Json):{title:string;description:string;candidates:CandidateBrief[];shortId:string}{
   const q=question?.metadata??question?.public??question??{};
   const comparisons:Record<string,string>={architecture_only:'架构选择',architecture:'架构选择',optimizer_only:'优化器选择',optimizer:'优化器选择',loss_only:'损失函数选择',loss:'损失函数选择',mixed:'训练方案比较'};
-  const title=[familyLabel(q.family),q.type?(comparisons[q.type]||typeLabel(q.type)):undefined].filter(Boolean).join(' · ');
-  const modelNames:Record<string,string>={mlp:'MLP',linear:'线性模型',gru_lm:'GRU',transformer_lm:'Transformer',gru:'GRU',transformer:'Transformer',lstm:'LSTM',lstm_lm:'LSTM',cnn:'CNN',convnet:'ConvNet',resnet:'ResNet'};
-  const models=[...new Set<string>((Array.isArray(q.model_types)?q.model_types:[]).filter((model:unknown):model is string=>typeof model==='string'&&!!model.trim()).map((model:string)=>modelNames[model]||model))];
-  const metricNames:Record<string,string>={test_ce:'测试交叉熵',test_mse:'测试均方误差',test_acc:'测试准确率',test_accuracy:'测试准确率',test_loss:'测试损失',ce:'交叉熵',mse:'均方误差',accuracy:'准确率'};
-  const metric=typeof q.metric==='string'&&q.metric.trim()?(metricNames[q.metric]||q.metric):undefined;
-  const choices=Array.isArray(q.choices)?q.choices.length:q.choices;
-  const count=Number.isInteger(choices)&&choices>0?choices:undefined;
-  const description=count?`比较 ${count} 个候选方案${metric?`，按${metricNames[q.metric]?'':' '}${metric}${metricNames[q.metric]?'':' '}评价表现`:'的公开配置'}。`:metric?`按 ${metric} 评价候选表现。`:'打开题目，查看公开条件与候选配置。';
-  const facts:string[]=[];
-  const number=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)&&value>=0?value.toLocaleString('zh-CN',{maximumFractionDigits:6}):undefined;
-  if(typeof q.budget==='number'){
-    const amount=number(q.budget);if(amount!==undefined)facts.push(`训练预算 ${amount}`);
-  }else if(q.budget&&typeof q.budget==='object'){
-    const samples=number(q.budget.total_samples_seen),steps=number(q.budget.training_steps),batch=number(q.budget.batch_size);
-    if(samples!==undefined)facts.push(`训练总量 ${samples} 样本`);
-    if(steps!==undefined)facts.push(`训练 ${steps} 步`);
-    if(batch!==undefined)facts.push(`每批 ${batch} 样本`);
-  }
-  return {title,description,models,facts};
+  const kind=q.type?(comparisons[q.type]||typeLabel(q.type)):'';
+  const description=[q.family?familyLabel(q.family):'',kind].filter(Boolean).join(' · ');
+  const actual=candidateListSummary(q.candidate_configs,q.type);
+  const models=[...new Set<string>((Array.isArray(q.model_types)?q.model_types:[]).filter((value:unknown)=>typeof value==='string'&&value).map(modelName))];
+  const fallback=models.length>1?models.join(' vs '):[models[0]||familyLabel(q.family),kind].filter(Boolean).join(' · ');
+  const id=typeof q.id==='string'?q.id.split('@')[0].split('/').pop()||'':'';
+  const shortId=id.startsWith('q_')?id.slice(0,10):compact(id,14);
+  return {title:actual.title||fallback,description,candidates:actual.candidates,shortId};
+}
+export function datasetTypeDistribution(counts?:Record<string,number>):string[]{
+  return Object.entries(counts??{}).filter(([,count])=>Number.isInteger(count)&&count>0)
+    .sort(([a],[b])=>a.localeCompare(b)).map(([type,count])=>`${typeLabel(type)} ${count} 题`);
 }
 export function runLabel(run?: Json): string {
   if (!run) return '运行记录';

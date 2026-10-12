@@ -1,9 +1,9 @@
-import { afterEach, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { QuestionReader } from "./QuestionReader";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useEffect } from "react";
 
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 const choice = (letter: string, activation: string, budget: number) => ({
   letter,
   candidateId: `candidate-${letter}`,
@@ -50,7 +50,7 @@ it("compares effective candidate specs and highlights differences without assumi
   expect(activation.textContent).toContain("relu");
   const width = screen.getByText("隐藏宽度").closest("tr")!;
   expect(width.classList.contains("is-different")).toBe(false);
-  const budget = screen.getByText("总训练样本量").closest("tr")!;
+  const budget = screen.getByText("累计处理量").closest("tr")!;
   expect(budget.classList.contains("is-different")).toBe(true);
   expect(budget.textContent).toContain("8192");
   expect(budget.textContent).toContain("4096");
@@ -82,10 +82,23 @@ it("uses public views when files are unavailable, supports arbitrary choices, an
   ]}}}/>);
   expect(screen.getByText("future_family")).toBeTruthy();
   expect(within(screen.getByRole("table",{name:"候选参数对比"})).getByRole("columnheader",{name:"候选 Z"})).toBeTruthy();
-  expect(screen.getByText("总训练样本量").closest("tr")!.textContent).toContain("未记录");
+  expect(screen.getByText("累计处理量").closest("tr")!.textContent).toContain("未记录");
   expect(screen.queryByText("训练集样本数")).toBeNull();
   fireEvent.click(screen.getByRole("tab",{name:"原始 Prompt"}));
   expect(screen.getByText("此记录未提供原始 Prompt。")).toBeTruthy();
+});
+
+it('explains recorded language-model training windows without inventing steps or dataset size',()=>{
+ render(<QuestionReader record={{metadata:{family:'bigram_lm'},public:{choices:[
+  {letter:'A',view:{model_type:'gru_lm',budget:16384}},
+  {letter:'B',view:{model_type:'transformer_lm',budget:16384}},
+ ]}}}/>);
+ const note=screen.getByText(/重复使用同一窗口也重复计数/);
+ expect(note.textContent).toContain('累计处理量 = 训练步数 × 每批数量');
+ expect(note.textContent).toContain('不是训练集的去重大小');
+ expect(screen.queryByText('训练集样本数')).toBeNull();
+ const steps=screen.queryByText('训练步数')?.closest('tr');
+ if(steps)expect(steps.textContent).toContain('未记录');
 });
 
 it("opens complete authoritative dataset rules from the overview with safe formatting", () => {
@@ -205,4 +218,29 @@ it('does not lose explicit empty sections or literal dotted keys when flattening
  expect(Array.from(nested.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['9','9']);
  const empty=within(table).getByText('{}').closest('tr')!;
  expect(Array.from(empty.querySelectorAll('td')).map(cell=>cell.textContent)).toEqual(['{}','未记录']);
+});
+
+
+it('keeps human feedback and evidence unread until a choice has been committed, including after a question change',async()=>{
+ const calls:string[]=[];
+ const feedback={selected_answer:{id:'candidate-A',letter:'A'},correct_answer:{id:'candidate-B',letter:'B'},correct:false,feedback:{correct_letter:'B',reveal:{curves:[]}}};
+ vi.stubGlobal('fetch',async(path:string)=>{calls.push(path);return new Response(JSON.stringify(path.endsWith('/review')?feedback:{}));});
+ function Evidence(){useEffect(()=>{void fetch('/research-evidence');},[]);return <section aria-label="已提交后的知识证据">已有规则研究结果</section>;}
+ const source={kind:'catalog' as const,key:'q@first'};
+ const value={...record,public:{id:'q',choices:[{id:'candidate-A',letter:'A'},{id:'candidate-B',letter:'B'}]}};
+ const view=render(<QuestionReader record={value} questionKey="q@first" reviewSource={source} evidence={<Evidence/>}/>);
+ expect(calls).toEqual([]);expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
+ const practice=screen.getByRole('region',{name:'人工检查题目'}),data=screen.getByRole('heading',{name:'数据与条件'});
+ expect(practice.compareDocumentPosition(data)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByRole('radio',{name:'选择 A'}).closest('label')?.textContent).toContain('MLP');
+ fireEvent.click(screen.getByRole('radio',{name:'选择 A'}));expect(calls).toEqual([]);
+ fireEvent.click(screen.getByRole('button',{name:'提交并查看结果'}));
+ await screen.findByText('正确答案 B');
+ await waitFor(()=>expect(calls).toEqual(['/api/studio/questions/review','/research-evidence']));
+ expect(screen.getByLabelText('已提交后的知识证据')).toBeTruthy();
+ fireEvent.click(screen.getByRole('tab',{name:'数据与规则'}));fireEvent.click(screen.getByRole('tab',{name:'题目概览'}));
+ expect(screen.getByText('正确答案 B')).toBeTruthy();
+ view.rerender(<QuestionReader record={value} questionKey="q@second" reviewSource={{kind:'catalog',key:'q@second'}} evidence={<Evidence/>}/>);
+ expect(screen.queryByText('正确答案 B')).toBeNull();expect(screen.queryByLabelText('已提交后的知识证据')).toBeNull();
+ expect(screen.getByRole('button',{name:'提交并查看结果'})).toBeTruthy();
 });

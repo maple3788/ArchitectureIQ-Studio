@@ -519,7 +519,7 @@ function QuestionDetail({ id, version, onClose, onRag }: { id: string; version: 
       {loading ? (
         <Loading />
       ) : (
-        data ? <>{onRag && <button className="primary" disabled={data.metadata?.rag_ready === false} onClick={()=>onRag(id)}>用 RAG 匹配 KB 作答</button>}<QuestionReader key={id} record={data}/></> : null
+        data ? <>{onRag && <button className="primary" disabled={data.metadata?.rag_ready === false} onClick={()=>onRag(id)}>用 RAG 匹配 KB 作答</button>}<QuestionReader key={id} record={data} questionKey={id} reviewSource={{kind:'catalog',key:id}}/></> : null
       )}
     </Drawer>
     </div>

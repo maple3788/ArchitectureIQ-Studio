@@ -785,6 +785,12 @@ def create_app(
 
         return knowledge_inventory(jobs, archives())
 
+    from .knowledge_question_routes import register_knowledge_question_routes
+    register_knowledge_question_routes(api, catalog=catalog, inventory_provider=knowledge)
+
+    from .human_practice_routes import register_human_practice_routes
+    register_human_practice_routes(api, catalog=catalog, observer=observer)
+
     from .rag_routes import register_rag_routes
     from architecture_iq.studio.knowledge import knowledge_inventory
     register_rag_routes(api, catalog=catalog, models=models, jobs=jobs,

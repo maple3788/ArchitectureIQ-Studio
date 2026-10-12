@@ -2,7 +2,7 @@ import {useRef,useState} from 'react';
 import {Database,Plus,Search} from 'lucide-react';
 import {api} from './api';
 import {ErrorBox,Loading,useResource} from './ui';
-import {familyLabel} from './displayNames';
+import {datasetTypeDistribution} from './displayNames';
 import {datasetRef,type DatasetRef,type DatasetRevision,type DatasetSummary,type Page} from './dataTypes';
 export function DatasetLibrary({version,onOpen}:{version:number;onOpen:(ref:DatasetRef)=>void}){
  const [search,setSearch]=useState(''),[archived,setArchived]=useState(false),[offset,setOffset]=useState(0),[create,setCreate]=useState(false);
@@ -29,7 +29,7 @@ function DatasetRow({dataset:d,onOpen}:{dataset:DatasetSummary;onOpen:(ref:Datas
  const others=equivalents.filter(item=>item.collection_id!==d.collection_id);
  const description=d.origin?.kind&&d.origin.kind!=='created'&&d.description.startsWith('Imported from existing ')?'':d.description;
  return <article className="dataset-row">
-  <div className="dataset-row-main"><Database size={20}/><div className="dataset-row-content"><button className="data-title-button" aria-label={`打开 Dataset ${d.name}`} onClick={()=>onOpen(datasetRef(d))}><h2>{d.name}</h2></button><div className="dataset-row-meta"><span>{originLabel(d)}</span><span>{d.selection_mode==='pairs'?`${d.pair_count} 对题目`:'单题集合'}</span><span>{d.families.slice(0,2).map(familyLabel).join(' · ')||'等待添加题目'}</span></div>{description&&<p>{description}</p>}</div><b className="dataset-row-count">{d.count}<small> 道题</small></b></div>
+  <div className="dataset-row-main"><Database size={20}/><div className="dataset-row-content"><button className="data-title-button" aria-label={`打开 Dataset ${d.name}`} onClick={()=>onOpen(datasetRef(d))}><h2>{d.name}</h2></button><div className="dataset-row-meta"><span>{originLabel(d)}</span><span>{d.selection_mode==='pairs'?`${d.pair_count} 对题目`:'单题集合'}</span><span>{!d.count?'等待添加题目':''}</span></div>{d.type_counts&&<div className="dataset-type-counts" aria-label="Dataset 题型分布">{datasetTypeDistribution(d.type_counts).map(label=><span key={label}>{label}</span>)}</div>}{description&&<p>{description}</p>}</div><b className="dataset-row-count">{d.count}<small> 道题</small></b></div>
   {others.length>0&&<details className="dataset-equivalents"><summary>相同题目 · {equivalents.length} 个集合</summary><p>这些是独立集合，保留各自名称与固定修订。</p><div>{others.map(item=><div className="dataset-equivalent-row" key={item.collection_id}><button className="data-title-button" aria-label={`打开 Dataset ${item.name}`} onClick={()=>onOpen(datasetRef(item))}>{item.name}</button><small>{originLabel(item)} · 固定修订 {item.revision.slice(0,8)}</small></div>)}</div></details>}
  </article>;
 }

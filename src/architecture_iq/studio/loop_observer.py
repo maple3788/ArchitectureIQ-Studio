@@ -134,6 +134,11 @@ class SSHSourceReader:
             raise KeyError('Question unavailable')
         return self._read(config, ['--question', config.artifact_root, identifier])
 
+    def practice(self, config: ObserverConfig, identifier: str) -> dict:
+        if not config.artifact_root or not re.fullmatch(r'q_[A-Za-z0-9_-]{1,80}', identifier):
+            raise KeyError('Question results unavailable')
+        return self._read(config, ['--practice', config.artifact_root, identifier])
+
     def _read(self, config: ObserverConfig, arguments: list[str]) -> dict:
         collector = Path(__file__).with_name('loop_source.py').read_text()
         command = shlex.join([config.python, '-', config.root, *arguments])
@@ -172,10 +177,12 @@ class SSHSourceReader:
 class LoopObserver:
     def __init__(self, state_root: Path, *, config: ObserverConfig | None = None,
                  reader: Callable[[ObserverConfig], dict] | None = None,
-                 question_reader: Callable[[ObserverConfig, str], dict] | None = None):
+                 question_reader: Callable[[ObserverConfig, str], dict] | None = None,
+                 practice_reader: Callable[[ObserverConfig, str], dict] | None = None):
         self.config = config
         self.reader = reader or SSHSourceReader()
         self.question_reader = question_reader or SSHSourceReader().question
+        self.practice_reader = practice_reader or SSHSourceReader().practice
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._thread_lock = threading.Lock()
@@ -198,6 +205,10 @@ class LoopObserver:
                     CREATE TABLE IF NOT EXISTS question_artifacts (
                         question_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
                         captured_at REAL NOT NULL, payload BLOB NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS human_question_results (
+                        question_id TEXT PRIMARY KEY, public_hash TEXT NOT NULL,
+                        content_hash TEXT NOT NULL, payload BLOB NOT NULL
                     );
                 ''')
 
@@ -399,6 +410,41 @@ class LoopObserver:
                 connection.execute('INSERT INTO question_artifacts VALUES (?,?,?,?)',
                                    (identifier, digest, captured, zlib.compress(serialized.encode())))
             return {**value, 'observation': {'content_hash': digest, 'captured_at': captured}}
+
+    def question_results(self, identifier: str, *, expected_question_hash: str) -> dict:
+        """Separate human result cache. Called only after option commitment."""
+        from .human_practice import PracticeConflict, project_feedback
+        from .loop_question import public_question
+
+        public = self.question(identifier)
+        if public['observation']['content_hash'] != expected_question_hash:
+            raise PracticeConflict('题目保存记录不一致，请重新打开题目')
+        with (self.directory / 'human-results.lock').open('a') as guard:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+            with self._connect() as connection:
+                row = connection.execute('SELECT * FROM human_question_results WHERE question_id=?', (identifier,)).fetchone()
+            if row:
+                feedback = _decode(row['payload'])
+                if (row['public_hash'] != expected_question_hash
+                        or hashlib.sha256(_json(feedback).encode()).hexdigest() != row['content_hash']):
+                    raise PracticeConflict('已保存结果的完整性校验失败')
+                return feedback
+            value = self.practice_reader(self.config, identifier)
+            projected = public_question(value, identifier)
+            if hashlib.sha256(_json(projected).encode()).hexdigest() != expected_question_hash:
+                raise PracticeConflict('来源题面已变化，不能将新结果用于旧题目')
+            feedback = project_feedback(projected['public'], value.get('feedback'))
+            serialized = _json(feedback)
+            if len(serialized.encode()) > _MAX_CAPTURE_BYTES:
+                raise RuntimeError('Question result capture too large')
+            # Missing results may appear later. Cache only a saved answer with
+            # curves, so an early partial observation cannot hide later curves.
+            if feedback.get('correct_letter') and feedback['reveal']['curves']:
+                with self._connect() as connection:
+                    connection.execute('INSERT INTO human_question_results VALUES (?,?,?,?)',
+                        (identifier, expected_question_hash, hashlib.sha256(serialized.encode()).hexdigest(),
+                         zlib.compress(serialized.encode())))
+            return feedback
 
     def events(self, *, after: int = 0, limit: int = 200) -> list[dict]:
         if type(after) is not int or not 0 <= after <= 2**63-1 or type(limit) is not int or not 1 <= limit <= 200:

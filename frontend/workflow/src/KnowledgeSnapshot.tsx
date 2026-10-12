@@ -91,7 +91,7 @@ function conditionText(value: any, depth = 0): string | undefined {
   }
   return undefined;
 }
-export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
+export function KnowledgeSnapshot({ snapshot, single=false }: { snapshot: any; single?:boolean }) {
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
     [limit, setLimit] = useState(8);
@@ -111,17 +111,17 @@ export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
   ));
   return (
     <div className="knowledge-reader">
-      <div className="knowledge-counts">
-        <strong>{groups.length} 条主张 · {claims.length} 个规则子项</strong>
+      {!single&&<div className="knowledge-counts">
+        <strong>{groups.length} 条知识 · {claims.length} 个规则子项</strong>
         <span>{claims.filter(usable).length} 条已验证且启用</span>
         <span>
           {claims.filter((c) => !usable(c)).length} 条暂不用于正式解题
         </span>
-      </div>
+      </div>}
       <p className="knowledge-note">
         知识是否适用于一道新题，还需要匹配它的条件与已验证范围。
       </p>
-      {!!claims.length && (
+      {!single && !!claims.length && (
         <div className="knowledge-filters">
           <input
             aria-label="查找知识"
@@ -244,7 +244,7 @@ export function KnowledgeSnapshot({ snapshot }: { snapshot: any }) {
       })}
       {shown.length > limit && (
         <button onClick={() => setLimit((v) => v + 8)}>
-          再看 {Math.min(8, shown.length - limit)} 条主张
+          再看 {Math.min(8, shown.length - limit)} 条知识
         </button>
       )}
       <details className="knowledge-origin">

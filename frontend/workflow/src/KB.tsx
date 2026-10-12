@@ -1,65 +1,49 @@
 import {useState} from 'react';
-import {BookOpen,ChevronRight,Search} from 'lucide-react';
-import {Drawer,Empty,ErrorBox,JsonView,Loading,useResource} from './ui';
+import {ChevronRight,Search} from 'lucide-react';
+import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs,useResource} from './ui';
 import {RuleKnowledgeReader} from './RuleKnowledgeReader';
 import {KnowledgeSnapshot} from './KnowledgeSnapshot';
+import {KnowledgeQuestions} from './KnowledgeQuestions';
 import {ExperienceSnapshot} from './ExperienceSnapshot';
 import {readableName} from './displayNames';
 import {formatTimestamp} from './time';
-import {ruleVersionCounts} from './ruleKnowledgePresentation';
-import {groupKnowledgeLibraries,isExperience,knowledgeMatches,knowledgeVersionKey} from './knowledgeLibrary';
-import type {KnowledgeLibrary} from './knowledgeLibrary';
+import {isExperience} from './knowledgeLibrary';
+import {entryState,entryStateLabels,entryText,knowledgeEntries,revisionKey,currentEntryRevision,displayedEntryRevision} from './knowledgeEntries';
+import type {KnowledgeEntry,KnowledgeRevision} from './knowledgeEntries';
 import type {KBRef} from './ruleRefinementTypes';
 import type {Json} from './types';
 import './kb.css';
 
-function countText(record:Json){
- const counts=record.counts??{};
- if(record.kind==='research_rules'){
-  const stats=ruleVersionCounts(record.snapshot??{});
-  return `${stats.claims} 条主张 · ${stats.clauses} 个执行分支`;
- }
- if(isExperience(record))return `${counts.lessons??record.snapshot?.lessons?.length??0} 条经验 · ${counts.episodes??record.snapshot?.episodes?.length??0} 次作答记录`;
- const claims=record.snapshot?.claims??[];
- const groups=new Set(claims.map((claim:Json)=>claim.source_claim_id??claim.id));
- return `${counts.source_claims??groups.size} 条主张`;
-}
-function detailText(record:Json){
- const counts=record.counts??{};
- if(record.kind==='research_rules'){
-  const stats=ruleVersionCounts(record.snapshot??{});
-  return `${stats.proposed} 条待独立确认 · ${stats.replicated} 条来源标记为范围内复现`;
- }
- if(isExperience(record))return '独立实验记录 · 待验证';
- if(counts.legacy_unverified)return '历史材料 · 待验证';
- return `${counts.verified_enabled??record.snapshot?.claims?.filter((claim:Json)=>claim.enabled&&claim.status==='replicated_in_scope').length??0} 条已验证且启用`;
+function FormalEntry({entry,revision}:{entry:KnowledgeEntry;revision:KnowledgeRevision}){
+ const [tab,setTab]=useState('知识内容');
+ return <><Tabs tabs={['知识内容','适用题目','不适用题目']} value={tab} onChange={setTab}/>{tab==='知识内容'?<KnowledgeSnapshot single snapshot={{...revision.record.snapshot,claims:revision.parts}}/>:<KnowledgeQuestions kbRef={{id:revision.record.id,version:revision.record.version}} claimId={entry.claimId} relation={tab==='适用题目'?'applicable':'inapplicable'}/>}</>;
 }
 export function KB({version,onEvaluate}:{version:number;onEvaluate?:(ref:KBRef)=>void}){
  const {data,error,loading}=useResource<any>('/kb',version);
- const [search,setSearch]=useState(''),[selection,setSelection]=useState<{key:string;version:string}>(),[experienceOpen,setExperienceOpen]=useState(false),[historyOpen,setHistoryOpen]=useState(false);
+ const [search,setSearch]=useState(''),[section,setSection]=useState('knowledge'),[status,setStatus]=useState('all'),[limit,setLimit]=useState(30),[selection,setSelection]=useState<{key:string;version:string}>();
  const records:Json[]=Array.isArray(data)?data:Array.isArray(data?.items)?data.items:[...(data?.snapshots||[]),...(data?.claims||[]),...(data?.sources||[])];
- const groups=groupKnowledgeLibraries(records),query=search.trim();
- const visible=groups.filter(group=>group.versions.some(record=>knowledgeMatches(record,query)));
- const current=groups.find(group=>group.key===selection?.key);
- const selected=current?.versions.find(record=>knowledgeVersionKey(record)===selection?.version);
- function open(group:KnowledgeLibrary){const record=group.versions.find(value=>knowledgeMatches(value,query))??group.versions[0];setSelection({key:group.key,version:knowledgeVersionKey(record)});}
- function list(values:KnowledgeLibrary[]){return <div className="kb-library-list">{values.map(group=>{const record=group.versions[0];return <button key={group.key} className="kb-library-row" aria-label={`阅读 ${group.name}`} onClick={()=>open(group)}>
-  <span className="kb-library-icon"><BookOpen size={22}/></span><span className="kb-library-copy"><span className="kb-library-title">{group.name}</span><span className="kb-library-count">{countText(record)}</span><span className="kb-library-state">{detailText(record)}{record.source_count>1?` · ${record.source_count} 个来源`:''}</span></span><ChevronRight size={18} className="kb-library-arrow"/>
- </button>;})}</div>;}
- const knowledge=visible.filter(group=>group.section==='knowledge'),experience=visible.filter(group=>group.section==='experience'),history=visible.filter(group=>group.section==='history');
- return <section className="kb-page"><div className="page-heading"><div><span className="eyebrow">KNOWLEDGE BASE</span><h1>知识库</h1><p>阅读知识，查看适用条件与验证结果。</p></div></div><ErrorBox error={error}/>
-  <label className="kb-library-search"><Search size={18}/><input type="search" aria-label="搜索知识库" placeholder="搜索知识库或知识内容" value={search} onChange={event=>setSearch(event.target.value)}/></label>
+ const entries=knowledgeEntries(records);
+ const visible=entries.filter(entry=>{const revision=displayedEntryRevision(entry,search);return (section==='all'||entry.library.section===section)&&revision&&(status==='all'||entryState(revision)===status);});
+ const current=entries.find(entry=>entry.key===selection?.key),selected=current?.revisions.find(revision=>revisionKey(revision)===selection?.version);
+ const latest=current&&currentEntryRevision(current);
+ function open(entry:KnowledgeEntry){const revision=displayedEntryRevision(entry,search)??entry.revisions[0];setSelection({key:entry.key,version:revisionKey(revision)});}
+ return <section className="kb-page"><div className="page-heading"><div><span className="eyebrow">KNOWLEDGE BASE</span><h1>知识库</h1><p>逐条阅读知识，检查适用条件与题目。</p></div></div><ErrorBox error={error}/>
+  <div className="kb-entry-filters"><label className="kb-library-search"><Search size={18}/><input type="search" aria-label="搜索知识库" placeholder="搜索知识内容" value={search} onChange={event=>{setSearch(event.target.value);setLimit(30);}}/></label>
+   <select aria-label="知识来源" value={section} onChange={event=>{setSection(event.target.value);setLimit(30);}}><option value="knowledge">研究知识</option><option value="experience">学习经验</option><option value="history">历史材料</option><option value="all">全部来源</option></select>
+   <select aria-label="验证状态" value={status} onChange={event=>{setStatus(event.target.value);setLimit(30);}}><option value="all">全部状态</option>{Object.entries(entryStateLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
+  </div>
   {Array.isArray(data?.warnings)&&data.warnings.length>0&&<details className="kb-read-warning"><summary>{data.warnings.length} 个来源暂未完成核验</summary><JsonView value={data.warnings}/></details>}
-  {loading?<Loading/>:!records.length?<Empty title="尚无登记的知识或经验">完成学习后，保存的知识会显示在这里。</Empty>:!visible.length?<Empty title="没有找到匹配的知识">换一个名称、编号或知识关键词。</Empty>:<>
-   {knowledge.length>0&&list(knowledge)}
-   {experience.length>0&&<details className="kb-library-section" open={query?true:experienceOpen} onToggle={event=>{if(!query)setExperienceOpen(event.currentTarget.open);}}><summary><span>学习经验</span><span className="kb-section-count">{experience.length} 个实验</span></summary><p>各实验分别保留来源与作答记录。</p>{list(experience)}</details>}
-   {history.length>0&&<details className="kb-library-section" open={query?true:historyOpen} onToggle={event=>{if(!query)setHistoryOpen(event.currentTarget.open);}}><summary><span>历史材料</span><span className="kb-section-count">{history.length} 份</span></summary><p>原始主张与条件分支保留，验证状态单独记录。</p>{list(history)}</details>}
+  {loading?<Loading/>:!entries.length?<Empty title="尚无登记的知识或经验">保存的知识会显示在这里。</Empty>:!visible.length?<Empty title="没有找到匹配的知识">调整内容、来源或状态筛选。</Empty>:<>
+   <p className="kb-entry-count">{visible.length} 条知识</p>
+   <div className="kb-library-list">{visible.slice(0,limit).map(entry=>{const revision=displayedEntryRevision(entry,search)??entry.revisions[0],state=entryState(revision);return <button key={entry.key} className="kb-library-row" aria-label={`阅读 ${entry.claimId} ${entryText(revision)}`} onClick={()=>open(entry)}>
+    <span className="kb-library-copy"><span className="kb-library-title">{entryText(revision)}</span><span className="kb-library-state"><span className={`kb-entry-status is-${state}`}>{revision.record.kind==='research_rules'&&state==='verified'?'来源标记：范围内复现':entryStateLabels[state]}</span>{revision!==currentEntryRevision(entry)&&<span>历史记录</span>}<span>{entry.library.name}</span><span>{entry.claimId}</span></span></span><ChevronRight size={18} className="kb-library-arrow"/>
+   </button>;})}</div>{visible.length>limit&&<button className="kb-load-more" onClick={()=>setLimit(value=>value+30)}>继续阅读 · 还有 {visible.length-limit} 条</button>}
   </>}
-  {selected&&current&&<Drawer title={current.name} subtitle="知识阅读" onClose={()=>setSelection(undefined)}>
-   {selected!==current.versions[0]&&<p className="kb-history-notice">正在阅读历史记录。<button onClick={()=>setSelection({key:current.key,version:knowledgeVersionKey(current.versions[0])})}>返回当前知识</button></p>}
-   {selected.kind==='research_rules'?<RuleKnowledgeReader key={knowledgeVersionKey(selected)} kbRef={{id:selected.id,version:selected.version}} record={selected} onEvaluate={onEvaluate}/>:selected.snapshot?isExperience(selected)?<ExperienceSnapshot key={knowledgeVersionKey(selected)} snapshot={selected.snapshot}/>:<KnowledgeSnapshot key={knowledgeVersionKey(selected)} snapshot={selected.snapshot}/>:<JsonView value={selected}/>}
-   {current.versions.length>1&&<details className="kb-source-details"><summary>查看修订记录</summary><label className="kb-history-picker">阅读记录<select aria-label="阅读记录" value={knowledgeVersionKey(selected)} onChange={event=>setSelection({key:current.key,version:event.target.value})}>{current.versions.map((record,index)=><option key={knowledgeVersionKey(record)} value={knowledgeVersionKey(record)}>{index===0?'当前知识':`早期记录 ${current.versions.length-index}`}</option>)}</select></label></details>}
-   <details className="kb-source-details"><summary>来源与完整记录{selected.source_count?` · ${selected.source_count} 个来源`:''}</summary>{selected.sources?.map((source:Json,index:number)=><div className="source-row" key={`${source.id}:${index}`}><div><b>{readableName(source.name,source.kind==='archive'?'历史导入材料':'运行保存记录')}</b>{Boolean(source.created_at)&&<small>{formatTimestamp(source.created_at)}</small>}{source.path&&<small className="mono wrap">{source.path}</small>}</div></div>)}<JsonView value={selected}/></details>
+  {selected&&current&&<Drawer title="知识详情" subtitle={current.claimId} onClose={()=>setSelection(undefined)}>
+   {selected!==latest&&<p className="kb-history-notice">{latest?'正在阅读历史记录。':'当前库版本未收录此知识，正在阅读历史记录。'}{latest&&<button onClick={()=>setSelection({key:current.key,version:revisionKey(latest)})}>返回当前知识</button>}</p>}
+   {selected.record.kind==='research_rules'?<RuleKnowledgeReader key={`${current.key}:${revisionKey(selected)}`} claimId={current.claimId} kbRef={{id:selected.record.id,version:selected.record.version}} record={selected.record} onEvaluate={onEvaluate}/>:isExperience(selected.record)?<ExperienceSnapshot key={`${current.key}:${revisionKey(selected)}`} snapshot={{...selected.record.snapshot,lessons:selected.parts}}/>:<FormalEntry key={`${current.key}:${revisionKey(selected)}`} entry={current} revision={selected}/>}
+   {current.revisions.length>1&&<details className="kb-source-details"><summary>查看修订记录</summary><label className="kb-history-picker">阅读记录<select aria-label="阅读记录" value={revisionKey(selected)} onChange={event=>setSelection({key:current.key,version:event.target.value})}>{current.revisions.map((revision,index)=><option key={revisionKey(revision)} value={revisionKey(revision)}>{revision===latest?'当前知识':`早期记录 ${current.revisions.length-index}`}</option>)}</select></label></details>}
+   <details className="kb-source-details"><summary>来源与完整记录{selected.record.source_count?` · ${selected.record.source_count} 个来源`:''}</summary>{selected.record.sources?.map((source:Json,index:number)=><div className="source-row" key={`${source.id}:${index}`}><div><b>{readableName(source.name,source.kind==='archive'?'历史导入材料':'运行保存记录')}</b>{Boolean(source.created_at)&&<small>{formatTimestamp(source.created_at)}</small>}</div></div>)}<JsonView value={{knowledge:current.claimId,record:selected.record.id,version:selected.record.version,entries:selected.parts}}/></details>
   </Drawer>}
  </section>;
 }

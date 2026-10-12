@@ -1,5 +1,7 @@
 import { useLayoutEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
+import { HumanQuestionPractice, type HumanReviewSource } from "./HumanQuestionPractice";
+import { candidateListSummary } from "./displayNames";
 import type { Json } from "./types";
 import "./question-reader.css";
 
@@ -12,7 +14,7 @@ const labels: Record<string, string> = {
   context_length: "上下文长度", dropout: "Dropout", bidirectional: "双向结构",
   lr: "学习率", weight_decay: "权重衰减", betas: "一阶 / 二阶动量系数", momentum: "动量",
   eps: "数值稳定项", nesterov: "Nesterov 动量", loss_id: "损失函数", label_smoothing: "标签平滑",
-  total_samples_seen: "总训练样本量", training_steps: "训练步数", batch_size: "每批样本数",
+  total_samples_seen: "累计处理量", training_steps: "训练步数", batch_size: "每批数量",
   train_size: "训练集样本数", test_size: "测试集样本数", num_classes: "类别数",
   rule_family: "数据规则", active_features: "活跃特征索引", n_active_features: "活跃特征数",
   spiral_turns: "螺旋圈数", instance_seed: "数据实例种子", noise_std: "噪声标准差",
@@ -131,7 +133,13 @@ function viewGroups(view: Json): Record<string, Json> {
   return {model,optimizer,loss,budget,other};
 }
 
-export function QuestionReader({record,questionKey,evidence}: {record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode}) {
+type ReaderProps={record:Json;interactive?:boolean;questionKey?:string;evidence?:ReactNode;reviewSource?:HumanReviewSource};
+export function QuestionReader(props:ReaderProps){
+  return <QuestionReaderContent key={JSON.stringify([props.questionKey,props.reviewSource])} {...props}/>;
+}
+function QuestionReaderContent({record,questionKey,evidence:providedEvidence,reviewSource}:ReaderProps) {
+  const [revealed,setRevealed]=useState(false);
+  const evidence=reviewSource&&!revealed?undefined:providedEvidence;
   // Reset before the new question can be interacted with; a passive mount
   // effect could otherwise overwrite an immediate first tab selection.
   useLayoutEffect(()=>{setTab("structured");},[questionKey]);
@@ -164,6 +172,7 @@ export function QuestionReader({record,questionKey,evidence}: {record:Json;inter
   const profile = metadata.profile ?? choices.find(c=>c.spec.profile)?.spec.profile;
   const facts = dataKeys.filter(key=>present(params[key]));
   const rows = comparisonRows(choices);
+  const briefs=candidateListSummary(choices.map(choice=>({...choice.groups,letter:choice.letter})),metadata.type).candidates;
   const title = [family ? families[family] || text(family) : "训练方案对比", metadata.type ? types[metadata.type] || text(metadata.type) : undefined].filter(Boolean).join(" · ");
   const dataFacts = facts.length ? <dl className="question-reader-facts">{facts.map(key=><div key={key} className={key==="expression" ? "question-reader-expression" : ""}><dt>{labels[key] || key}</dt><dd>{text(params[key])}</dd></div>)}</dl>
     : <p className="question-reader-note">此记录未提供结构化数据条件，请查阅数据规则或原始 Prompt。</p>;
@@ -194,10 +203,13 @@ export function QuestionReader({record,questionKey,evidence}: {record:Json;inter
       <div className={`question-reader-comparison-workspace${evidence?' with-evidence':''}`}>
       <section className="question-reader-section"><div className="question-reader-section-title"><h3>候选对比</h3><span className="question-reader-legend">高亮行表示候选间存在差异</span></div>
         {rows.length ? <ComparisonTable choices={choices} rows={rows} label="候选参数对比"/> : <p className="question-reader-note">候选配置未记录，请查阅原始 Prompt。</p>}
-        <p className="question-reader-note">预算按候选分别列出：总训练样本量 = 训练步数 × 每批样本数，单位为数据样本或窗口。未记录的字段不会补齐；逐层开关按模型中的层顺序排列。</p>
+        <p className="question-reader-note">预算按候选分别列出：累计处理量 = 训练步数 × 每批数量。{family==='bigram_lm'?'本题按序列窗口计数，重复使用同一窗口也重复计数':'按样本计数，重复使用同一样本也重复计数'}，不是训练集的去重大小。仅展示已记录的数值，不反推缺失步数；逐层开关按模型中的层顺序排列。</p>
       </section>
       {evidence&&<aside className="question-reader-evidence">{evidence}</aside>}
       </div>
+    </div>}
+    {reviewSource&&<HumanQuestionPractice source={reviewSource} question={{id:pub.id??metadata.id,family,prompt,choices:choices.map((choice,index)=>({id:choice.identity,letter:choice.letter,label:briefs[index]?.label}))}} onRevealed={()=>setRevealed(true)}/>}
+    {tab==='structured'&&<div className="question-reader-details">
       <section className="question-reader-section"><h3>数据与条件</h3>
         {dataFacts}
         <div className="question-reader-rule-link"><p className="question-reader-note">此页用于快速比较；解题请阅读完整数据生成规则与训练协议。</p><button onClick={()=>setTab("data")}>查看完整数据规则</button></div>

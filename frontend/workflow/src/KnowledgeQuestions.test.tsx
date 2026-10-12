@@ -1,0 +1,50 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {KnowledgeQuestions} from './KnowledgeQuestions';
+const ref={id:'rules:source',version:'sealed-v1'};
+const row={key:'source::q_one',id:'q_one',family:'xor_classification',type:'architecture_only',relation:'applicable',reason:{code:'rule_match',message:'深度相同，宽度满足规则条件。'},prediction_status:'answered' as string|null,matched_rules:1,matched_pairs:1};
+const list=(items=[row],extra={})=>({kb_ref:ref,claim_id:'C1',items,counts:{applicable:1,inapplicable:1,unknown:1},total:items.length,offset:0,limit:25,scope:'public_rule_conditions',notice:'仅检查公开条件，不代表答案正确。',...extra});
+const question=(id='q_one')=>({metadata:{id,family:'xor_classification',type:'architecture_only'},public:{id,prompt:'完整公开题面 '+id,choices:[{id:'narrow',letter:'C'},{id:'wide',letter:'A'}]},detail:{choices:[{candidateId:'narrow',letter:'C',files:{'candidate_spec.json':JSON.stringify({model:{type:'mlp',width:16,custom_gate:{alpha:0.25}},budget:{training_steps:100}})}},{candidateId:'wide',letter:'A',files:{'candidate_spec.json':JSON.stringify({model:{type:'mlp',width:32,custom_gate:{alpha:0.75}},budget:{training_steps:100}})}}]}});
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it('binds one claim and exact KB version, showing canonical reason and all public parameters',async()=>{
+ const paths:string[]=[];vi.stubGlobal('fetch',async(path:string)=>{paths.push(path);return new Response(JSON.stringify(path.includes('/kb/questions?')?list():question()));});
+ render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="applicable"/>);
+ expect(await screen.findByText('custom_gate.alpha')).toBeTruthy();
+ expect(screen.getByRole('columnheader',{name:'候选 C'})).toBeTruthy();
+ expect(screen.getByRole('columnheader',{name:'候选 A'})).toBeTruthy();
+ expect(screen.getAllByText(row.reason.message).length).toBeGreaterThan(0);
+ const query=new URL(paths[0],'http://localhost').searchParams;
+ expect(Object.fromEntries(query)).toMatchObject({kb_id:'rules:source',kb_version:'sealed-v1',claim_id:'C1',relation:'applicable'});
+ expect(paths).toContain('/api/studio/tasks/questions/source%3A%3Aq_one');
+ expect(screen.queryByLabelText('按规则查看')).toBeNull();
+});
+it('keeps unknown separate from inapplicable and clears the old question while changing filters',async()=>{
+ const unknown={...row,key:'source::q_missing',id:'q_missing',relation:'unknown',reason:{code:'missing_fields',message:'公开配置缺少深度，暂不能判断。'},prediction_status:null,matched_rules:0,matched_pairs:0};
+ let resolveUnknown:(value:Response)=>void=()=>{};const paths:string[]=[];
+ vi.stubGlobal('fetch',async(path:string)=>{paths.push(path);if(path.includes('relation=unknown'))return new Promise<Response>(resolve=>{resolveUnknown=resolve;});return new Response(JSON.stringify(path.includes('/kb/questions?')?list([{...row,relation:'inapplicable',reason:{code:'scope_mismatch',message:'模型类型不满足规则范围。'}}]):question()));});
+ render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="inapplicable"/>);
+ await screen.findByText('custom_gate.alpha');
+ fireEvent.change(screen.getByLabelText('题目状态'),{target:{value:'unknown'}});
+ await waitFor(()=>expect(paths.some(path=>path.includes('relation=unknown'))).toBe(true));
+ expect(screen.queryByText('custom_gate.alpha')).toBeNull();
+ resolveUnknown(new Response(JSON.stringify(list([unknown]))));
+ await screen.findAllByText(unknown.reason.message);
+ expect(screen.getByText(/待判断题目单独保留/)).toBeTruthy();
+ expect(screen.queryByText('模型类型不满足规则范围。')).toBeNull();
+});
+it('reports rule conflict without presenting an applicable match as a correct answer',async()=>{
+ vi.stubGlobal('fetch',async(path:string)=>new Response(JSON.stringify(path.includes('/kb/questions?')?list([{...row,prediction_status:'conflict',reason:{code:'rule_conflict',message:'适用规则给出互相冲突的关系，无法确定答案。'}}]):question())));
+ render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="applicable"/>);
+ expect(await screen.findByText('规则冲突')).toBeTruthy();
+ expect(screen.getAllByText(/无法确定答案/).length).toBeGreaterThan(0);
+ expect(screen.queryByText('正确答案')).toBeNull();
+});
+it('sends search and page changes to the same immutable rule scope',async()=>{
+ const paths:string[]=[];vi.stubGlobal('fetch',async(path:string)=>{paths.push(path);return new Response(JSON.stringify(path.includes('/kb/questions?')?list([row],{total:26}):question()));});
+ render(<KnowledgeQuestions kbRef={ref} claimId="C1" relation="applicable"/>);
+ await screen.findByRole('button',{name:'下一页'});
+ fireEvent.click(screen.getByRole('button',{name:'下一页'}));
+ await waitFor(()=>expect(paths.some(path=>new URL(path,'http://localhost').searchParams.get('offset')==='25')).toBe(true));
+ fireEvent.change(screen.getByRole('searchbox',{name:'搜索题目'}),{target:{value:'xor'}});
+ await waitFor(()=>expect(paths.some(path=>{const p=new URL(path,'http://localhost').searchParams;return p.get('search')==='xor'&&p.get('offset')==='0'&&p.get('claim_id')==='C1'&&p.get('kb_version')==='sealed-v1';})).toBe(true));
+});

@@ -544,7 +544,7 @@ const colors = [
   "#ba5367",
   "#648637",
 ];
-function CurveChart({ curves, rows }: { curves: any[]; rows: MetricRow[] }) {
+function CurveChart({ curves, rows, after }: { curves: any[]; rows: MetricRow[]; after?:(hasCurve:boolean)=>ReactNode }) {
   const groups = new Map<
     string,
     { axis: string; metric: string; series: any[] }
@@ -628,6 +628,7 @@ function CurveChart({ curves, rows }: { curves: any[]; rows: MetricRow[] }) {
         </Notice>
       )}
       {curves.length === 0 && <Notice>本次反馈未记录训练曲线</Notice>}
+      {after?.(groups.size>0)}
     </Block>
   );
 }
@@ -1005,6 +1006,12 @@ function MetricsTable({
       <GapStory rows={rows} feedback={feedback} question={question} />
     </Block>
   );
+}
+/** Render stored results only; callers control when feedback is revealed. */
+export function StoredTrainingResults({feedback,question,compact=false}:{feedback:any;question:any;compact?:boolean}){
+  const rows=metricRows(feedback,question),curves=list(feedback.reveal?.curves??feedback.curves);
+  const metrics=<MetricsTable rows={rows} feedback={feedback} question={question}/>;
+  return compact?<CurveChart curves={curves} rows={rows} after={hasCurve=><details className="ns-disclosure human-practice-statistics" open={!hasCurve}><summary>候选最终指标与统计信息</summary>{metrics}</details>}/>:<>{metrics}<CurveChart curves={curves} rows={rows}/></>;
 }
 function FeedbackCard({
   id,

@@ -68,3 +68,20 @@ it.each(['exploratory','descriptive'])('does not enable model reference for a %s
  expect(screen.getByText(/仅作探索或描述记录，不用于模型参考/)).toBeTruthy();
  expect(screen.queryByText(/来源允许参考/)).toBeNull();
 });
+
+it('focuses a single claim on content and never shows sibling rules or the whole-KB selector',()=>{
+ const rule=(id:string,claim:string,text:string)=>({rule_id:id,revision:'rev-'+id,state:'active',text,metadata:{claim_id:claim,validity_status:'proposed',validation_origin:'source_reported'},rule:{same:['depth'],predict:{higher_better:'width'}}});
+ const single={id:'research',version:'frozen',snapshot:{rules:[rule('r1','C1','在相同深度下比较宽度'),rule('r2','C2','另一条知识不能混入')]}};
+ render(<RuleKnowledgeReader kbRef={{id:'research',version:'frozen'}} record={single} claimId="C1"/>);
+ expect(screen.getByRole('tab',{name:'知识内容'}).getAttribute('aria-selected')).toBe('true');
+ expect(screen.getByRole('heading',{name:'在相同深度下比较宽度'})).toBeTruthy();
+ expect(screen.queryByText('另一条知识不能混入')).toBeNull();
+ expect(screen.queryByLabelText('按规则查看')).toBeNull();
+ expect(screen.getByRole('tab',{name:'不适用题目'})).toBeTruthy();
+});
+
+it('does not substitute another claim when an exact selected claim is absent',()=>{
+ render(<RuleKnowledgeReader kbRef={ref} record={record} claimId="missing"/>);
+ expect(screen.queryByText('宽度越小在这些条件下越好')).toBeNull();
+ expect(screen.getByText(/这条知识在当前记录中暂不可用/)).toBeTruthy();
+});

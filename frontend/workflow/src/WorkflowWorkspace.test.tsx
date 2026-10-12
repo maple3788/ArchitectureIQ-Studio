@@ -110,10 +110,13 @@ it('opens the configured loop without mounting the editor and preserves a visite
  expect(screen.getByRole('tab',{name:'知识演化'}).getAttribute('aria-selected')).toBe('true');
  expect(screen.queryByLabelText('编辑中的草稿')).toBeNull();
  await screen.findByText('连接正在进行的研究');
+ expect(screen.getByRole('tab',{name:'编辑工作流'}).closest('details')?.hasAttribute('open')).toBe(false);
+ fireEvent.click(screen.getByText('更多'));
  fireEvent.click(screen.getByRole('tab',{name:'编辑工作流'}));
  fireEvent.change(screen.getByLabelText('编辑中的草稿'),{target:{value:'未提交修改'}});
  fireEvent.click(screen.getByRole('tab',{name:'知识演化'}));
  expect(screen.queryByRole('textbox',{name:'编辑中的草稿'})).toBeNull();
+ fireEvent.click(screen.getByText('更多'));
  fireEvent.click(screen.getByRole('tab',{name:'编辑工作流'}));
  expect((screen.getByLabelText('编辑中的草稿') as HTMLInputElement).value).toBe('未提交修改');
  expect(requests.every(request=>request.startsWith('GET'))).toBe(true);

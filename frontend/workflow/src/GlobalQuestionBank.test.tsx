@@ -22,11 +22,11 @@ it('retains cross-page selection and can recover a failed read',async()=>{
 });
 it('shows a compact semantic question card while retaining full-text search and exact navigation',async()=>{
  const requests:string[]=[],onRead=vi.fn(),prompt='You are taking the benchmark. '+ 'huge_candidate_code '.repeat(500);
- const item={...bankFixtures[0],representative_key:'q_bcb233@fixed',summary:{...bankFixtures[0].summary,id:'q_bcb233',family:'bigram_lm',type:'mixed',model_types:['gru_lm','transformer_lm'],metric:'test_ce',budget:{total_samples_seen:16384},prompt}};
+ const item={...bankFixtures[0],representative_key:'q_bcb233@fixed',summary:{...bankFixtures[0].summary,id:'q_bcb233',family:'bigram_lm',type:'mixed',model_types:['gru_lm','transformer_lm'],metric:'test_ce',budget:{total_samples_seen:16384},prompt,candidate_configs:[{letter:'A',model:{type:'gru_lm'}},{letter:'B',model:{type:'transformer_lm'}},{letter:'C',model:{type:'gru_lm'}}]}};
  vi.stubGlobal('fetch',async(input:string)=>{requests.push(input);return new Response(JSON.stringify(page([item])));});
  render(<GlobalQuestionBank version={0} onRead={onRead}/>);
  const button=await screen.findByRole('button',{name:'阅读 q_bcb233'}),article=button.closest('article')!;
- expect(button.textContent).toBe('二元序列建模 · 训练方案比较');expect(article.textContent?.length).toBeLessThan(300);expect(within(article).getByText('GRU')).toBeTruthy();expect(within(article).getByText('Transformer')).toBeTruthy();expect(within(article).getByText('训练总量 16,384 样本')).toBeTruthy();expect(screen.queryByText(prompt)).toBeNull();
+ expect(button.textContent).toBe('GRU vs Transformer');expect(article.textContent?.length).toBeLessThan(300);expect(within(article).getAllByText('GRU')).toHaveLength(2);expect(within(article).getByText('Transformer')).toBeTruthy();expect(within(article).getByText('q_bcb233')).toBeTruthy();expect(article.textContent).not.toMatch(/训练总量|16,384|测试交叉熵/);expect(screen.queryByText(prompt)).toBeNull();
  fireEvent.change(screen.getByLabelText('搜索总题库'),{target:{value:'huge_candidate_code'}});await waitFor(()=>expect(requests.some(input=>new URL(input,'http://studio').searchParams.get('search')==='huge_candidate_code')).toBe(true));
  fireEvent.click(await screen.findByRole('button',{name:'阅读 q_bcb233'}));expect(onRead).toHaveBeenCalledWith('q_bcb233@fixed');
 });

@@ -86,7 +86,7 @@ it('groups source clauses into one claim without losing per-clause status and ev
  ],evidence:[{id:'e1',outcome:'support'},{id:'e2',outcome:'refute'}]}}/>);
  expect(screen.getAllByRole('article')).toHaveLength(2);
  expect(screen.getAllByText('同一原始主张',{exact:true})).toHaveLength(1);
- expect(screen.getByText('2 条主张 · 3 个规则子项')).toBeTruthy();
+ expect(screen.getByText('2 条知识 · 3 个规则子项')).toBeTruthy();
  expect(screen.getByText('已在记录范围内验证')).toBeTruthy();
  expect(screen.getByText('已被反驳')).toBeTruthy();
  const first=screen.getAllByRole('article')[0];

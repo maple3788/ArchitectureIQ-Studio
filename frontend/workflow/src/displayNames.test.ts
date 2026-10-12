@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { questionLabel, runLabel, readableName, familyLabel, questionListSummary } from './displayNames';
+import { questionLabel, runLabel, readableName, familyLabel, questionListSummary, candidateListSummary } from './displayNames';
 
 it('uses public question metadata and list positions while retaining opaque identities separately', () => {
   expect(questionLabel({id:'q_deadbeef',family:'multivariate_regression',type:'architecture_only'}, 4)).toBe('多元回归 · 架构对比 · 第 4 题');
@@ -20,11 +20,36 @@ it('keeps user titles but replaces auto-generated identity-only names', () => {
 });
 it('builds question list summaries from public metadata instead of contradictory raw prompt text',()=>{
  const value=questionListSummary({id:'q_bcb233',family:'bigram_lm',type:'mixed',choices:3,model_types:['gru_lm','transformer_lm'],budget:{total_samples_seen:16384},metric:'test_ce',prompt:'## Dataset\nUnivariate regression\n'+ 'long code '.repeat(1000)});
- expect(value.title).toBe('二元序列建模 · 训练方案比较');expect(value.description).toBe('比较 3 个候选方案，按测试交叉熵评价表现。');expect(value.models).toEqual(['GRU','Transformer']);expect(value.facts).toEqual(['训练总量 16,384 样本']);
+ expect(value.title).toBe('GRU vs Transformer');expect(value.description).toBe('二元序列建模 · 训练方案比较');expect(value.shortId).toBe('q_bcb233');expect(value.candidates).toEqual([]);
  expect(JSON.stringify(value)).not.toContain('Univariate regression');
 });
 it('keeps unknown metadata readable and avoids invented counts or budget units',()=>{
  const value=questionListSummary({family:'new_family',type:'new_intervention',model_types:['new_model','new_model'],metric:'custom_metric',budget:4096});
- expect(value.title).toBe('new_family · 其他题型 · new_intervention');expect(value.description).toBe('按 custom_metric 评价候选表现。');expect(value.models).toEqual(['new_model']);expect(value.facts).toEqual(['训练预算 4,096']);
- expect(questionListSummary({prompt:'do something'})).toEqual({title:'训练方案对比',description:'打开题目，查看公开条件与候选配置。',models:[],facts:[]});
+ expect(value.title).toBe('new_model · 其他题型 · new_intervention');expect(value.description).toBe('new_family · 其他题型 · new_intervention');expect(value.candidates).toEqual([]);
+ expect(questionListSummary({prompt:'do something'})).toEqual({title:'训练方案对比',description:'',candidates:[],shortId:''});
+});
+it('names actual candidate differences and keeps each candidate separate when model types repeat',()=>{
+ const configs=[2,4,8].map((depth,index)=>({letter:'ABC'[index],model:{type:'mlp',depth,width:64},optimizer:{type:'Adam',lr:0.001}}));
+ const value=questionListSummary({id:'q_abcdef0123456789',family:'univariate_regression',type:'architecture_only',candidate_configs:configs});
+ expect(value.title).toBe('MLP · 深度 2 / 4 / 8');
+ expect(value.shortId).toBe('q_abcdef01');
+ expect(value.candidates).toEqual([{letter:'A',label:'MLP · 深度 2'},{letter:'B',label:'MLP · 深度 4'},{letter:'C',label:'MLP · 深度 8'}]);
+ expect(candidateListSummary(configs)).toEqual({title:value.title,candidates:value.candidates});
+});
+it('uses optimizer differences without mistaking missing values or zero for common settings',()=>{
+ const configs=[{letter:'A',model:{type:'gru_lm'},optimizer:{type:'SGD',lr:0}},
+  {letter:'B',model:{type:'gru_lm'},optimizer:{type:'Adam',lr:0.001}},
+  {letter:'C',model:{type:'transformer_lm'},optimizer:{}}];
+ const value=candidateListSummary(configs,'optimizer_only');
+ expect(value.title).toContain('SGD / Adam / 未记录');
+ expect(value.candidates[0].label).toContain('学习率 0');
+ expect(value.candidates[2].label).toContain('优化器 未记录');
+ expect(JSON.stringify(value)).not.toContain('undefined');
+});
+it('does not use results or raw prompts to name candidates and keeps compact labels bounded',()=>{
+ const value=questionListSummary({id:'q_1',prompt:'SECRET_PROMPT',candidate_configs:[
+ {letter:'A',model:{type:'x'.repeat(1000),depth:2,score:'SECRET_SCORE'},correct_letter:'SECRET_ANSWER'},
+ {letter:'B',model:{type:'x'.repeat(1000),depth:3},optimizer:{answer:'SECRET_OPT'}}]});
+ expect(value.title.length).toBeLessThan(130);
+ expect(JSON.stringify(value)).not.toContain('SECRET_');
 });

@@ -17,7 +17,7 @@ export function WorkflowWorkspace({ children, version, selectedRun, act, loopEna
   const [mode, setMode] = useState(selectedRun ? "运行追踪" : loopEnabled ? "知识演化" : "编辑工作流");
   const [editorVisited, setEditorVisited] = useState(!selectedRun&&!loopEnabled);
   const [runId, setRunId] = useState(selectedRun || "");
-  const runs = useResource<List<Run>>("/runs", version, 5000);
+  const runs = useResource<List<Run>>(mode === "知识演化" ? null : "/runs", version, mode === "知识演化" ? 0 : 5000);
   const workflowRuns = items(runs.data).filter(run => ["workflow","rule_refinement"].includes(run.kind));
   const effectiveId = runId || workflowRuns[0]?.id;
   const monitor = useRunMonitor(mode === "运行追踪" ? effectiveId : undefined);
@@ -31,8 +31,8 @@ export function WorkflowWorkspace({ children, version, selectedRun, act, loopEna
   }, [selectedRun]);
   return <div className="workflow-workspace">
     <div className="workflow-workspace-switch">
-      <Tabs tabs={["知识演化", "编辑工作流", "运行追踪"]} value={mode} onChange={value=>{if(value==='编辑工作流')setEditorVisited(true);setMode(value);}} />
-      <span>{mode === "知识演化" ? "观察正在进行的研究" : mode === "运行追踪" ? "查看实际执行与节点输入输出" : "配置下一次研究"}</span>
+      {loopEnabled?<><Tabs tabs={["知识演化"]} value={mode} onChange={setMode}/><details className="workflow-other-views" open={mode!=="知识演化"}><summary>更多</summary><Tabs tabs={["编辑工作流","运行追踪"]} value={mode} onChange={value=>{if(value==='编辑工作流')setEditorVisited(true);setMode(value);}}/></details></>:<Tabs tabs={["知识演化", "编辑工作流", "运行追踪"]} value={mode} onChange={value=>{if(value==='编辑工作流')setEditorVisited(true);setMode(value);}} />}
+      {!loopEnabled&&<span>{mode === "知识演化" ? "观察正在进行的研究" : mode === "运行追踪" ? "查看实际执行与节点输入输出" : "配置下一次研究"}</span>}
     </div>
 
     {mode === "知识演化" && <KnowledgeEvolution onTask={onTask}/>}

@@ -2,7 +2,7 @@ import type {Question,Json} from './types';
 export type DatasetRef={collection_id:string;revision:string};
 export type PairManifest=Json & {pair_key:string;members:Array<{key:string;role:string}>};
 export type DatasetRevision=DatasetRef & {parent_revision:string|null;name:string;description:string;archived:boolean;selection_mode:'single'|'pairs';keys:string[];pairs:PairManifest[];created_at:string};
-export type DatasetSummary=DatasetRef & {name:string;description:string;archived:boolean;selection_mode:'single'|'pairs';count:number;pair_count:number;families:string[];updated_at:string;origin?:{kind:'source'|'set'|'created'|'imported'};equivalent_datasets?:DatasetSummary[]};
+export type DatasetSummary=DatasetRef & {name:string;description:string;archived:boolean;selection_mode:'single'|'pairs';count:number;pair_count:number;families:string[];type_counts?:Record<string,number>;updated_at:string;origin?:{kind:'source'|'set'|'created'|'imported'};equivalent_datasets?:DatasetSummary[]};
 export type DataQuestion=Question & {prompt?:string;split?:string;hash?:string};
 export type BankItem={equivalence_id:string;representative_key:string;keys:string[];summary:DataQuestion;sources:Json[];datasets:DatasetSummary[]};
 export type Page<T>={items:T[];total:number;offset:number;limit:number};

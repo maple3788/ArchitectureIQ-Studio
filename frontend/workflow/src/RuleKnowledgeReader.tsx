@@ -2,6 +2,7 @@ import {useState} from 'react';
 import {Tabs,Field,ErrorBox,Loading,useResource,JsonView} from './ui';
 import {RuleCaseEvidence} from './RuleRefinementRun';
 import {RuleVersionSummary} from './RuleVersionSummary';
+import {KnowledgeQuestions} from './KnowledgeQuestions';
 import {ruleConditions,ruleField,ruleGroups,sourceStatus} from './ruleKnowledgePresentation';
 import type {KBRef} from './ruleRefinementTypes';
 import type {Json} from './types';
@@ -35,7 +36,31 @@ function RuleClaim({id,rules,score}:{id:string;rules:Json[];score?:Json}){
   {metadata?.dev_evidence&&<details className="rr-development"><summary>来源开发证据</summary><p>{metadata.dev_evidence}</p><p className="muted">这是来源文档记录的证据，不计作本平台的独立确认结果。</p></details>}
  </article>;
 }
-export function RuleKnowledgeReader({kbRef,runId,onEvaluate,record}:{kbRef:KBRef;runId?:string;onEvaluate?:(ref:KBRef)=>void;record?:Json}){
+type ReaderProps={kbRef:KBRef;runId?:string;onEvaluate?:(ref:KBRef)=>void;record?:Json;claimId?:string};
+export function RuleKnowledgeReader(props:ReaderProps){
+ return props.claimId!==undefined?<SingleClaimReader key={`${props.kbRef.id}:${props.kbRef.version}:${props.claimId}`} {...props} claimId={props.claimId}/>:<LegacyRuleKnowledgeReader {...props}/>;
+}
+function SingleClaimReader({kbRef,runId,onEvaluate,record,claimId}:ReaderProps&{claimId:string}){
+ const inventory=useResource<{items:Json[]}>(record?null:'/kb');
+ const kb=record??inventory.data?.items.find(item=>item.id===kbRef.id&&item.version===kbRef.version);
+ const source=runId??kb?.sources?.find((item:Json)=>item.kind==='run')?.id;
+ const resource=useResource<Json>(source?'/runs/'+encodeURIComponent(source):null);
+ const score=resource.data?.refinement?.score??resource.data?.result?.score;
+ const group=ruleGroups(kb?.snapshot?.rules??[]).find(item=>item.id===claimId);
+ const [tab,setTab]=useState('知识内容');
+ return <section className="rr-knowledge rr-single-knowledge">
+  <ErrorBox error={inventory.error||resource.error}/>
+  {inventory.loading&&!kb?<Loading/>:!kb||!group?<p>这条知识在当前记录中暂不可用。</p>:<>
+   <Tabs tabs={['知识内容','适用题目','不适用题目']} value={tab} onChange={setTab}/>
+   {tab==='知识内容'?<>
+    <RuleClaim {...group} score={score}/>
+    <details className="rr-knowledge-provenance"><summary>来源与保存记录</summary><p>{kb.name||'规则知识'} · {claimId}</p><p className="rr-version">保存版本 {kbRef.version}</p>{kb.snapshot.source_document&&<JsonView value={kb.snapshot.source_document}/>}</details>
+    {onEvaluate&&<button className="secondary" onClick={()=>onEvaluate(kbRef)}>在 Task 中检查此知识所在 KB</button>}
+   </>:<KnowledgeQuestions kbRef={kbRef} claimId={claimId} relation={tab==='适用题目'?'applicable':'inapplicable'}/>}
+  </>}
+ </section>;
+}
+function LegacyRuleKnowledgeReader({kbRef,runId,onEvaluate,record}:ReaderProps){
  const inventory=useResource<{items:Json[]}>(record?null:'/kb');const kb=record??inventory.data?.items.find(k=>k.id===kbRef.id&&k.version===kbRef.version);
  const source=runId??kb?.sources?.find((s:Json)=>s.kind==='run')?.id;const resource=useResource<Json>(source?'/runs/'+encodeURIComponent(source):null);
  const score=resource.data?.refinement?.score??resource.data?.result?.score;

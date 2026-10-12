@@ -19,3 +19,5 @@
   .workflow-monitor { padding: 16px; }
   .workflow-monitor-toolbar { align-items: center; gap: 8px; }
 }
+
+.workflow-other-views{position:relative;align-self:center;color:#81918b;font-size:12px}.workflow-other-views>summary{cursor:pointer;list-style:none;padding:10px}.workflow-other-views[open]>.tabs{position:absolute;right:0;top:100%;z-index:6;width:240px;padding:4px 10px;background:#fff;border:1px solid #dce5df;border-radius:10px;box-shadow:0 8px 24px #35594b12}

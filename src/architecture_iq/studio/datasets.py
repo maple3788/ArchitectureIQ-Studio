@@ -170,10 +170,20 @@ class DatasetStore:
             return result
 
     def _summary(self, record):
-        families = sorted({question_summary(self.catalog, key)[0].get('family', '') for key in record['keys']} - {''})
+        questions = [question_summary(self.catalog, key)[0] for key in record['keys']]
+        families = sorted({question.get('family', '') for question in questions} - {''})
         return {k: record[k] for k in ('collection_id', 'revision', 'name', 'description', 'archived', 'selection_mode')} | {
             'count': len(record['keys']), 'pair_count': len(record['pairs']), 'families': families,
+            'type_counts': self._type_counts(questions),
             'updated_at': record['created_at']}
+
+    @staticmethod
+    def _type_counts(questions):
+        counts = {}
+        for question in questions:
+            kind = question.get('type') or ''
+            counts[kind] = counts.get(kind, 0) + 1
+        return counts
 
     @staticmethod
     def _origins(conn):
@@ -234,8 +244,10 @@ class DatasetStore:
         filters = validate_filters(filters)
         revision = self.get(ref['collection_id'], ref['revision'])
         items = [question_summary(self.catalog, key)[0] for key in revision['keys']]
+        type_counts = self._type_counts(items)
         items = [item for item in items if matches(item, filters)]
-        return {'items': items[offset:offset + limit], 'total': len(items), 'offset': offset, 'limit': limit}
+        return {'items': items[offset:offset + limit], 'total': len(items), 'offset': offset, 'limit': limit,
+                'type_counts': type_counts}
 
     def memberships(self, keys: list[str]) -> dict[str, list[dict]]:
         result = {key: [] for key in keys}
