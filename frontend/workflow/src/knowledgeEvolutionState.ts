@@ -22,9 +22,15 @@ export const claimStateLabels: Record<string,string> = {
 export type EvolutionSync = {status:string; last_success_at?:Timestamp; last_attempt_at?:Timestamp; message?:string};
 export type EvolutionObservation = {source_identity:string;sequence:number};
 export type EvolutionTaskContext = {observation:EvolutionObservation;claim_ref?:{id:string;version:number}};
+export type EvolutionConfiguration = {
+  scope:'current_source'; evidence?:{min_relative_gap?:number}; checks?:{max_rules?:number;max_conditions?:number;min_history_applicable?:number;new_min_rate?:number;revision_min_rate?:number;min_coverage_kept?:number;duplicate_agreement?:number};
+  judge?:Json; questions?:{per_round?:number;target_fraction?:number;target_probe_tries?:number;target_set_probe_tries?:number;target_draws?:number;seed_workers?:Record<string,number>};
+  proposer?:{model?:string;reasoning_effort?:string;concurrency?:number;timeout_s?:number;proposals_per_cell?:number;revisions_per_claim?:number;splits_per_claim?:number;split_new_errors?:number;split_max_claims?:number;max_new_per_round?:number;listing_cap?:number;stream?:boolean};
+};
 export type EvolutionClaim = {
   id:string; version:number; text:string; rules:Json[]; status:string; registered_round:number;
   needs_revision:boolean; revisions:number; stats?:Json|null; parent?:Json|null; rationale?:string;
+  lineage_kind?:'split'|'revision';
   consistency?:{consistent:boolean|null;issue?:string}|null;
   evidence:{applicable:number;support:number;refute:number;conflicts:number};
 };
@@ -40,15 +46,20 @@ export type EvolutionSnapshot = {
   execution?:{status:string;stop_requested:boolean;alert:boolean};
   round?:EvolutionRound|null; kb?:{claims:number;candidate:number;verified:number;flagged:number;retired:number};
   evidence?:{questions:number;verdicts:number}; claims?:EvolutionClaim[]; rounds?:EvolutionRound[]; thresholds?:Json;
+  configuration?:EvolutionConfiguration;
 };
-export type EvolutionClaimDetail = {observation?:EvolutionObservation;claim:EvolutionClaim;history:EvolutionClaim[];evidence:Json[];evidence_total:number|null;evidence_truncated:boolean;reading_round?:number;evidence_unavailable?:boolean;notice?:string};
+export type EvolutionClaimDetail = {observation?:EvolutionObservation;claim:EvolutionClaim;history:EvolutionClaim[];parent_claim?:Pick<EvolutionClaim,'id'|'version'|'text'|'rules'|'parent'|'registered_round'|'lineage_kind'>;children?:Pick<EvolutionClaim,'id'|'version'|'text'|'parent'|'registered_round'|'lineage_kind'>[];evidence:Json[];evidence_total:number|null;evidence_truncated:boolean;reading_round?:number;evidence_unavailable?:boolean;notice?:string};
 export type EvolutionGeneration = {total:number;completed:number;ok:number;failed:number;pending:number;items:{item_id:string;family:string;question_type:string;budget?:Json;purpose:string;targets:string[];status:string;seconds?:number;question_id?:string}[]};
 export type EvolutionRoundDetail = EvolutionRound & {
   observation?:EvolutionObservation;
   generation?:EvolutionGeneration;
-  score?:Json|null; judge_events?:Json[]; proposals?:{new_count:number;revision_count:number;rejections:Json;qwen:Json}|null;
+  score?:Json|null; judge_events?:Json[]; proposals?:{new_count:number;revision_count:number;rejections:Json;qwen:Json;model?:string;split_count?:number;split_parent_count?:number;split_attempt_count?:number}|null;
   registration?:{count:number;hash?:string;hash_matches?:boolean|null}|null; registered?:Json[];
 };
+
+export function evolutionStageLabel(stage:EvolutionStage,configuration?:EvolutionConfiguration){
+  return stage==='propose'&&(configuration?.proposer?.splits_per_claim??0)>0?'提出与拆分':evolutionLabels[stage];
+}
 
 /** Sequence controls business snapshots; heartbeats only update connection metadata. */
 export function useKnowledgeEvolution() {
@@ -99,7 +110,7 @@ export function evolutionPresentation(snapshot?:EvolutionSnapshot,connected=true
   const positions=[{x:0,y:0},{x:270,y:0},{x:540,y:0},{x:540,y:185},{x:270,y:185},{x:0,y:185},{x:0,y:370}];
   const done=new Set(snapshot?.round?.completed_stages??[]);
   const nodes:PathNode[]=evolutionStages.map((id,index)=>({
-    id,label:evolutionLabels[id],description:id==='build'&&snapshot?.round?.plan
+    id,label:evolutionStageLabel(id,snapshot?.configuration),description:id==='build'&&snapshot?.round?.plan
       ?`${snapshot.round.build?.completed??0} / ${snapshot.round.plan.total} 组已完成 · ${snapshot.round.build?.ok??0} 道有效题`
       :evolutionDescriptions[id],position:positions[index],stage:id==='plan'||id==='build'?'data':id==='register'||id==='report'?'kb':'harness',
     kind:id==='propose'?'model':id==='judge'?'decision':'program',

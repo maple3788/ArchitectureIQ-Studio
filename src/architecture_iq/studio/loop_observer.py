@@ -556,6 +556,9 @@ class LoopObserver:
                 raise ValueError('Invalid source capture')
         if not isinstance(payload['claims'], list) or not isinstance(payload['rounds'], list):
             raise ValueError('Invalid source lists')
+        if isinstance(value.get('configuration'), dict):
+            from .loop_source import public_configuration
+            payload['configuration'] = public_configuration(value['configuration'])
         serialized = _json(payload)
         if len(serialized.encode()) > _MAX_CAPTURE_BYTES:
             raise ValueError('Source capture too large')

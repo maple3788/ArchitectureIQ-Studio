@@ -107,6 +107,26 @@ def test_private_config_not_in_capture_and_source_changes_are_isolated(tmp_path)
     assert other.snapshot()['sequence'] == 0
 
 
+def test_public_policy_is_persisted_sanitized_and_updates_without_rewriting_old_events(tmp_path):
+    value = capture()
+    observer = LoopObserver(tmp_path, config=configuration(), reader=lambda _: value)
+    observer.poll_once()  # Legacy capture remains readable, with no fabricated configuration.
+    value['configuration'] = {'scope': 'current_source', 'checks': {'new_min_rate': 0.85},
+                              'proposer': {'model': 'public-model', 'api_key': 'PRIVATE_SECRET'}}
+    observer.poll_once()
+    assert observer.snapshot()['configuration']['checks']['new_min_rate'] == 0.85
+    value['configuration']['checks']['new_min_rate'] = 0.95
+    observer.poll_once()
+    reopened = LoopObserver(tmp_path, config=configuration(), reader=lambda _: value)
+    events = reopened.events()
+    assert len(events) == 3
+    assert 'configuration' not in events[0]
+    assert events[1]['configuration']['checks']['new_min_rate'] == 0.85
+    assert events[2]['configuration']['checks']['new_min_rate'] == 0.95
+    assert 'PRIVATE_SECRET' not in json.dumps(events)
+    assert reopened.snapshot()['configuration']['proposer'] == {'model': 'public-model'}
+
+
 def test_ssh_transport_uses_only_collector_stdin_and_quoted_fixed_command(monkeypatch):
     calls = []
     def run(argv, **kwargs):

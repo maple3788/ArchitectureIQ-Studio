@@ -5,13 +5,14 @@ import {evidenceQuestionSummary} from './evidenceQuestionSummary';
 import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs} from './ui';
 import {ResearchPathCanvas} from './ResearchPathCanvas';
 import {EvolutionRevisionHistory} from './KnowledgeRevisionHistory';
+import {EvolutionRoundResults,EvolutionStrategyDetails} from './EvolutionResearchDetails';
 import {ruleConditions} from './ruleKnowledgePresentation';
 import {formatTimestamp} from './time';
 import {EvolutionTaskEntry,initialGenerationView,LoopGenerationPanel,LoopQuestionPanel} from './LoopQuestionPanel';
 import type {Json} from './types';
 import type {TaskSeed} from './taskTypes';
 import {
-  claimStateLabels,evolutionDescriptions,evolutionLabels,evolutionPresentation,useKnowledgeEvolution,
+  claimStateLabels,evolutionDescriptions,evolutionStageLabel,evolutionPresentation,useKnowledgeEvolution,
   type EvolutionObservation,type EvolutionClaim,type EvolutionClaimDetail,type EvolutionRoundDetail,type EvolutionSnapshot,type EvolutionStage,type EvolutionTaskContext,
 } from './knowledgeEvolutionState';
 import './knowledge-evolution.css';
@@ -66,8 +67,9 @@ function EvidenceComparisons({row}:{row:Json}){
   </>;
 }
 
-function ClaimReader({data,onQuestion,onTask}:{data:EvolutionClaimDetail;onQuestion:(id:string)=>void;onTask?:(seed:TaskSeed)=>void}){
+function ClaimReader({data,onQuestion,onTask,onClaim}:{data:EvolutionClaimDetail;onQuestion:(id:string)=>void;onTask?:(seed:TaskSeed)=>void;onClaim:(id:string)=>void}){
   const claim=data.claim;
+  const parent=data.parent_claim?.id===claim.parent?.id&&data.parent_claim?.version===claim.parent?.version?data.parent_claim:undefined;
   return <div className="evolution-claim-reader">
     <span className={`evolution-claim-status is-${claim.status}`}>{claimStateLabels[claim.status]??claim.status}</span>
     <p className="evolution-claim-text">{claim.text}</p>
@@ -76,6 +78,12 @@ function ClaimReader({data,onQuestion,onTask}:{data:EvolutionClaimDetail;onQuest
     <p className="evolution-note">{data.reading_round===undefined?'证据计数仅包含当前修订登记之后的新题；统计下界来自来源判定记录。':`展示第 ${data.reading_round} 轮保存的知识与证据，后续修订不会替换此处内容。`}</p>{data.notice&&<p className="evolution-warning">{data.notice}</p>}
     {claim.needs_revision&&<p className="evolution-warning">该命题已被标记为需要修订。</p>}
     {claim.rationale&&<p>{claim.rationale}</p>}
+    {(claim.parent?.id||data.children?.length)&&<section className="evolution-lineage" aria-label="知识谱系"><h3>知识谱系</h3>
+      {claim.parent?.id&&<div><span className="evolution-block-note">{claim.lineage_kind==='split'?'拆分来源 · 原知识保留为父节点':claim.lineage_kind==='revision'?'前序修订':'来源记录'}</span><p>{claim.parent.id} · 第 {claim.parent.version} 版</p>{data.reading_round===undefined&&claim.parent.id!==claim.id&&<button className="loop-open-question" onClick={()=>onClaim(claim.parent!.id)}>查看父节点当前记录 <ArrowUpRight size={14}/></button>}</div>}
+      {parent&&<details className="evolution-raw-record"><summary>{claim.lineage_kind==='split'?'拆分时的父规则':'来源版本的规则'}</summary><section aria-label="父知识原始版本"><small>{parent.id} · 第 {parent.version} 版</small><p>{parent.text}</p><RuleBranches rules={parent.rules}/></section></details>}
+      {!!data.children?.length&&<div><span className="evolution-block-note">下游知识 · {data.children.length} 条</span>{data.children.map(child=><div className="evolution-lineage-child" key={`${child.id}-${child.version}`}><small>{child.id} · 第 {child.version} 版 · 第 {child.registered_round} 轮登记</small><p>{child.text}</p>{data.reading_round===undefined&&<button className="loop-open-question" onClick={()=>onClaim(child.id)}>查看子节点当前记录 <ArrowUpRight size={14}/></button>}</div>)}</div>}
+      {data.reading_round!==undefined&&<p className="evolution-note">以上为本轮保存的版本关系；后续知识不计入这份历史记录。</p>}
+    </section>}
     <section><h3>适用条件与执行规则</h3><RuleBranches rules={claim.rules}/></section>
     {claim.consistency?.consistent!==undefined&&claim.consistency.consistent!==true&&<p className="evolution-warning">文字与规则一致性：{claim.consistency.consistent===false?'需要复核':'尚未确认'}{claim.consistency.issue?` · ${claim.consistency.issue}`:''}</p>}
     <section><h3>验证过的题目</h3>
@@ -95,6 +103,7 @@ function RoundReader({data,onClaim}:{data:EvolutionRoundDetail;onClaim:(id:strin
   return <div className="evolution-round-reader">
     <p>{data.completed?'本轮已归档。':'本轮尚未归档，以下仅展示已保存的产物。'}</p>
     <dl className="evolution-evidence-numbers"><div><dt>有效新题 / 计划</dt><dd>{count(data.build?.ok)} / {count(data.plan?.total)}</dd></div><div><dt>新命题</dt><dd>{count(data.proposals?.new_count)}</dd></div><div><dt>修订通过</dt><dd>{count(data.proposals?.revision_count)}</dd></div></dl>
+    <EvolutionRoundResults data={data}/>
     <section><h3>证据判定</h3>{data.judge_events?.length?data.judge_events.map((event,index)=><button className="evolution-round-knowledge" key={index} aria-label={`查看第 ${data.index} 轮知识 ${event.claim_id}`} disabled={!available(event.version)} onClick={()=>onClaim(event.claim_id,event.version)}><span><strong>{event.claim_id} · {claimStateLabels[event.from]??event.from} → {claimStateLabels[event.to]??event.to}{event.needs_revision?' · 需要修订':''}</strong><small className="evolution-block-note">支持 {event.support} / {event.applicable} · 下界 {percent(event.lower_bound)}</small></span><ChevronRight size={17}/></button>):<p className="evolution-note">{data.completed_stages.includes('judge')?'本轮没有状态变更。':'等待已保存的判定结果。'}</p>}</section>
     <section><h3>新登记的知识</h3>{data.registered?.length?data.registered.map((claim,index)=><button className="evolution-round-knowledge" key={`${claim.id}-${index}`} aria-label={`查看第 ${data.index} 轮知识 ${claim.id}`} disabled={!available(claim.version)} onClick={()=>onClaim(claim.id,claim.version)}><span><small className="evolution-block-note">{claim.id}</small><strong>{claim.text}</strong></span><ChevronRight size={17}/></button>):<p className="evolution-note">{data.completed_stages.includes('register')?'本轮没有新登记的命题。':'等待完成检查与登记。'}</p>}</section>
     {data.proposals&&<details className="evolution-source"><summary>规则检查与模型调用记录</summary><JsonView value={{rejections:data.proposals.rejections,qwen:data.proposals.qwen}}/></details>}
@@ -105,14 +114,16 @@ function RoundReader({data,onClaim}:{data:EvolutionRoundDetail;onClaim:(id:strin
 
 function StageReader({stage,snapshot,detail,onClose}:{stage:EvolutionStage;snapshot:EvolutionSnapshot;detail?:EvolutionRoundDetail;onClose:()=>void}){
   const round=snapshot.round,done=round?.completed_stages?.includes(stage);
-  return <div className="evolution-stage-reader"><header><small>第 {round?.index??'—'} 轮 · {done?'已保存阶段结果':'等待阶段完成'}</small><button aria-label="关闭节点详情" onClick={onClose}>×</button></header><h3>{evolutionLabels[stage]}</h3><p>{evolutionDescriptions[stage]}</p>
-    {stage==='plan'&&<><p>定向题 {count(round?.plan?.target)} 道 · 探索题 {count(round?.plan?.explore)} 道</p><p className="evolution-note">定向检查现有命题的适用范围，同时探索尚未覆盖的问题。</p></>}
+  const split=(snapshot.configuration?.proposer?.splits_per_claim??0)>0;
+  const questions=snapshot.configuration?.questions;
+  return <div className="evolution-stage-reader"><header><small>第 {round?.index??'—'} 轮 · {done?'已保存阶段结果':'等待阶段完成'}</small><button aria-label="关闭节点详情" onClick={onClose}>×</button></header><h3>{evolutionStageLabel(stage,snapshot.configuration)}</h3><p>{evolutionDescriptions[stage]}</p>
+    {stage==='plan'&&<><p>定向题 {count(round?.plan?.target)} 道 · 探索题 {count(round?.plan?.explore)} 道</p><p className="evolution-note">定向检查现有命题的适用范围，同时探索尚未覆盖的问题。</p>{(questions?.target_probe_tries!==undefined||questions?.target_set_probe_tries!==undefined||questions?.target_draws!==undefined)&&<><h4>叶子定向出题</h4><p className="evolution-note">以下为来源当前配置；完成情况仍以本轮保存记录为准。</p><ol className="evolution-directed-steps"><li><strong>数据集条件</strong><span>在本题种子区间内寻找满足目标叶子条件的实例。</span>{questions.target_probe_tries!==undefined&&<small>最多 {questions.target_probe_tries} 个种子</small>}</li><li><strong>训练前候选对适用性</strong><span>筛选包含目标叶子能判断的候选对的候选集。</span>{questions.target_set_probe_tries!==undefined&&<small>最多 {questions.target_set_probe_tries} 次采样</small>}</li><li><strong>合格三选一</strong><span>从训练完成的候选中抽取合格且适用的三选一。</span>{questions.target_draws!==undefined&&<small>最多 {questions.target_draws} 次抽取</small>}</li></ol><p className="evolution-note">引导只看规则能否判断，不看判断是否正确；题目仍须通过统一质量检查，一个数据集一道题。</p></>}</>}
     {stage==='build'&&<><p>完成 {count(round?.build?.completed)} / {count(round?.plan?.total)} 组</p><p>有效新题 {count(round?.build?.ok)} 道 · 未生成有效题 {count(round?.build?.failed)} 组</p><p className="evolution-note">题目由正式生成管线产生，判定来自真实训练的存储结果。</p></>}
     {stage==='score'&&<><p>当前轮已保存评分：{count(detail?.score?.questions)} 道题，{count(detail?.score?.verdicts)} 条判定。</p><p className="evolution-note">每条命题在一道题上只记一票；参与计分的比较中出现错误，即记为反例。已收录命题也持续接受新题复验。</p><p className="evolution-note">来源会跳过内部冲突的比较；仅有冲突、没有有效预测的题不计入适用题。这里沿用来源判定。</p></>}
     {stage==='judge'&&<><p>积累足够的登记后证据，再根据支持率和统计下界判断。</p><p className="evolution-note">证据不足时继续积累；存疑或失败的命题进入修订。</p><details><summary>本次研究的判定阈值</summary><JsonView value={snapshot.thresholds??{}}/></details></>}
-    {stage==='propose'&&<><p>模型基于历史证据提出新命题或修订；程序检查公开字段、覆盖、重复与回归。</p><p className="evolution-note">规则检查属于这个阶段。这里只显示已保存的结果。</p>{detail?.proposals?<p>通过检查：新命题 {detail.proposals.new_count} 条 · 修订 {detail.proposals.revision_count} 条</p>:<p className="evolution-note">等待保存提案与检查记录。</p>}</>}
+    {stage==='propose'&&<><p>{split?'来源已配置拆分：模型根据证据提出更窄的候选知识，原知识保留为父节点。':'模型基于历史证据提出新命题或修订；程序检查公开字段、覆盖、重复与回归。'}</p><p className="evolution-note">入库质量检查通过后仍是候选；登记后再用新题验证。合并知识尚未启用。</p>{detail?.proposals?<p>通过检查：新命题 {detail.proposals.new_count} 条{detail.proposals.split_count!==undefined?` · 拆分 ${detail.proposals.split_count} 条`:` · 修订 ${detail.proposals.revision_count} 条`}</p>:<p className="evolution-note">等待保存提案与检查记录。</p>}</>}
     {stage==='register'&&<><p>通过检查后登记并计算封存摘要；从下一轮的新题开始验证。</p>{detail?.registration?<p>登记 {detail.registration.count} 条 · {detail.registration.hash_matches===true?'摘要核验一致':detail.registration.hash_matches===false?'摘要不一致':'等待摘要核验'}</p>:<p className="evolution-note">尚无本轮预注册记录。</p>}</>}
-    {stage==='report'&&<><p>保留本轮生成、验证、修订和登记结果，然后进入下一轮。</p><p className="evolution-note">{detail?.report?'报告已保存，可在轮次记录中阅读。':'等待本轮报告。'}</p></>}
+    {stage==='report'&&<><p>保留本轮生成、验证、登记与已验证 KB 的联合答题结果，然后进入下一轮。</p><p className="evolution-note">{detail?.report?'报告已保存，可在轮次记录中阅读。':'等待本轮报告。'}</p></>}
   </div>;
 }
 
@@ -135,7 +146,7 @@ export function KnowledgeEvolution({onTask}:{onTask?:(seed:TaskSeed)=>void}={}){
   const graph=evolutionPresentation(snapshot,connected),round=snapshot?.round,execution=snapshot?.execution;
   const claims=(snapshot?.claims??[]).filter(claim=>filter==='all'||claim.status===filter);
   const status=stale?'同步中断 · 显示上次记录':!snapshot?.configured?'尚未连接研究':connected?'同步正常':'正在连接研究';
-  const stageName=round?.next_stage&&evolutionLabels[round.next_stage as EvolutionStage];
+  const stageName=round?.next_stage&&evolutionStageLabel(round.next_stage as EvolutionStage,snapshot?.configuration);
   const activity=execution?.alert?'来源报告异常':!connected?'等待同步确认':execution?.status==='running'
     ?`${stageName??'轮次切换'}${execution.stop_requested?' · 已请求轮末停止':''}`
     :execution?.status==='stopped'?'进程已停止':'进程状态待确认';
@@ -144,6 +155,7 @@ export function KnowledgeEvolution({onTask}:{onTask?:(seed:TaskSeed)=>void}={}){
     {!snapshot?connection==='disconnected'?<Empty title="暂时无法连接研究记录">连接恢复后会继续读取，页面不会启动或改变实验。</Empty>:<Loading/>:!snapshot.configured?<Empty title="连接正在进行的研究">配置研究记录来源后，这里会展示真实出题进度、命题证据和轮次变化。原有工作流仍可在“编辑工作流”中使用。</Empty>:<>
       {round?<div className="evolution-current"><div className="evolution-round-heading"><strong>第 {round.index} 轮</strong><span>{activity}</span></div><div className="evolution-build"><div><span>本轮出题</span><strong>{count(round.build?.completed)} <small>/ {count(round.plan?.total)}</small></strong></div>{round.plan?.total? <progress aria-label="本轮出题进度" value={round.build?.completed??0} max={round.plan.total}/>:null}<small>{count(round.build?.ok)} 道有效题 · {count(round.build?.failed)} 组未生成有效题</small></div></div>:<p className="evolution-note">等待来源保存首轮研究记录。</p>}
       {snapshot.kb&&<div className="evolution-kb-counts" aria-label="来源知识状态">{(['candidate','verified','flagged','retired'] as const).map(state=><span key={state} className={`is-${state}`}><i/>{claimStateLabels[state]} <b>{count(snapshot.kb?.[state])}</b></span>)}</div>}
+      <EvolutionStrategyDetails configuration={snapshot.configuration}/>
       <ResearchPathCanvas nodes={graph.nodes} edges={graph.edges} selectedId={stage??''} onSelect={id=>setStage(id as EvolutionStage)} ariaLabel="知识演化研究路径" inspectorPresentation="overlay"
         inspector={stage&&stage!=='build'&&<StageReader stage={stage} snapshot={snapshot} detail={roundIndex===undefined||roundIndex===round?.index?roundDetail.data:undefined} onClose={()=>setStage(undefined)}/>}
         toolbar={<div className="evolution-canvas-heading"><span>研究路径</span><small>节点状态来自已保存的阶段记录</small></div>}
@@ -153,7 +165,7 @@ export function KnowledgeEvolution({onTask}:{onTask?:(seed:TaskSeed)=>void}={}){
         {tab==='知识进展'?claims.length?<div className="evolution-claims">{claims.map(claim=><button className="evolution-claim-row" aria-label={`阅读命题 ${claim.id}`} key={claim.id} onClick={()=>{setClaimRound(undefined);setClaimId(claim.id);}}><div><span className="evolution-claim-id">{claim.id}</span><span className={`evolution-claim-status is-${claim.status}`}>{claimStateLabels[claim.status]??claim.status}</span>{claim.needs_revision&&<small>待修订</small>}</div><p>{claim.text}</p><span className="evolution-claim-meta">支持 {count(claim.evidence?.support)} / {count(claim.evidence?.applicable)} 道适用题 <span>统计下界 {percent(claim.stats?.lower_bound)}</span><ArrowUpRight size={16}/></span></button>)}</div>:<Empty title="尚无这一状态的命题">新的证据与登记结果会自动显示。</Empty>:snapshot.rounds?.length?<div className="evolution-rounds">{[...snapshot.rounds].sort((a,b)=>b.index-a.index).map(item=><button key={item.index} onClick={()=>setRoundIndex(item.index)} aria-label={`阅读第 ${item.index} 轮`}><strong>第 {item.index} 轮</strong><span>{item.completed?'已归档':'未归档'}<small>{count(item.build?.ok)} / {count(item.plan?.total)} 道有效题</small></span><ChevronRight size={17}/></button>)}</div>:<Empty title="还没有轮次记录">完成的阶段与报告会在这里保存。</Empty>}
       </section>
     </>}
-    {!questionId&&claimId&&<Drawer title="知识与证据" subtitle={claimId} onClose={()=>setClaimId(undefined)}><>{claimRound&&<button className="loop-back" onClick={()=>setClaimId(undefined)}><ArrowLeft size={15}/>{`返回第 ${claimRound.index} 轮研究`}</button>}<ErrorBox error={claimDetail.error}/></>{claimDetail.data?<ClaimReader key={claimPath} data={claimDetail.data} onTask={onTask} onQuestion={id=>setQuestion({id,historical:!!claimRound,context:claimDetail.data?.observation?{observation:{...claimDetail.data.observation},...(!claimRound?{claim_ref:{id:claimDetail.data.claim.id,version:claimDetail.data.claim.version}}:{})}:undefined})}/>:!claimDetail.error&&<Loading/>}</Drawer>}
+    {!questionId&&claimId&&<Drawer title="知识与证据" subtitle={claimId} onClose={()=>setClaimId(undefined)}><>{claimRound&&<button className="loop-back" onClick={()=>setClaimId(undefined)}><ArrowLeft size={15}/>{`返回第 ${claimRound.index} 轮研究`}</button>}<ErrorBox error={claimDetail.error}/></>{claimDetail.data?<ClaimReader key={claimPath} data={claimDetail.data} onTask={onTask} onClaim={id=>{setClaimRound(undefined);setClaimId(id);}} onQuestion={id=>setQuestion({id,historical:!!claimRound,context:claimDetail.data?.observation?{observation:{...claimDetail.data.observation},...(!claimRound?{claim_ref:{id:claimDetail.data.claim.id,version:claimDetail.data.claim.version}}:{})}:undefined})}/>:!claimDetail.error&&<Loading/>}</Drawer>}
     {!questionId&&!claimId&&roundIndex!==undefined&&<Drawer title={`第 ${roundIndex} 轮研究`} onClose={()=>setRoundIndex(undefined)}><ErrorBox error={roundDetail.error}/>{roundDetail.data?<RoundReader data={roundDetail.data} onClaim={(id,version)=>{if(roundDetail.data?.observation){setClaimRound({index:roundIndex,version,observation:{...roundDetail.data.observation}});setClaimId(id);}}}/>:!roundDetail.error&&<Loading/>}</Drawer>}
     {!questionId&&!claimId&&roundIndex===undefined&&stage==='build'&&<Drawer title="本轮新题" subtitle={`第 ${round?.index??'—'} 轮 · 生成记录`} onClose={()=>setStage(undefined)}><LoopGenerationPanel data={roundDetail.data?.generation} error={roundDetail.error} connected={connected} onQuestion={id=>setQuestion({id,context:roundDetail.data?.observation?{observation:{...roundDetail.data.observation}}:undefined})} view={generationView} onView={setGenerationView}/></Drawer>}
     {questionId&&<div className="evolution-question-reader"><Drawer title="完整题目" subtitle={questionId} onClose={()=>setQuestion(undefined)}><LoopQuestionPanel key={questionId} id={questionId} backLabel={claimId?'返回知识与证据':'返回生成记录'} taskContext={question?.context} showKnowledgeEvidence={!question?.historical} onTask={question?.historical?undefined:onTask} onQuestion={(id,context)=>setQuestion({id,context})} onBack={()=>setQuestion(undefined)}/></Drawer></div>}

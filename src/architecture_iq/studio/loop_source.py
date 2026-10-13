@@ -47,6 +47,53 @@ def _pick(value, keys):
     return {key: value[key] for key in keys if key in value} if isinstance(value, dict) else {}
 
 
+def _numbers(value, keys, *, nullable=False):
+    return {key: item for key, item in _pick(value, keys).items()
+            if (type(item) in (int, float) and math.isfinite(item) and item >= 0)
+            or (nullable and item is None)}
+
+
+def _model(value):
+    name = value.get('model') if isinstance(value, dict) else None
+    return {'model': name} if isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', name) else {}
+
+
+def public_configuration(config):
+    """Only explicitly saved public policy values, scoped to the current source.
+
+    The source rewrites its root config between rounds. It does not persist a
+    config per round, so this projection must never label an older round.
+    """
+    config = config if isinstance(config, dict) else {}
+    proposer = config.get('proposer') or config.get('qwen') or {}
+    proposer = proposer if isinstance(proposer, dict) else {}
+    questions = config.get('questions') or {}
+    result = {
+        'scope': 'current_source',
+        'evidence': _numbers(config.get('evidence'), ('min_relative_gap',)),
+        'judge': _numbers(config.get('judge'), THRESHOLDS),
+        'checks': _numbers(config.get('checks'), ('max_rules', 'max_conditions', 'min_history_applicable',
+                          'new_min_rate', 'revision_min_rate', 'min_coverage_kept', 'duplicate_agreement')),
+        'questions': _numbers(questions, ('per_round', 'target_fraction', 'target_probe_tries',
+                             'target_set_probe_tries', 'target_draws')),
+        'proposer': {**_model(proposer), **_numbers(proposer, ('concurrency', 'timeout_s', 'proposals_per_cell',
+                     'revisions_per_claim', 'splits_per_claim', 'split_new_errors', 'split_max_claims',
+                     'max_new_per_round', 'listing_cap'))},
+    }
+    extra = _pick(proposer.get('extra_params'), ('reasoning_effort',))
+    effort = proposer.get('reasoning_effort', extra.get('reasoning_effort'))
+    if effort in ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'):
+        result['proposer']['reasoning_effort'] = effort
+    if type(proposer.get('stream')) is bool:
+        result['proposer']['stream'] = proposer['stream']
+    if isinstance(questions, dict):
+        workers = _numbers(questions.get('seed_workers'), ('univariate_regression', 'multivariate_regression',
+                            'xor_classification', 'spiral_classification', 'synthetic_tabular_classification', 'bigram_lm'))
+        if workers:
+            result['questions']['seed_workers'] = workers
+    return result
+
+
 def _transport_spec(value, keys=SPEC_KEYS):
     result = _pick(value, keys)
     for key, item in list(result.items()):
@@ -137,18 +184,58 @@ def _claim(value):
     result = _pick(value, ('id', 'version', 'text', 'rules', 'status', 'registered_round',
                            'needs_revision', 'revisions', 'rationale'))
     result['parent'] = _pick(value.get('parent'), ('id', 'version')) or None
+    origin = value.get('origin')
+    if isinstance(origin, str):
+        if re.fullmatch(r'split:[A-Za-z0-9_-]+:round_\d+', origin):
+            result['lineage_kind'] = 'split'
+        elif re.fullmatch(r'revision:round_\d+', origin):
+            result['lineage_kind'] = 'revision'
+    elif value.get('lineage_kind') in ('split', 'revision'):
+        # Historical claims have already passed through this projection.
+        result['lineage_kind'] = value['lineage_kind']
     result['stats'] = _pick(value.get('stats'), STATS) or None
     consistency = value.get('consistency')
     result['consistency'] = _pick(consistency, ('consistent', 'issue')) if consistency else None
     return result
 
 
+def _children(parent, versions, *, through_round=None):
+    """Identity/text only: the latest status is not a historical child status."""
+    children = {}
+    for child in versions:
+        link = child.get('parent') or {}
+        if (child['id'] == parent['id'] or link.get('id') != parent['id']
+                or type(link.get('version')) is not int or link['version'] > parent['version']
+                or type(child.get('registered_round')) is not int
+                or (through_round is not None and child['registered_round'] > through_round)):
+            continue
+        current = children.get(child['id'])
+        if current is None or child['version'] >= current['version']:
+            children[child['id']] = _pick(_claim(child), ('id', 'version', 'text', 'parent',
+                                                       'registered_round', 'lineage_kind'))
+    return sorted(children.values(), key=lambda item: (item['registered_round'], item['id']))
+
+
+def _parent_claim(child, versions, *, through_round=None):
+    """Resolve the original parent version, never its current replacement."""
+    parent = child.get('parent')
+    registered = child.get('registered_round')
+    if not isinstance(parent, dict) or type(registered) is not int:
+        return {}
+    cutoff = min(registered, through_round) if through_round is not None else registered
+    claim = versions.get((parent.get('id'), parent.get('version')))
+    if claim and type(claim.get('registered_round')) is int and claim['registered_round'] <= cutoff:
+        return {'parent_claim': _pick(_claim(claim), ('id', 'version', 'text', 'rules',
+                                                      'registered_round', 'parent', 'lineage_kind'))}
+    return {}
+
+
 def _report(value):
     if not value:
         return None
-    return {
+    result = {
         'round': value.get('round'), 'kb': _pick(value.get('kb'), ('claims', *STATUSES)),
-        'build': _pick(value.get('build'), ('items', 'ok', 'failed', 'target', 'explore')),
+        'build': _numbers(value.get('build'), ('items', 'ok', 'failed', 'target', 'explore', 'steered', 'target_hit')),
         'events': [_pick(event, ('round', 'claim_id', 'version', 'from', 'to', 'needs_revision', *STATS))
                    for event in value.get('events', [])],
         'registered': [_pick(claim, ('id', 'version', 'text', 'consistent', 'issue')) for claim in value.get('registered', [])],
@@ -156,6 +243,27 @@ def _report(value):
         'qwen': _pick(value.get('qwen'), ('calls', 'cached', 'errors', 'failovers')),
         'preregistered_sha256': value.get('preregistered_sha256'),
     }
+    result.update(_model(value))
+    if isinstance(value.get('splits'), dict):
+        result['splits'] = _numbers(value['splits'], ('parents', 'registered'))
+    for field in ('ensemble', 'ensemble_explore'):
+        if isinstance(value.get(field), dict):
+            result[field] = {**_numbers(value[field], ('questions', 'claims', 'answered', 'correct')),
+                             **_numbers(value[field], ('coverage', 'accuracy', 'overall'), nullable=True)}
+    return result
+
+
+def _proposals(value):
+    if not value:
+        return None
+    result = {'new_count': len(value.get('new', [])), 'revision_count': len(value.get('revisions', {})),
+              'rejections': value.get('rejections', {}),
+              'qwen': _pick(value.get('qwen'), ('calls', 'cached', 'errors', 'failovers')), **_model(value)}
+    if isinstance(value.get('splits'), dict):
+        splits = {key: items for key, items in value['splits'].items() if isinstance(items, list)}
+        result.update(split_count=sum(len(items) for items in splits.values()), split_parent_count=len(splits),
+                      split_attempt_count=len(set(value.get('needs_revision', [])) | set(value.get('split_attempts', {}))))
+    return result
 
 
 def question_support_counts(records):
@@ -254,6 +362,9 @@ def _round(reader, index):
             item.update(_pick(saved, ('seconds',)))
             if saved['status'] == 'ok':
                 item.update(_pick(saved, ('question_id',)))
+                item.update(_numbers(saved, ('draws',)))
+                if 'target_hit' in saved and (type(saved['target_hit']) is bool or saved['target_hit'] is None):
+                    item['target_hit'] = saved['target_hit']
         items.append(item)
     generation = {'total': len(items), 'completed': sum(item['status'] != 'pending' for item in items),
                   'ok': sum(item['status'] == 'ok' for item in items),
@@ -271,9 +382,7 @@ def _round(reader, index):
               'score': _pick(reader.json(prefix + 'score.json'), ('questions', 'verdicts', 'added')),
               'judge_events': [_pick(event, ('round', 'claim_id', 'version', 'from', 'to', 'needs_revision', *STATS))
                                for event in judge.get('events', [])],
-              'proposals': {'new_count': len(props.get('new', [])), 'revision_count': len(props.get('revisions', {})),
-                            'rejections': props.get('rejections', {}),
-                            'qwen': _pick(props.get('qwen'), ('calls', 'cached', 'errors', 'failovers'))} if props else None,
+              'proposals': _proposals(props),
               'registration': {'count': len(registration.get('claims', [])), 'hash': digest,
                                'hash_matches': hashlib.sha256(raw_registration).hexdigest() == digest if digest else None} if registration else None,
               'registered': [_claim(c) for c in registration.get('claims', [])] if registration else []}
@@ -306,12 +415,22 @@ def collect(root: Path, process_state='unknown') -> dict:
     for version in versions:
         history_by_claim.setdefault(version['id'], []).append(version)
     claims, details = [], {}
+    lineage_by_parent, lineage_versions = {}, {}
+    for version in [*versions, *raw_claims.values()]:
+        # Prefer immutable version entries over current state; index once as
+        # leaf counts grow, instead of scanning all claims for every round.
+        lineage_versions.setdefault((version['id'], version['version']), version)
+        parent = version.get('parent')
+        if isinstance(parent, dict):
+            lineage_by_parent.setdefault(parent.get('id'), []).append(version)
     for cid, raw in raw_claims.items():
         evidence = [row for row in ledger_by_version.get((cid, raw['version']), [])
                     if row['round'] > raw['registered_round']]
         support_records = [row for row in ledger_history.get((cid, raw['version']), [])
                            if row['round'] > raw['registered_round']]
         details[cid] = _claim_detail(raw, history_by_claim.get(cid, []), evidence, questions, support_records)
+        details[cid]['children'] = _children(raw, lineage_by_parent.get(cid, []))
+        details[cid].update(_parent_claim(raw, lineage_versions))
         claims.append(details[cid]['claim'])
     counts = Counter(claim['status'] for claim in claims)
     names = [name for name in reader.names('rounds') if re.fullmatch(r'round_\d{4,}', name)]
@@ -359,6 +478,8 @@ def collect(root: Path, process_state='unknown') -> dict:
             saved = _claim_detail(raw, history[-MAX_EVIDENCE:], evidence, historical_questions, support_records)
             saved.update(reading_round=index, evidence_unavailable=False,
                          history_truncated=len(history) > MAX_EVIDENCE)
+            saved['children'] = _children(raw, lineage_by_parent.get(cid, []), through_round=index)
+            saved.update(_parent_claim(raw, lineage_versions, through_round=index))
             round_claims.setdefault(cid, {})[str(version)] = saved
         detail['claim_details'] = round_claims
         # A question often tests several claims and appears in both evidence
@@ -378,8 +499,8 @@ def collect(root: Path, process_state='unknown') -> dict:
     next_stage = next((stage for stage in STAGES if stage not in current_summary['completed_stages']), None)
     raw_config = reader.read('config.yaml')
     config = yaml.safe_load(raw_config) if raw_config else {}
-    judge_cfg = _pick((config or {}).get('judge'), THRESHOLDS)
-    thresholds = {key: val for key, val in judge_cfg.items() if isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val)}
+    configuration = public_configuration(config)
+    thresholds = configuration['judge']
     execution = {'status': process_state if process_state in ('running', 'stopped') else 'unknown',
                  'stop_requested': reader.read('STOP') is not None, 'alert': reader.read('ALERT') is not None}
     source_updated_at = reader.finish()
@@ -387,7 +508,7 @@ def collect(root: Path, process_state='unknown') -> dict:
             'round': {key: current_summary[key] for key in ('index', 'completed_stages', 'plan', 'build')} | {'next_stage': next_stage},
             'kb': {'claims': len(claims), **{status: counts[status] for status in STATUSES}},
             'evidence': {'questions': len(questions), 'verdicts': len(by_claim)},
-            'claims': claims, 'rounds': rounds, 'thresholds': thresholds,
+            'claims': claims, 'rounds': rounds, 'thresholds': thresholds, 'configuration': configuration,
             'claim_details': details, 'round_details': round_details}
 
 

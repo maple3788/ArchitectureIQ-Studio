@@ -1,6 +1,12 @@
 import type {Json} from './types';
 
 const fields:Record<string,string>={model_type:'模型类型',family:'数据家族',task:'任务',opt:'优化器',opt_key:'优化器完整配置',arch_key:'网络完整结构',batch_size:'批大小',depth:'深度',width:'宽度',activation:'激活函数',residual:'残差连接',ln_any:'含 LayerNorm',ln_all:'所有层含 LayerNorm',ln_count:'LayerNorm 层数',smooth_activation:'平滑激活函数',disp:'累计步长',eff_lr:'有效学习率',lr:'学习率',steps:'训练步数',momentum:'动量',beta2:'β₂',weight_decay:'权重衰减',sign_normalized:'符号归一化优化器'};
+Object.assign(fields, {
+ input_dim:'输入维数', n_used_inputs:'目标实际使用的输入变量数', transition_alpha:'转移表集中度',
+ rule_family:'数据规则', n_active_features:'有效特征数', spiral_turns:'螺旋圈数',
+ vocab_size:'词表大小', context_length:'上下文长度', train_size:'训练集大小',
+ target_abs_mean:'目标绝对值均值', target_std:'目标标准差', target_oscillatory:'目标含振荡项',
+});
 export const ruleField=(key:string)=>fields[key]??key;
 const valueText=(value:unknown):string=>value===true?'是':value===false?'否':Array.isArray(value)?value.map(valueText).join('、'):String(value);
 export function predicateText(value:any):string{

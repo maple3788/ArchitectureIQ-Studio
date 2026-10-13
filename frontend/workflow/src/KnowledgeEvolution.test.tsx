@@ -352,3 +352,95 @@ it('reads saved original wording and changes from claim history without relabeli
  expect(within(history).getByText('较 C0001 · 第 1 版：正文、执行规则已调整。')).toBeTruthy();
  expect(within(history).queryByText(/支持|适用题/)).toBeNull();
 });
+
+it('separates the leaf-first design from observed source settings and keeps unexecuted stages pending',async()=>{
+ const snapshot=fixture();
+ Object.assign(snapshot,{configuration:{scope:'current_source',proposer:{model:'recorded-model',splits_per_claim:3},checks:{new_min_rate:0.85,min_history_applicable:1},questions:{target_fraction:0.6},evidence:{min_relative_gap:0.1}}});
+ install(snapshot);render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByText('研究策略'));
+ const strategy=screen.getByRole('region',{name:'研究策略说明'});
+ expect(within(strategy).getByText('来源当前配置')).toBeTruthy();
+ expect(within(strategy).getByText('recorded-model')).toBeTruthy();
+ expect(within(strategy).getByText('85.0%')).toBeTruthy();
+ expect(within(strategy).getByText(/最新设计.*第 7 轮起/)).toBeTruthy();
+ expect(within(strategy).getByText(/95%/)).toBeTruthy();
+ expect(within(strategy).getByText(/不能据此认定当前轮已经执行/)).toBeTruthy();
+ expect(within(screen.getByRole('region',{name:'知识演化研究路径'})).queryByText('已完成')).toBeNull();
+ expect(screen.queryByText('Qwen3.5-27B')).toBeNull();
+});
+
+it('shows joint answering separately for all questions and random exploration using saved report values',async()=>{
+ const snapshot=fixture();install(snapshot);
+ const detail={...snapshot.rounds![0],report:{model:'saved-round-model',build:{steered:18,target_hit:12},splits:{parents:4,registered:7},ensemble:{questions:30,claims:2,answered:20,correct:18,coverage:2/3,accuracy:.9,overall:.6},ensemble_explore:{questions:12,claims:2,answered:0,correct:0,coverage:0,accuracy:null,overall:0}}};
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/rounds/2')?detail:snapshot)));
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('tab',{name:'轮次记录'}));
+ fireEvent.click(screen.getByRole('button',{name:'阅读第 2 轮'}));
+ const report=await screen.findByRole('region',{name:'KB 联合答题'});
+ expect(within(report).getByText('本轮全部题（含定向）')).toBeTruthy();
+ expect(within(report).getByText('随机探索题')).toBeTruthy();
+ expect(within(report).getByText('90.0%')).toBeTruthy();
+ expect(within(report).getByText('未作答')).toBeTruthy();
+ expect(within(report).getByText(/候选不参与/)).toBeTruthy();
+ expect(await screen.findByText('12 / 18')).toBeTruthy();
+ expect(screen.getByText('7')).toBeTruthy();
+ expect(screen.getByText('saved-round-model')).toBeTruthy();
+});
+
+it('keeps checked split proposals separate from registered knowledge and does not infer an answer report',async()=>{
+ const snapshot=fixture();install(snapshot);
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/rounds/2')?{...snapshot.rounds![0],proposals:{new_count:5,revision_count:0,split_count:3,split_parent_count:2,split_attempt_count:6}}:snapshot)));
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('tab',{name:'轮次记录'}));
+ fireEvent.click(screen.getByRole('button',{name:'阅读第 2 轮'}));
+ expect(await screen.findByText('通过检查的拆分提案')).toBeTruthy();
+ expect(screen.queryByText('新登记的窄知识')).toBeNull();
+ expect(screen.getByText('尝试拆分的原知识').nextElementSibling?.textContent).toBe('6');
+ expect(screen.getByText('通过检查的原知识').nextElementSibling?.textContent).toBe('2');
+ expect(screen.getByText('这轮尚无保存的联合答题报告。')).toBeTruthy();
+ expect(screen.queryByText('0.0%')).toBeNull();
+});
+
+it('preserves the exact parent reference while explicitly navigating to the current parent record',async()=>{
+ const snapshot=fixture();install(snapshot);const requests:string[]=[];
+ vi.stubGlobal('fetch',async(url:string)=>{
+  requests.push(url);
+  return new Response(JSON.stringify(url.endsWith('/claims/C0001')?{claim:{...snapshot.claims![0],parent:{id:'C0000',version:1},lineage_kind:'split'},history:[],children:[{id:'C0002',version:1,text:'更窄的子知识',registered_round:2}],evidence:[],evidence_total:0,evidence_truncated:false}:url.endsWith('/claims/C0000')?{claim:{...snapshot.claims![0],id:'C0000',version:3,text:'父节点当前正文'},history:[],evidence:[],evidence_total:0,evidence_truncated:false}:snapshot));
+ });
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));
+ const lineage=await screen.findByRole('region',{name:'知识谱系'});
+ expect(within(lineage).getByText('C0000 · 第 1 版')).toBeTruthy();
+ expect(within(lineage).getByText('拆分来源 · 原知识保留为父节点')).toBeTruthy();
+ expect(within(lineage).getByText('更窄的子知识')).toBeTruthy();
+ fireEvent.click(within(lineage).getByRole('button',{name:'查看父节点当前记录'}));
+ expect(await screen.findByText('父节点当前正文')).toBeTruthy();
+ expect(requests).toContain('/api/studio/kb-loop/claims/C0000');
+});
+
+it('reads the exact split parent wording and rules without replacing them with current parent facts',async()=>{
+ const snapshot=fixture();install(snapshot);
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/claims/C0001')?{
+  claim:{...snapshot.claims![0],parent:{id:'C0000',version:1},lineage_kind:'split'},history:[],
+  parent_claim:{id:'C0000',version:1,text:'拆分时保留的父知识原文',rules:[{when:{family:'continuous'},prefer:'A'}],registered_round:0},evidence:[],evidence_total:0,evidence_truncated:false,
+ }:snapshot)));
+ render(<KnowledgeEvolution/>);fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));
+ fireEvent.click(await screen.findByText('拆分时的父规则'));
+ const source=await screen.findByRole('region',{name:'父知识原始版本'});
+ expect(within(source).getByText('拆分时保留的父知识原文')).toBeTruthy();
+ expect(within(source).getByText('C0000 · 第 1 版')).toBeTruthy();
+ expect(within(source).queryByText(/支持.*适用题/)).toBeNull();
+});
+
+it('explains directed generation steps using only saved source attempt limits',async()=>{
+ const snapshot=fixture();Object.assign(snapshot,{configuration:{scope:'current_source',questions:{target_probe_tries:12,target_set_probe_tries:7,target_draws:2}}});
+ install(snapshot);render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('button',{name:/研究计划/}));
+ expect(screen.getByText('数据集条件')).toBeTruthy();
+ expect(screen.getByText('训练前候选对适用性')).toBeTruthy();
+ expect(screen.getByText('合格三选一')).toBeTruthy();
+ expect(screen.getByText('最多 12 个种子')).toBeTruthy();
+ expect(screen.getByText('最多 7 次采样')).toBeTruthy();
+ expect(screen.getByText('最多 2 次抽取')).toBeTruthy();
+ expect(screen.queryByText(/最多 40|最多 30|最多 6/)).toBeNull();
+});
