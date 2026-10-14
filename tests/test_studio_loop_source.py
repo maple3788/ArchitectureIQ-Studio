@@ -78,6 +78,29 @@ def test_corrupt_complete_jsonl_record_is_not_silently_ignored(source):
         collect(source)
 
 
+def test_unused_nonfinite_record_gaps_do_not_break_monitoring(source):
+    path = source / 'records.jsonl'
+    record = json.loads(path.read_text())
+    record['gaps'] = [float('inf'), float('-inf'), float('nan')]
+    rows(source, 'records.jsonl', [record])
+    before = path.read_bytes()
+    snapshot = collect(source, 'running')
+    question = snapshot['claim_details']['C1']['evidence'][0]['question']
+    assert question['question_id'] == 'q2'
+    assert 'gaps' not in question
+    json.dumps(snapshot, allow_nan=False)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('field', ['candidates', 'comparisons'])
+def test_nonfinite_public_question_fields_remain_rejected(source, field):
+    record = json.loads((source / 'records.jsonl').read_text())
+    record[field] = {'bad': float('inf')}
+    rows(source, 'records.jsonl', [record])
+    with pytest.raises(ValueError):
+        collect(source)
+
+
 def test_next_round_is_observed_without_creating_it(source):
     for stage in ('build', 'score', 'judge', 'propose', 'register', 'report'):
         (source / 'rounds/round_0002' / ('DONE_' + stage)).touch()

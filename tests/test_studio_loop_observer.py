@@ -56,6 +56,26 @@ def test_durable_change_only_journal_and_reopen(tmp_path):
         reopened.claim('../credentials')
 
 
+def test_growing_multi_round_observation_survives_transport_and_persistence(tmp_path, monkeypatch):
+    value = capture()
+    # A real ten-round run exceeded 32 MiB as versioned evidence accumulated.
+    value['round_details']['1']['saved_evidence'] = 'x' * (33 * 1024 * 1024)
+    from types import SimpleNamespace
+    monkeypatch.setattr('architecture_iq.studio.loop_observer.subprocess.run',
+                        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=json.dumps(value)))
+    observer = LoopObserver(tmp_path, config=configuration())
+    assert observer.poll_once()
+    assert observer.snapshot()['sync']['status'] == 'connected'
+    assert observer.round(1)['saved_evidence'] == value['round_details']['1']['saved_evidence']
+
+
+def test_observation_limit_still_rejects_oversized_capture(tmp_path, monkeypatch):
+    monkeypatch.setattr('architecture_iq.studio.loop_observer._MAX_OBSERVATION_BYTES', 100)
+    observer = LoopObserver(tmp_path, config=configuration(), reader=lambda _: capture())
+    assert not observer.poll_once()
+    assert observer.snapshot()['sequence'] == 0
+
+
 def test_disconnect_keeps_previous_capture_and_hides_error(tmp_path):
     source = [capture()]
     def reader(_):

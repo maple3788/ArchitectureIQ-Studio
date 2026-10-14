@@ -154,13 +154,32 @@ class Reader:
         data = self.read(relative, required)
         return _json(data) if data is not None else default
 
-    def rows(self, relative):
+    def rows(self, relative, *, fields=None):
         data = self.read(relative)
         if data is None:
             return []
         # A writer appends its newline last. Do not consume a partially written row.
         lines = data.splitlines(keepends=True)
-        return [_json(line) for line in lines if line.strip() and line.endswith(b'\n')]
+        result = []
+        for line in lines:
+            if not line.strip() or not line.endswith(b'\n'):
+                continue
+            if fields is None:
+                result.append(_json(line))
+                continue
+            # Records contain internal numeric diagnostics (e.g. infinite gaps)
+            # that are never displayed. Project first, then strictly validate
+            # every retained field; never normalize or rewrite source results.
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise SourceUnavailable('Invalid source record')
+            public = _pick(row, fields)
+            try:
+                json.dumps(public, allow_nan=False)
+            except ValueError as exc:
+                raise SourceUnavailable('Non-finite public source value') from exc
+            result.append(public)
+        return result
 
     def names(self, relative):
         path = self.path(relative)
@@ -396,9 +415,9 @@ def collect(root: Path, process_state='unknown') -> dict:
         raise SourceUnavailable('Invalid claims artifact')
     versions = reader.rows('claim_versions.jsonl')
     ledger = reader.rows('ledger.jsonl')
-    records = reader.rows('records.jsonl')
     question_fields = ('question_id', 'round', 'purpose', 'family', 'type', 'dataset_id',
                        'winner', 'winner_separates', 'candidates', 'comparisons')
+    records = reader.rows('records.jsonl', fields=question_fields)
     questions = {row['question_id']: _pick(row, question_fields) for row in records}
     question_history, historical_questions = {}, {}
     for row in records:

@@ -31,6 +31,10 @@ _CAPTURE_FIELDS = frozenset({
 })
 _DETAIL_FIELDS = {'claim_details', 'round_details'}
 _MAX_CAPTURE_BYTES = 32 * 1024 * 1024
+# A multi-round observation contains all retained KB revisions and evidence.
+# Keep individual question/result limits unchanged while allowing that bundle
+# to grow within the same 128 MiB bound used for source artifacts.
+_MAX_OBSERVATION_BYTES = 128 * 1024 * 1024
 
 
 class ObservationConflict(ValueError):
@@ -154,7 +158,8 @@ class SSHSourceReader:
                 input=collector, text=True, capture_output=True,
                 timeout=remaining, check=False,
             )
-            if len(response.stdout.encode()) > _MAX_CAPTURE_BYTES:
+            limit = _MAX_CAPTURE_BYTES if arguments else _MAX_OBSERVATION_BYTES
+            if len(response.stdout.encode()) > limit:
                 break
             if response.returncode == 2 and arguments:
                 if json.loads(response.stdout) == {'error': 'question_missing'}:
@@ -560,7 +565,7 @@ class LoopObserver:
             from .loop_source import public_configuration
             payload['configuration'] = public_configuration(value['configuration'])
         serialized = _json(payload)
-        if len(serialized.encode()) > _MAX_CAPTURE_BYTES:
+        if len(serialized.encode()) > _MAX_OBSERVATION_BYTES:
             raise ValueError('Source capture too large')
         return serialized
 
