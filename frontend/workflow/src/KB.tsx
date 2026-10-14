@@ -1,5 +1,6 @@
 import {useState} from 'react';
-import {ChevronRight,Search} from 'lucide-react';
+import {ChevronRight,Search,List,GitBranch} from 'lucide-react';
+import {KnowledgeForest} from './KnowledgeForest';
 import {Drawer,Empty,ErrorBox,JsonView,Loading,Tabs,useResource} from './ui';
 import {RuleKnowledgeReader} from './RuleKnowledgeReader';
 import {KnowledgeSnapshot} from './KnowledgeSnapshot';
@@ -36,18 +37,24 @@ function ReadingOnlyEvolutionEntry({revision}:{revision:KnowledgeRevision}){
 }
 export function KB({version,onEvaluate}:{version:number;onEvaluate?:(ref:KBRef)=>void}){
  const {data,error,loading}=useResource<any>('/kb',version);
+ const [view,setView]=useState<'list'|'forest'>(()=>{try{return localStorage.getItem('studio-kb-view')==='forest'?'forest':'list';}catch{return 'list';}});
+ const switchView=(next:'list'|'forest')=>{setView(next);try{localStorage.setItem('studio-kb-view',next);}catch{/* View switching remains available when browser storage is blocked. */}};
  const [search,setSearch]=useState(''),[section,setSection]=useState('knowledge'),[status,setStatus]=useState('all'),[support,setSupport]=useState('all'),[limit,setLimit]=useState(30),[selection,setSelection]=useState<{key:string;version:string}>();
  const records:Json[]=Array.isArray(data)?data:Array.isArray(data?.items)?data.items:[...(data?.snapshots||[]),...(data?.claims||[]),...(data?.sources||[])];
  const entries=knowledgeEntries(records);
- const visible=knowledgeContentGroups(entries,search).flatMap(group=>{
+ const groups=knowledgeContentGroups(entries,search).map(group=>{
   const matches=group.sources.filter(({entry,revision})=>(section==='all'||entry.library.section===section)&&(status==='all'||entryState(revision)===status)&&(support==='all'||(knowledgeSupport(entry.claimId,revision).support??-1)>=HIGH_SUPPORT_QUESTIONS));
+  return {...group,matches};
+ });
+ const visible=groups.flatMap(group=>{
+  const matches=group.matches;
   const source=matches.find(({entry,revision})=>knowledgeSupport(entry.claimId,revision).support!==null)??matches[0];
   return source?[{...group,...source}]:[];
  });
  const current=entries.find(entry=>entry.key===selection?.key),selected=current?.revisions.find(revision=>revisionKey(revision)===selection?.version);
  const latest=current&&currentEntryRevision(current);
  const equivalentSources=selected?knowledgeEquivalentSources(entries,selected):[];
- return <section className="kb-page"><div className="page-heading"><div><span className="eyebrow">KNOWLEDGE BASE</span><h1>知识库</h1><p>逐条阅读知识，检查适用条件与题目。</p></div></div><ErrorBox error={error}/>
+ return <section className={`kb-page${view==='forest'?' kb-page-forest':''}`}><div className="page-heading"><div><span className="eyebrow">KNOWLEDGE BASE</span><h1>知识库</h1><p>逐条阅读知识，检查适用条件与题目。</p></div><div className="kb-view-switch" role="group" aria-label="知识库视图"><button aria-pressed={view==='list'} onClick={()=>switchView('list')}><List size={16}/>列表</button><button aria-pressed={view==='forest'} onClick={()=>switchView('forest')}><GitBranch size={16}/>知识森林</button></div></div><ErrorBox error={error}/>
   <div className="kb-entry-filters"><label className="kb-library-search"><Search size={18}/><input type="search" aria-label="搜索知识库" placeholder="搜索知识内容" value={search} onChange={event=>{setSearch(event.target.value);setLimit(30);}}/></label>
    <select aria-label="知识来源" value={section} onChange={event=>{setSection(event.target.value);setLimit(30);}}><option value="knowledge">研究知识</option><option value="experience">学习经验</option><option value="history">历史材料</option><option value="all">全部来源</option></select>
    <select aria-label="验证状态" value={status} onChange={event=>{setStatus(event.target.value);setLimit(30);}}><option value="all">全部状态</option>{Object.entries(entryStateLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
@@ -56,7 +63,7 @@ export function KB({version,onEvaluate}:{version:number;onEvaluate?:(ref:KBRef)=
   {support==='high'&&<p className="kb-support-note">至少 {HIGH_SUPPORT_QUESTIONS} 道不同题目支持，反例仍保留。</p>}
   <details className="kb-support-definition"><summary>支持统计说明</summary><p>高价值门槛为同一保存版本的 {HIGH_SUPPORT_QUESTIONS} 道支持题。同题重复与多组比较只计一次；同题有反例时不计为支持，反例仍保留。这不代表独立验证，也不以适用题目数代替支持。证据未知的知识不进入此筛选。</p></details>
   {Array.isArray(data?.warnings)&&data.warnings.length>0&&<details className="kb-read-warning"><summary>{data.warnings.length} 个来源暂未完成核验</summary><JsonView value={data.warnings}/></details>}
-  {loading?<Loading/>:!entries.length?<Empty title="尚无登记的知识或经验">保存的知识会显示在这里。</Empty>:!visible.length?<Empty title="没有找到匹配的知识">调整内容、来源、验证状态或支持情况筛选。</Empty>:<>
+  {loading?<Loading/>:!entries.length?<Empty title="尚无登记的知识或经验">保存的知识会显示在这里。</Empty>:!visible.length?<Empty title="没有找到匹配的知识">调整内容、来源、验证状态或支持情况筛选。</Empty>:view==='forest'?<KnowledgeForest entries={entries} matches={groups.flatMap(group=>group.matches)} onRead={setSelection}/>:<>
    <p className="kb-entry-count">{visible.length} 条知识</p>
    <div className="kb-library-list">{visible.slice(0,limit).map(({key,entry,revision,sources})=>{const state=entryState(revision);return <button key={key} className="kb-library-row" aria-label={`阅读 ${entry.claimId} ${entryText(revision)}`} onClick={()=>setSelection({key:entry.key,version:revisionKey(revision)})}>
     <span className="kb-library-copy"><span className="kb-library-title">{entryText(revision)}</span><span className="kb-library-state"><span className={`kb-entry-status is-${state}`}>{revision.record.kind==='research_rules'&&state==='verified'?'来源标记：范围内复现':revision.record.source_kind==='knowledge_evolution'&&state==='pending'?'待独立验证':entryStateLabels[state]}</span>{evolutionSourceLabel(revision)&&<span>{evolutionSourceLabel(revision)}</span>}<span className="kb-support-count">{sources.length>1?'当前来源：':''}{supportLabel(knowledgeSupport(entry.claimId,revision))}</span>{sources.length>1&&<span>{sources.length} 个来源</span>}{revision!==currentEntryRevision(entry)&&<span>历史记录</span>}<span>{entry.library.name}</span><span>{entry.claimId}</span></span></span><ChevronRight size={18} className="kb-library-arrow"/>
