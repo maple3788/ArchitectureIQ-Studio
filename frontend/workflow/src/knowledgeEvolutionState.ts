@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {api} from './api';
 import type {Json} from './types';
 import type {Timestamp} from './time';
+import type {ConsistencyAudit} from './ConsistencyAudit';
 import type {PathEdge, PathNode, PathPortSide} from './ResearchPathCanvas';
 
 export const evolutionStages = ['plan','build','score','judge','propose','register','report'] as const;
@@ -32,6 +33,7 @@ export type EvolutionClaim = {
   needs_revision:boolean; revisions:number; stats?:Json|null; parent?:Json|null; rationale?:string;
   lineage_kind?:'split'|'revision';
   consistency?:{consistent:boolean|null;issue?:string}|null;
+  consistency_audit?:ConsistencyAudit|null;
   evidence:{applicable:number;support:number;refute:number;conflicts:number};
 };
 export type EvolutionRound = {

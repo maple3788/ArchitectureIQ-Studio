@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import {ConsistencyAuditView} from './ConsistencyAudit';
 import {ArrowLeft,ArrowUpRight,ChevronRight} from 'lucide-react';
 import {api} from './api';
 import {evidenceQuestionSummary} from './evidenceQuestionSummary';
@@ -85,6 +86,7 @@ function ClaimReader({data,onQuestion,onTask,onClaim}:{data:EvolutionClaimDetail
       {data.reading_round!==undefined&&<p className="evolution-note">以上为本轮保存的版本关系；后续知识不计入这份历史记录。</p>}
     </section>}
     <section><h3>适用条件与执行规则</h3><RuleBranches rules={claim.rules}/></section>
+    <ConsistencyAuditView audit={claim.consistency_audit}/>
     {claim.consistency?.consistent!==undefined&&claim.consistency.consistent!==true&&<p className="evolution-warning">文字与规则一致性：{claim.consistency.consistent===false?'需要复核':'尚未确认'}{claim.consistency.issue?` · ${claim.consistency.issue}`:''}</p>}
     <section><h3>验证过的题目</h3>
       <p className="evolution-note">{data.evidence_total==null?`当前可读取 ${data.evidence.length} 条证据。`:data.evidence_truncated?`展示最近 ${data.evidence.length} 条，共 ${data.evidence_total} 条证据。`:`共 ${data.evidence_total} 条证据。`}</p>

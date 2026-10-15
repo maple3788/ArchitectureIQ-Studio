@@ -249,6 +249,10 @@ class LoopObserver:
 
     def _public_capture(self, row, sync=None):
         value = _decode(row['payload']) if row else {}
+        audits = self.audit_claims(value.get('claims', []))
+        if audits:
+            value['claims'] = [{**claim, **({'consistency_audit': audits[claim['id']]} if claim['id'] in audits else {})}
+                               for claim in value['claims']]
         return {
             **{key: val for key, val in value.items() if key not in _DETAIL_FIELDS},
             'configured': self.configured, 'name': '知识演化',
@@ -303,7 +307,39 @@ class LoopObserver:
         row = self._latest()
         if not row:
             raise KeyError('命题记录不可用')
-        return {**_decode(row['payload'])['claim_details'][identifier], 'observation': self._observation_ref(row)}
+        detail = _decode(row['payload'])['claim_details'][identifier]
+        audits = self.audit_claims([detail['claim']])
+        if identifier in audits:
+            detail['claim']['consistency_audit'] = audits[identifier]
+        return {**detail, 'observation': self._observation_ref(row)}
+
+    def audit_claims(self, claims):
+        """Human-facing annotations, never edits to captured/frozen KB payloads."""
+        from architecture_iq.kb.claim_consistency import CHECKER_VERSION, claim_hash
+        result = {claim['id']: claim['consistency_audit'] for claim in claims
+                  if isinstance(claim.get('consistency_audit'), dict)
+                  and claim['consistency_audit'].get('checker_version') == CHECKER_VERSION
+                  and claim['consistency_audit'].get('claim_hash') == claim_hash(claim)
+                  and claim['consistency_audit'].get('status') in {'passed', 'needs_review', 'unchecked'}}
+        if not self.config:
+            return result
+        try:
+            path = self.directory / 'consistency_audit.json'
+            if path.stat().st_size > _MAX_OBSERVATION_BYTES:
+                return result
+            report = json.loads(path.read_text())
+            if (report.get('source_identity') != self.config.identity
+                    or report.get('checker_version') != CHECKER_VERSION):
+                return result
+            for claim in claims:
+                entry = report.get('claims', {}).get(claim.get('id'), {})
+                audit = entry.get('audit')
+                if (entry.get('version') == claim.get('version') and entry.get('claim_hash') == claim_hash(claim)
+                        and isinstance(audit, dict) and audit.get('status') in {'passed','needs_review','unchecked'}):
+                    result[claim['id']] = audit
+            return result
+        except (OSError, ValueError, TypeError, AttributeError):
+            return result
 
     def round(self, number: int) -> dict:
         row = self._latest()
@@ -350,6 +386,9 @@ class LoopObserver:
                 if 'question' not in row:
                     row['question'] = pool.get(f"{row['round']}:{row['question_id']}", pool.get(row['question_id']))
                 row['question'] = scoped_question(row, row['question'])
+            audits = self.audit_claims([saved['claim']])
+            if identifier in audits:
+                saved['claim']['consistency_audit'] = audits[identifier]
             return {**saved, 'reading_round': number, 'observation': observation}
 
         # Older captures retain only the latest revision's evidence. Recover
@@ -399,6 +438,9 @@ class LoopObserver:
             result.update(evidence_total=None, evidence_truncated=True,
                           notice='这份较早的观察记录未保存该修订截至本轮的完整证据；仅展示仍可核对的已保存记录。')
             result['counterexamples'].update(total=None, truncated=True)
+        audits = self.audit_claims([result['claim']])
+        if identifier in audits:
+            result['claim']['consistency_audit'] = audits[identifier]
         return result
 
     def question_evidence(self, identifier: str, *, source_identity: str, sequence: int,

@@ -133,6 +133,8 @@ def knowledge_library_inventory(inventory, *, jobs, evolution):
     for item in result['items']:
         capture = captures.get((item['id'], item['version']))
         if capture and _same_captured_claims(item, capture):
+            if hasattr(evolution.observer, 'audit_claims'):
+                item['consistency_audits'] = evolution.observer.audit_claims(capture.get('claims', []))
             represented = _claim_ids(item)
             # Keep human-readable excluded claims outside the immutable Task snapshot.
             item['reading_claims'] = [{key: deepcopy(claim[key]) for key in _CLAIM_FIELDS if key in claim}

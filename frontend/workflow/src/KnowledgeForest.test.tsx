@@ -21,6 +21,18 @@ function inventory(){
   {items:[],counts:{applicable:0,inapplicable:0,unknown:0},total:0,offset:0,limit:25}));});
  return paths;
 }
+it('reads the selected forest node audit from its saved record',async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({items:[{...item,consistency_audits:{C2:{status:'needs_review',issues:[{code:'missing_condition',message:'正则化范围未进入执行规则'}]}}}]})));
+ render(<KB version={0}/>);
+ await screen.findByRole('button',{name:'阅读 C2 更窄范围内的学习率规律'});
+ fireEvent.click(screen.getByRole('button',{name:'知识森林'}));
+ fireEvent.click(screen.getByRole('button',{name:/展开谱系 C1/}));
+ fireEvent.click(screen.getByRole('button',{name:/查看知识 C2/}));
+ const inspector=within(screen.getByRole('complementary',{name:'森林知识详情'}));
+ const audit=within(inspector.getByRole('region',{name:'文字与规则一致性审计'}));
+ fireEvent.click(audit.getByText('审计详情'));
+ expect(audit.getByText('正则化范围未进入执行规则')).toBeTruthy();
+});
 it('switches between the retained list and a real lineage, reading exact evidence and Task references',async()=>{
  const paths=inventory(),onEvaluate=vi.fn();render(<KB version={0} onEvaluate={onEvaluate}/>);
  await screen.findByRole('button',{name:'阅读 C2 更窄范围内的学习率规律'});

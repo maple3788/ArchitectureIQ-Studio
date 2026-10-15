@@ -25,6 +25,19 @@ function install(snapshot=fixture()){
  Source.instances=[];vi.stubGlobal('EventSource',Source);
  const fetch=vi.fn(async()=>new Response(JSON.stringify(snapshot)));vi.stubGlobal('fetch',fetch);return fetch;
 }
+it('reads consistency audit details separately from source validation and causal hypotheses',async()=>{
+ const snapshot=fixture();
+ snapshot.claims![0].consistency_audit={status:'passed',issues:[],explanation:{text:'可能源于优化器的收敛行为',status:'hypothesis'}};
+ install(snapshot);
+ vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/claims/C0001')?{claim:snapshot.claims![0],history:[],evidence:[],evidence_total:0,evidence_truncated:false}:snapshot)));
+ render(<KnowledgeEvolution/>);
+ fireEvent.click(await screen.findByRole('button',{name:'阅读命题 C0001'}));
+ const audit=await screen.findByRole('region',{name:'文字与规则一致性审计'});
+ expect(within(audit).getByText('一致性检查通过')).toBeTruthy();
+ expect(within(audit).getByText(/不代表命题经过实证验证/)).toBeTruthy();
+ expect(within(screen.getByRole('region',{name:'因果解释 · 待验证'})).getByText('可能源于优化器的收敛行为')).toBeTruthy();
+ expect(screen.getAllByText('满足公开条件时，模型 A 优于模型 B。').length).toBeGreaterThan(0);
+});
 
 it('replays only newer snapshots, handles sync heartbeats and retains facts through disconnects',async()=>{
  install();const {result}=renderHook(()=>useKnowledgeEvolution());

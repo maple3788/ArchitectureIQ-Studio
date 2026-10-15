@@ -18,6 +18,38 @@ function inventory(items:Json[]){
   path.endsWith('/kb')?{items}:{}));});
  return paths;
 }
+it('filters consistency by the displayed saved revision and keeps missing audits unchecked',async()=>{
+ const latest={...libraryVersion('current',2,[rule('R1','当前完整条件'),rule('R2','尚无审计的知识')]),consistency_audits:{R1:{status:'passed',issues:[]}}};
+ const old={...libraryVersion('old',1,[rule('R1','历史遗漏条件')]),consistency_audits:{R1:{status:'needs_review',issues:[{code:'missing_condition',message:'预算限制未进入规则',quote:'最多 100 步',rule_indices:[0]}]}}};
+ inventory([latest,old]);render(<KB version={0}/>);
+ await screen.findByRole('button',{name:'阅读 R1 当前完整条件'});
+ fireEvent.change(screen.getByLabelText('一致性'),{target:{value:'unchecked'}});
+ expect(screen.queryByRole('button',{name:'阅读 R1 当前完整条件'})).toBeNull();
+ expect(screen.getByRole('button',{name:'阅读 R2 尚无审计的知识'})).toBeTruthy();
+ fireEvent.change(screen.getByLabelText('一致性'),{target:{value:'needs_review'}});
+ expect(screen.queryByRole('button',{name:'阅读 R2 尚无审计的知识'})).toBeNull();
+ fireEvent.change(screen.getByRole('searchbox',{name:'搜索知识库'}),{target:{value:'历史遗漏'}});
+ const row=screen.getByRole('button',{name:'阅读 R1 历史遗漏条件'});
+ expect(within(row).getByText('一致性待复核')).toBeTruthy();
+ fireEvent.change(screen.getByLabelText('一致性'),{target:{value:'passed'}});
+ expect(screen.queryByRole('button',{name:'阅读 R1 历史遗漏条件'})).toBeNull();
+});
+it('shows audit evidence and a separate unverified causal explanation without replacing the original claim',async()=>{
+ const original='在低预算下模型 A 更好，因为其收敛更快。';
+ inventory([{...libraryVersion('audit',1,[rule('C1',original)]),consistency_audits:{C1:{status:'needs_review',issues:[{code:'budget_unresolved',message:'低预算缺少可执行上限',quote:'低预算',rule_indices:[0]}],conditions:[{quote:'低预算',rule_indices:[],status:'missing'}],explanation:{text:'因为其收敛更快。',status:'hypothesis'},budget_context:{max_steps:100}}}}]);
+ render(<KB version={0}/>);
+ fireEvent.click(await screen.findByRole('button',{name:`阅读 C1 ${original}`}));
+ const dialog=within(screen.getByRole('dialog'));
+ expect(dialog.getByRole('heading',{name:original})).toBeTruthy();
+ const audit=within(dialog.getByRole('region',{name:'文字与规则一致性审计'}));
+ fireEvent.click(audit.getByText('审计详情'));
+ expect(audit.getByText('低预算缺少可执行上限')).toBeTruthy();
+ expect(audit.getByText('分支 1')).toBeTruthy();
+ expect(audit.getByText('未匹配执行规则')).toBeTruthy();
+ const explanation=within(dialog.getByRole('region',{name:'因果解释 · 待验证'}));
+ expect(explanation.getByText('因为其收敛更快。')).toBeTruthy();
+ expect(audit.getByText('真实预算上下文')).toBeTruthy();
+});
 it('folds duplicate sources without adding evidence and preserves source-specific history and exact question references',async()=>{
  const imported=libraryVersion('v10',10,[rule('O1','相同规则正文')]);
  const earlier=libraryVersion('v9',9,[rule('O1','导入第一版原文')]);

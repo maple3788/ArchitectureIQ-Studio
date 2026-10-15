@@ -202,6 +202,9 @@ class Reader:
 def _claim(value):
     result = _pick(value, ('id', 'version', 'text', 'rules', 'status', 'registered_round',
                            'needs_revision', 'revisions', 'rationale'))
+    explanation = value.get('explanation')
+    if isinstance(explanation, dict) and isinstance(explanation.get('text'), str) and explanation.get('status') == 'hypothesis':
+        result['explanation'] = _pick(explanation, ('text', 'status'))
     result['parent'] = _pick(value.get('parent'), ('id', 'version')) or None
     origin = value.get('origin')
     if isinstance(origin, str):
@@ -215,6 +218,13 @@ def _claim(value):
     result['stats'] = _pick(value.get('stats'), STATS) or None
     consistency = value.get('consistency')
     result['consistency'] = _pick(consistency, ('consistent', 'issue')) if consistency else None
+    audit = value.get('consistency_audit') or consistency
+    if isinstance(audit, dict) and audit.get('checker_version') == 'claim-consistency-1':
+        binding = hashlib.sha256(json.dumps({k: result.get(k) for k in ('text', 'rules', 'explanation')},
+            sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()).hexdigest()
+        if audit.get('claim_hash') == binding and audit.get('status') in ('passed', 'needs_review', 'unchecked'):
+            result['consistency_audit'] = _pick(audit, ('checker_version', 'claim_hash', 'budget_context_hash',
+                'checked_at', 'status', 'issues', 'conditions', 'explanation', 'budget_context'))
     return result
 
 

@@ -7,6 +7,7 @@ import {ruleConditions} from './ruleKnowledgePresentation';
 import {KnowledgeQuestions} from './KnowledgeQuestions';
 import {KnowledgeEntryHistory} from './KnowledgeRevisionHistory';
 import {Tabs} from './ui';
+import {ConsistencyAuditView} from './ConsistencyAudit';
 import './knowledge-forest.css';
 
 type Selection={key:string;version:string};
@@ -96,6 +97,7 @@ function Inspector({node,onRead}:{node?:ForestNode;onRead:Props['onRead']}){
      {node.revision.parts.filter(part=>part.rule).length>1&&<h4>分支 {index+1}</h4>}<dl className="kf-conditions">{rows.map(([label,value],row)=><div key={row}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>;})}
     <div className="kf-evidence-summary"><strong>{supportLabel(support)}</strong><p>{support.notice}</p></div>
+    <ConsistencyAuditView audit={node.revision.record.consistency_audits?.[node.entry.claimId]}/>
     {saved?.consistency?.consistent===false&&<p className="kf-notice">文字与执行规则仍需复核，完整记录保留在详情中。</p>}
    </>:tab==='证据'?<><p className="kf-evidence-summary">{supportLabel(support)}</p>{node.revision.parts.every(part=>part.library_only)?<p className="kf-notice">这条知识未进入可执行规则库，保留的来源记录可在完整详情中查看。</p>:<KnowledgeQuestions compact kbRef={{id:node.revision.record.id,version:node.revision.record.version}} claimId={node.entry.claimId} relation="applicable"/>}</>:<KnowledgeEntryHistory entry={node.entry} selected={node.revision} onRead={onRead}/>}
    {node.missingParents.length>0&&<p className="kf-notice">父版本暂不可连线：{node.missingParents.join('；')}</p>}
