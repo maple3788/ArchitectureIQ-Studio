@@ -55,6 +55,22 @@ def _literal_constants(path: Path) -> dict:
     return constants
 
 
+def _frozen_rule_semantics(path: Path) -> str:
+    """Read the frozen proposer DSL as data, without importing runtime code."""
+    try:
+        assignments = [node.value for node in ast.parse(path.read_text()).body
+                       if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == "DSL" for target in node.targets)]
+        if len(assignments) != 1:
+            raise ValueError("expected exactly one DSL assignment")
+        semantics = ast.literal_eval(assignments[0])
+        if not isinstance(semantics, str) or not semantics.strip():
+            raise ValueError("DSL must be a nonempty literal string")
+        return semantics
+    except (OSError, SyntaxError, TypeError, ValueError) as exc:
+        raise ValueError("frozen proposer DSL semantics are missing or unsupported") from exc
+
+
 def budget_context(runtime_root: Path, cfg: dict) -> dict:
     """Resolve exact allowed steps from frozen settings, never evidence extrema."""
     from architecture_iq.profile import Profile
@@ -62,6 +78,7 @@ def budget_context(runtime_root: Path, cfg: dict) -> dict:
 
     root = Path(runtime_root).resolve()
     constants = _literal_constants(root / "tools/kb_loop/questions.py")
+    semantics = _frozen_rule_semantics(root / "tools/kb_loop/proposer.py")
     budgets, families = constants.get("BUDGETS"), constants.get("FAMILIES")
     if not budgets or not families or any(type(x) is not int or x <= 0 for x in budgets):
         raise ValueError("frozen questions must declare positive BUDGETS and nonempty FAMILIES")
@@ -84,7 +101,9 @@ def budget_context(runtime_root: Path, cfg: dict) -> dict:
     return {"status": "configured", "source": "frozen_runtime_profile",
             "budget_values": sorted(set(budgets)), "steps_values": sorted({c["steps"] for c in combinations}),
             "profile": profile.name, "combinations": combinations,
-            "config_hash": _digest({"profile": profile.raw, "constants": constants, "loop_config": cfg})}
+            "rule_semantics": semantics, "rule_semantics_source": "tools/kb_loop/proposer.py:DSL",
+            "config_hash": _digest({"profile": profile.raw, "constants": constants, "loop_config": cfg,
+                                    "rule_semantics": semantics})}
 
 
 def drafts(props: dict):

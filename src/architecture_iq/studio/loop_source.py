@@ -219,7 +219,7 @@ def _claim(value):
     consistency = value.get('consistency')
     result['consistency'] = _pick(consistency, ('consistent', 'issue')) if consistency else None
     audit = value.get('consistency_audit') or consistency
-    if isinstance(audit, dict) and audit.get('checker_version') == 'claim-consistency-1':
+    if isinstance(audit, dict) and audit.get('checker_version') == 'claim-consistency-2':
         binding = hashlib.sha256(json.dumps({k: result.get(k) for k in ('text', 'rules', 'explanation')},
             sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode()).hexdigest()
         if audit.get('claim_hash') == binding and audit.get('status') in ('passed', 'needs_review', 'unchecked'):

@@ -10,7 +10,7 @@ import math
 import re
 import time
 
-CHECKER_VERSION = 'claim-consistency-1'
+CHECKER_VERSION = 'claim-consistency-2'
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
@@ -31,7 +31,8 @@ def audit_messages(claim, budget_context):
         'Return one JSON object only. Be conservative: uncertainty is not consistency. Extract EVERY applicability '
         'condition, numeric bound, family, optimizer set, architecture condition, equal/held-fixed condition and '
         'exception from the text as exact quotes. Check each branch with its AND/OR logic, both compared sides, '
-        'operators, units and quantifiers. Mere mention of a field does not enforce its range; a scoring formula '
+        'operators, units and quantifiers. The supplied rule_semantics is the frozen runtime DSL: use its field definitions, '
+        'derived formulas, pairwise comparison contract and abstention semantics when interpreting rules. Mere mention of a field does not enforce its range; a scoring formula '
         'or same-steps relation is not a step bound. Check reverse direction too: hidden rule restrictions and '
         'wrong conclusion direction are inconsistencies. Cite exact JSON pointers RELATIVE TO each rule and their '
         'actual expected values for matched conditions. conditions_complete means you covered all conditions '

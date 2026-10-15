@@ -336,10 +336,18 @@ def test_budget_context_uses_actual_family_defaults_and_minimum_steps(runtime, t
     (tmp_path / "tools/kb_loop/questions.py").write_text(
         'FAMILY_WEIGHTS = (("synthetic_tabular_classification", 1), ("synthetic_regression", 1))\n'
         'FAMILIES = tuple(f for f, _ in FAMILY_WEIGHTS)\nBUDGETS = (4096, 8192)\n')
+    frozen_dsl = (
+        "scope must hold for both candidates; eff_lr is lr/(1-momentum) for SGD, lr otherwise; "
+        "disp is lr*steps for Adam/AdamW/RMSprop, 2*lr*sqrt(steps) for Adagrad, null for SGD; "
+        "arch_key / opt_key are whole architecture / optimizer identity, for same/differ only."
+    )
+    proposer_path = tmp_path / "tools/kb_loop/proposer.py"
+    proposer_path.write_text(f"DSL = {frozen_dsl!r}\n")
     shutil.copy(Path(__file__).resolve().parents[1] / "profiles/v1.5.yaml", tmp_path / "profiles/v1.5.yaml")
     context = runtime.budget_context(tmp_path, {"profile": "v1.5"})
     assert context["budget_values"] == [4096, 8192]
     assert context["steps_values"] == [256, 512]
+    assert context["rule_semantics"] == frozen_dsl
     assert context["combinations"] == [
         {"family": "synthetic_tabular_classification", "budget": 4096, "batch_size": 16, "steps": 256},
         {"family": "synthetic_tabular_classification", "budget": 8192, "batch_size": 32, "steps": 256},
@@ -347,3 +355,11 @@ def test_budget_context_uses_actual_family_defaults_and_minimum_steps(runtime, t
         {"family": "synthetic_regression", "budget": 8192, "batch_size": 16, "steps": 512},
         {"family": "synthetic_regression", "budget": 8192, "batch_size": 32, "steps": 256},
     ]
+    proposer_path.write_text(f"DSL = {frozen_dsl + ' Updated frozen semantics.'!r}\n")
+    assert runtime.budget_context(tmp_path, {"profile": "v1.5"})["config_hash"] != context["config_hash"]
+    proposer_path.write_text("DSL = derive_dsl_dynamically()\n")
+    with pytest.raises(ValueError, match="DSL"):
+        runtime.budget_context(tmp_path, {"profile": "v1.5"})
+    proposer_path.unlink()
+    with pytest.raises(ValueError, match="DSL"):
+        runtime.budget_context(tmp_path, {"profile": "v1.5"})
