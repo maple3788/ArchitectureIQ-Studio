@@ -10,3 +10,6 @@
 .consistency-audit small,.consistency-explanation small,.consistency-metadata{color:var(--muted,#6f8178);font-size:12px}
 .consistency-explanation p{white-space:pre-wrap}
 .kb-consistency-badge{color:#8c6017;background:#fff4d9;padding:2px 6px;border-radius:4px}
+.consistency-budget{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin:8px 0}
+.consistency-budget dt{color:var(--muted,#6f8178);font-size:12px;margin-top:6px}
+.consistency-budget dd{margin:0;line-height:1.6;font-variant-numeric:tabular-nums}
