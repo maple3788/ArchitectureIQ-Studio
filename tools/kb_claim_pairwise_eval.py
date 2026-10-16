@@ -11,6 +11,9 @@ fields that must be equal across the pair (ceteris paribus), and a prediction:
   {"dominates": [[f, "higher"|"lower"(, min_ratio)], ...], "winner": P, "loser": Q}
                                    the Pareto-better candidate on those axes wins
 
+A rule may also set "max_param_ratio": the pair applies only if the larger
+trainable-parameter count is at most that multiple of the smaller.
+
 Predicate leaves are ``[field, op, value]`` with op in eq|ne|lt|le|gt|ge|in|nin;
 a list of predicates is a conjunction, and {"all": [...]}, {"any": [...]},
 {"not": P} combine them. Fields are the flat candidate view built by
@@ -96,6 +99,10 @@ def dataset_view(spec: dict[str, Any]) -> dict[str, Any]:
         "target_abs_mean": abs_mean,
         "target_std": std,
         "target_oscillatory": ("sin(" in expr or "cos(" in expr) if expr else None,
+        # Input variables the regression target actually uses (input_dim counts all of them).
+        "n_used_inputs": len(set(re.findall(r"\bx\d*\b", expr))) if expr else None,
+        # Concentration of the bigram transition table (lower: peakier, more predictable next token).
+        "transition_alpha": params.get("alpha") if spec["family"] == "bigram_lm" else None,
     }
 
 
@@ -246,6 +253,11 @@ def predicted_winner(rule: dict[str, Any], a: dict[str, Any], b: dict[str, Any])
     for field in rule.get("differ", []):
         if a[field] == b[field]:
             return None
+    # Pair-level parameter band, e.g. 2.0 for the benchmark's matched-size model sets.
+    if "max_param_ratio" in rule:
+        pa, pb = a.get("params"), b.get("params")
+        if not pa or not pb or max(pa, pb) / min(pa, pb) > float(rule["max_param_ratio"]):
+            return None
     pred = rule["predict"]
     if "better" in pred:
         ab = holds(pred["better"], a) and holds(pred["worse"], b)
@@ -373,7 +385,48 @@ def cluster_bootstrap(rows: list[dict[str, Any]], n_boot: int = 2000, seed: int 
     return stats[int(0.025 * n_boot)], stats[int(0.975 * n_boot) - 1]
 
 
-def score_claim(claim: dict[str, Any], sets: list[dict[str, Any]]) -> dict[str, Any]:
+def lineage_stats(rows: list[dict[str, Any]], alpha: float = 0.05) -> dict[str, Any]:
+    """Treat each dataset instance as one independent unit.
+
+    Pairs inside one dataset share data and often candidates, so they are not
+    independent samples. Each dataset with at least one applicable pair votes
+    once: success if most of its decisive pairs agree with the claim, failure if
+    most disagree, tied if equal, no_decisive if none separated. The one-sided
+    Hoeffding lower bound is taken over determined (success/failure) datasets.
+    """
+    by_ds: dict[str, list[int]] = defaultdict(list)
+    applicable = set()
+    for r in rows:
+        applicable.add(r["dataset_id"])
+        if r["decisive"]:
+            by_ds[r["dataset_id"]].append(int(r["correct"]))
+    successes = failures = ties = 0
+    for votes in by_ds.values():
+        right, wrong = sum(votes), len(votes) - sum(votes)
+        if right > wrong:
+            successes += 1
+        elif wrong > right:
+            failures += 1
+        else:
+            ties += 1
+    n = successes + failures
+    rate = successes / n if n else None
+    lb = rate - math.sqrt(math.log(1 / alpha) / (2 * n)) if n else None
+    return {
+        "lineages_applicable": len(applicable),
+        "lineages_no_decisive": len(applicable) - len(by_ds),
+        "lineages_tied": ties,
+        "lineages_determined": n,
+        "lineage_successes": successes,
+        "lineage_success_rate": rate,
+        "lineage_hoeffding_lb": lb,
+        # Plan-doc variant: every applicable dataset stays in the denominator.
+        "lineage_strict_rate": successes / len(applicable) if applicable else None,
+        "alpha": alpha,
+    }
+
+
+def score_claim(claim: dict[str, Any], sets: list[dict[str, Any]], alpha: float = 0.05) -> dict[str, Any]:
     applications: dict[tuple[str, str, str], dict[str, Any]] = {}
     conflicts = 0
     for s in sets:
@@ -422,6 +475,7 @@ def score_claim(claim: dict[str, Any], sets: list[dict[str, Any]]) -> dict[str, 
         "dataset_bootstrap_95": [blo, bhi],
         "mean_order_precision": k_mean / len(mean_rows) if mean_rows else None,
         "by_family": {f: {"correct": c, "decisive": n} for f, (c, n) in sorted(by_family.items())},
+        "lineage": lineage_stats(rows, alpha),
         "applications": rows,
     }
 
@@ -457,6 +511,7 @@ def main() -> None:
     ap.add_argument("--kb-snapshot", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--min-decisive", type=int, default=10, help="claims below this are excluded from the credibility correlation")
+    ap.add_argument("--alpha", type=float, default=0.05, help="one-sided level for the per-dataset Hoeffding lower bound")
     args = ap.parse_args()
 
     sets = load_sets(args.datasets_root)
@@ -476,7 +531,7 @@ def main() -> None:
             "failure_count": kb_claim.get("failure_count"),
         }
         if claim["status"] != "untestable":
-            scored = score_claim(claim, sets)
+            scored = score_claim(claim, sets, args.alpha)
             (args.out / "applications").mkdir(exist_ok=True)
             (args.out / "applications" / f"{claim['id']}.json").write_text(
                 json.dumps(scored.pop("applications"), indent=1)
@@ -543,9 +598,12 @@ def main() -> None:
             continue
         b = r["dataset_bootstrap_95"]
         boot = "      -      " if b[0] is None else f"[{b[0]:.2f},{b[1]:.2f}]"
+        lin = r["lineage"]
         print(
             f"{head} {r['n_applicable']:6d} {r['n_decisive']:5d} {r['n_datasets']:3d} "
-            f"{num(r['precision'], '5.2f')} {boot:>13} {num(r['mean_order_precision'], '5.2f')}"
+            f"{num(r['precision'], '5.2f')} {boot:>13} {num(r['mean_order_precision'], '5.2f')}  "
+            f"lineages {lin['lineage_successes']}/{lin['lineages_determined']} "
+            f"(of {lin['lineages_applicable']}) lb={num(lin['lineage_hoeffding_lb'], '.2f')}"
         )
 
 

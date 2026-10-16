@@ -249,6 +249,12 @@
         "configs/kb_claim_rules/hypotheses_v2_confirm.json": "7c8f63e412127a0c1977bdc815671d717dd4b490f041d5391f6528f5dba72639",
         "configs/kb_claim_rules/hypotheses_v3_confirm.json": "0e42c685b5e637ca106c804762559975c923aa86b3b7403d2989382f35431e9d"
       }
+    },
+    {
+      "date": "2026-10-16",
+      "component": "KB evolution experiment loop",
+      "manifest": "migration/kb-loop-source-manifest.json",
+      "source": "authorized execution server frozen ten-round runtime"
     }
   ]
 }

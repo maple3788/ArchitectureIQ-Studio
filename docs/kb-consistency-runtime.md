@@ -1,6 +1,6 @@
 # Future KB runtime consistency gate
 
-`tools/kb_consistency_runtime.py` prepares a **new runtime source directory**. It does not deploy, start a loop, contact a model, generate questions, or change the existing monitored run. The source runtime must contain `tools/kb_loop`, `src/architecture_iq`, and `profiles`; a tools-only inspection snapshot is insufficient.
+`tools/kb_consistency_runtime.py` prepares a **new runtime source directory**. It does not deploy, start a loop, contact a model, generate questions, or change the existing monitored run. Studio now owns the complete runner in `tools/kb_loop`, its pairwise evaluator, canonical engine, profiles and templates. Use this repository as the source; no backup checkout or historical server runtime is required. See [the runner guide](kb-loop.md).
 
 Preparation copies source directories (`src`, `profiles`, `tools`, `prompts`, `configs`), installs the current policy and adapter, and patches the checked entrypoint in the copied loop. Datasets, run directories, model weights, environment files, bytecode and dependency caches are excluded. The original files and receipts remain unchanged. Preparation refuses an existing destination or an unknown entrypoint. Review source configuration before choosing a destination because configuration files are copied with the runtime.
 
@@ -9,7 +9,7 @@ Use deployment paths and interpreter values from private configuration:
 ```sh
 PYTHONPATH="$STUDIO_REPO/src:$STUDIO_REPO" "$PYTHON_BIN" \
   "$STUDIO_REPO/tools/kb_consistency_runtime.py" \
-  --source-root "$FROZEN_RUNTIME" --destination "$NEXT_RUNTIME"
+  --source-root "$STUDIO_REPO" --destination "$NEXT_RUNTIME"
 ```
 
 `consistency-runtime.json` records original and installed source hashes. The copied entrypoint verifies installed hashes and Python import provenance on startup. It refuses changed source; prepare another directory for subsequent policy changes.

@@ -276,6 +276,9 @@ def install(loop, runtime_root: Path) -> None:
         return props
 
     def register(store, k, props):
+        guard = getattr(loop, "_require_prepared_runtime", None)
+        if guard is not None:
+            guard(store.root)
         context = budget_context(runtime_root, store.config())
         gate_proposals(props, context)
         receipt = store.round_dir(k) / "preregistered.json"

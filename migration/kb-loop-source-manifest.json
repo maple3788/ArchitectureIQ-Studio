@@ -1,0 +1,22 @@
+{
+  "source": "authorized execution server frozen ten-round runtime",
+  "migration_date": "2026-10-16",
+  "strategy": "Copy existing loop and pairwise evaluator; retain frozen experiment source and records. Add Studio execution and consistency gates in the destination only.",
+  "source_files": {
+    "tools/kb_loop/__init__.py": "c86dbddeca3485f22291b17cce021b04a37098e5e43664dd0359ecce7a0cf912",
+    "tools/kb_loop/checks.py": "885d553aedba422d7160241617d5eae1b8ce4283aca781592957906394cc1f4b",
+    "tools/kb_loop/evidence.py": "91f0a7b3f3f8d4bae3133cb5ea17ffc9e50209d827f4e08be884d668774f6cee",
+    "tools/kb_loop/judge.py": "045e81465e7bf675f1cbdbc9883838836595386fbe0b5c0948a5561ffa146cc5",
+    "tools/kb_loop/loop.py": "1eb8d88cecb377386266b875c6dc6b734376df0a1c9fec3f59ef916c705ac86e",
+    "tools/kb_loop/planner.py": "941709e42952693514e55a180116b94dbc1c7a90ccb23d56ef4df47d28029f5a",
+    "tools/kb_loop/proposer.py": "74b9a136eba9ae3a8445073ac831926dac52b65a6c23ba75089ad700da821b63",
+    "tools/kb_loop/questions.py": "4ad1487d12a7c0bd27b99b44f2aed23959eaf33e49615a49479b530195415efe",
+    "tools/kb_loop/qwen.py": "88a8dcd5e617f5245e6c1056adef69067870ae8a28a399a8983a2709d26335ca",
+    "tools/kb_loop/report.py": "473781d82c022359d9e9fb1231804b3ce787f1d2835d7a462624fb45883d3f87",
+    "tools/kb_loop/store.py": "f3f93cc938fdd7ec4891bfae01c1ffdd7173eb6a55816777d89eea90d18a8d47",
+    "tools/kb_loop/diagnostics.py": "019eb0107d05a797de1ed0c0c37e34e5b2b2077dde9bc34f3735d2efe59f30a8",
+    "tools/kb_loop/ensemble.py": "9effbfb7a5ab2fca330e650e6ca895e23e91571c53b8bbcc90cd762568a0fd5c",
+    "configs/kb_loop/main500_dataset_ids.json": "a2548be0ccb87b2b66177e54879ead6ea6db23ac0624abf993d634e1f9d5de4b",
+    "tools/kb_claim_pairwise_eval.py": "9fd256f3779ea0da4e5a64e76befbb7db8d72d338483a430e5ceb3c4f8db8bc9"
+  }
+}

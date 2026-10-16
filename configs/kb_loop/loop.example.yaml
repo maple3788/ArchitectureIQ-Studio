@@ -1,0 +1,78 @@
+# Copy to private deployment configuration and fill model/API settings before a new run.
+# Scientific settings are copied from the completed ten-round experiment.
+version: 1
+profile: v1.5
+questions:
+  per_round: 300
+  pilot_per_round: 30
+  target_fraction: 0.6
+  candidates_per_set: 12
+  dataset_attempts: 3
+  set_attempts: 3
+  workers: 48
+  seed_base: 500000000
+  seed_stride: 10000000
+  seed_workers:
+    univariate_regression: 10
+    multivariate_regression: 10
+    bigram_lm: 10
+    synthetic_tabular_classification: 10
+    xor_classification: 10
+    spiral_classification: 10
+  target_probe_tries: 40
+  target_set_probe_tries: 30
+  target_draws: 6
+judge:
+  min_applicable: 40
+  promote_rate: 0.85
+  promote_lower_bound: 0.7
+  alpha: 0.05
+  recent_rounds: 2
+  recent_min_applicable: 10
+  flag_rate: 0.75
+  max_revisions: 3
+checks:
+  max_rules: 3
+  max_conditions: 10
+  min_history_applicable: 1
+  duplicate_agreement: 0.95
+  min_coverage_kept: 0.25
+  revision_min_rate: 0.95
+  new_min_rate: 0.95
+qwen:
+  concurrency: 96
+  timeout_s: 1800
+  max_tokens: 16384
+  propose_temperature: 0.7
+  check_temperature: 0.0
+  proposals_per_cell: 3
+  revisions_per_claim: 4
+  uncovered_examples: 20
+  json_retries: 2
+  max_new_per_round: 40
+  model: YOUR_MODEL_ID
+  base_urls:
+  - https://api.example.invalid/v1
+  api_key_file: /path/to/private/api-key
+proposer:
+  concurrency: 20
+  timeout_s: 900
+  max_tokens: 0
+  propose_temperature: 0.7
+  check_temperature: 0.0
+  proposals_per_cell: 6
+  revisions_per_claim: 3
+  max_new_per_round: 200
+  send_temperature: true
+  thinking_toggle: false
+  stream: true
+  model: YOUR_MODEL_ID
+  base_urls:
+  - https://api.example.invalid/v1
+  api_key_file: /path/to/private/api-key
+  extra_params:
+    reasoning_effort: high
+  listing_cap: 60
+  split_max_claims: 30
+  split_new_errors: 3
+  splits_per_claim: 3
